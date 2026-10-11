@@ -13,7 +13,7 @@ enum GitCoreError: LocalizedError {
 
 struct LocalGitRepository: Identifiable, Hashable {
     let url: URL
-    var id: URL { url }
+    var id: URL { url.standardizedFileURL }
     var name: String { url.lastPathComponent }
     var gitDirectory: URL { url.appendingPathComponent(".git", isDirectory: true) }
     var isValid: Bool { FileManager.default.fileExists(atPath: gitDirectory.path) }
@@ -61,20 +61,41 @@ final class GitCore: ObservableObject {
     }
 
     private func persistBookmarks() {
-        let data = scopedURLs.compactMap { try? $0.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) }
+        // UIDocumentPicker grants security-scoped access on iOS, but
+        // URL.BookmarkCreationOptions.withSecurityScope is macOS-only. An
+        // ordinary bookmark still preserves the picked document URL on iOS;
+        // access is restored with startAccessingSecurityScopedResource().
+        let data = scopedURLs.compactMap { try? $0.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) }
         UserDefaults.standard.set(data, forKey: bookmarkKey)
     }
 
     private func restoreBookmarks() {
         let values = UserDefaults.standard.array(forKey: bookmarkKey) as? [Data] ?? []
+        var restoredURLs = Set<URL>()
         for bookmark in values {
             var stale = false
-            guard let url = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale),
-                  url.startAccessingSecurityScopedResource(),
-                  FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) else { continue }
+            guard let url = try? URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else { continue }
+            guard url.startAccessingSecurityScopedResource() else { continue }
+            guard FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) else {
+                url.stopAccessingSecurityScopedResource()
+                continue
+            }
+            let normalizedURL = url.standardizedFileURL
+            guard restoredURLs.insert(normalizedURL).inserted else {
+                url.stopAccessingSecurityScopedResource()
+                continue
+            }
             repositories.append(LocalGitRepository(url: url))
             scopedURLs.insert(url)
-            if stale { persistBookmarks() }
+        }
+        // Rewrite once after the complete pass so an early stale/invalid
+        // bookmark cannot erase valid bookmarks encountered later.
+        if values.count != restoredURLs.count || values.contains(where: { bookmark in
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else { return true }
+            return stale
+        }) {
+            persistBookmarks()
         }
     }
 }
