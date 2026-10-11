@@ -25,19 +25,31 @@ struct LocalGitRepository: Identifiable, Hashable {
 final class GitCore: ObservableObject {
     @Published private(set) var repositories: [LocalGitRepository] = []
     @Published private(set) var isBusy = false
+    private var scopedURLs = Set<URL>()
+
+    deinit {
+        for url in scopedURLs { url.stopAccessingSecurityScopedResource() }
+    }
 
     func importRepository(_ url: URL) throws {
         guard url.startAccessingSecurityScopedResource() else { throw GitCoreError.invalidRepository }
-        defer { url.stopAccessingSecurityScopedResource() }
         guard FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) else {
+            url.stopAccessingSecurityScopedResource()
             throw GitCoreError.invalidRepository
         }
         if !repositories.contains(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) {
             repositories.append(LocalGitRepository(url: url))
+            scopedURLs.insert(url)
+        } else {
+            url.stopAccessingSecurityScopedResource()
         }
     }
 
     func remove(_ repository: LocalGitRepository) {
         repositories.removeAll { $0.id == repository.id }
+        if let scoped = scopedURLs.first(where: { $0.standardizedFileURL == repository.url.standardizedFileURL }) {
+            scoped.stopAccessingSecurityScopedResource()
+            scopedURLs.remove(scoped)
+        }
     }
 }
