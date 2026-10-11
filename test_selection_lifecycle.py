@@ -47,7 +47,7 @@ u = Path('RepoPocket/WorkspaceSelectionUI.swift').read_text()
 c = Path('RepoPocket/RepositoryUI.swift').read_text()
 assert '@State private var selected' not in w and 'selected.removeAll()' not in w
 assert '@StateObject private var selectionStore' in a and '.environmentObject(selectionStore)' in a
-assert '.buttonStyle(.borderless)' in w and '.frame(width: 44, height: 44)' in w and 'Text(change.relativePath)' in w
+assert '.buttonStyle(.plain)' in w and '.frame(width: 44, height: 44)' in w and 'Text(change.relativePath)' in w
 scan = w[w.index('@MainActor private func scan()'):w.index('struct LocalDiffView')]
 assert scan.index('before.hashes == after.hashes') < scan.index('roots = result.0') < scan.index('scanSucceeded(')
 assert 'folder == requestedFolder' in scan and 'generation == AccountStore.generation' in scan
@@ -60,6 +60,6 @@ assert 'commits = []' not in h and 'if refresh { commits = batch }' in h
 assert 'verticalSizeClass == .compact ? .inline : .large' in u
 assert 'verticalSizeClass == .compact ? 3 : 7' in c
 assert 'accessibilityReduceMotion' in c and '.animation(reduceMotion ? nil' in c
-assert '.animation(nil' not in a + w + h
+assert 'scenePhase' not in w and '.transition(' not in w and '.animation(' not in w
 assert 'UserDefaults' not in model and 'CredentialStore' not in model
 print('PASS refresh/landscape/selection/cancellation static contracts; actual device transitions unmeasured')

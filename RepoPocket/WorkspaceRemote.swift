@@ -25,6 +25,27 @@ struct WorkspaceBinding: Codable {
     }
 }
 
+enum WorkspaceCommitEligibility {
+    static func reason(binding: WorkspaceBinding?, selected: Set<String>, scanned: LocalSnapshot?, sameWorkspace: Bool, message: String) -> String? {
+        guard let binding, !binding.repo.isEmpty, !binding.branch.isEmpty, !binding.head.isEmpty, !binding.tree.isEmpty else { return "提交不可用：请先建立可靠远端基线；本地勾选不受影响。" }
+        guard sameWorkspace, scanned != nil else { return "提交不可用：请刷新当前工作区变更。" }
+        guard !selected.isEmpty else { return "提交不可用：请勾选本地变更。" }
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "提交不可用：请填写提交说明。" }
+        return nil
+    }
+}
+
+enum WorkspaceAssociationDiagnostics {
+    static func mismatch(local: [String: String], remote: [String: String], repo: String, branch: String, head: String) -> String? {
+        guard local != remote else { return nil }
+        let missing = remote.keys.filter { local[$0] == nil }.sorted()
+        let extra = local.keys.filter { remote[$0] == nil }.sorted()
+        let changed = remote.keys.filter { local[$0] != nil && local[$0] != remote[$0] }.sorted()
+        let samples = (missing.prefix(3).map { "缺少：" + $0 } + extra.prefix(3).map { "多出：" + $0 } + changed.prefix(3).map { "内容不同：" + $0 }).joined(separator: "\n")
+        return "仓库已找到：\(repo)\n分支：\(branch) · 当前提交：\(head.prefix(12))\n关联未建立：本地副本与该提交不同（缺少 \(missing.count)、多出 \(extra.count)、内容不同 \(changed.count)）。\n\(samples)\n仓库输入正确不代表副本版本一致。请确认分支和文件夹层级；若已编辑，请保留副本，不要覆盖。可用‘下载远端并建立可靠基线’另建工作区。"
+    }
+}
+
 struct WorkspaceWrite {
     let path: String
     let bytes: Data?

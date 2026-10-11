@@ -62,9 +62,13 @@ struct RepositoriesView: View {
                     }
                 }
                 Section("我的仓库") {
-                    if busy && repos.isEmpty && !refreshing { LoadingRows().softGroupedRow(top: true, bottom: true) }
+                    if busy && repos.isEmpty && !refreshing {
+                        LoadingRows().softGroupedRow(top: true, bottom: true)
+                    }
                     if repos.isEmpty && !busy {
-                        Text(api.login.isEmpty ? "请先到设置登录。" : "点刷新加载仓库。").font(.caption).foregroundColor(.secondary).softGroupedRow(top: true, bottom: true)
+                        Text(api.login.isEmpty ? "请先到设置登录。" : "点刷新加载仓库。")
+                            .font(.caption).foregroundColor(.secondary)
+                            .softGroupedRow(top: true, bottom: true)
                     }
                     ForEach(repos) { repo in
                         NavigationLink { BrowserView(api: api, repo: repo.full_name, path: "", branch: repo.default_branch ?? "") } label: {
@@ -386,7 +390,7 @@ struct SettingsView: View {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)
                 }
                 Section {
-                    Text("RepoPocket 1.0.0（build 2）· iOS 16+").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true)
+                    Text("RepoPocket 1.0.1（build 6）· iOS 16+").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true)
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }

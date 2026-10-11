@@ -16,12 +16,29 @@ RepoPocket 是一款适用于 iOS 16+、TrollStore 的 GitHub 文件管理工具
 - 管理 `.dylib` 插件的版本、名称、作者等元信息，目前适配 LSP 版 TrollFools 插件源格式，不涉及插件二进制代码修改
 - 管理本地工作区文件
 
+### 本地工作区使用
+
+导入会复制文件。请编辑 RepoPocket → Repositories 中的实际副本，而不是原下载目录。返回前台不会自动扫描或检查远端；编辑或删除文件后，点“刷新变更”或下拉刷新。首次打开和实际导入、下载、关联、提交、拉取、删除工作区之后仍会更新结果。
+
+“刷新变更”只检测本地变更，不会建立远端关联。本地新增、修改、删除均可先勾选；提交需要可靠关联的基线。验证原始导入快照及历史 commit 可保留当前编辑，不要求当前本地内容等于远端。已关联工作区里的文件删除可在手动刷新后勾选提交；提交仍检查本地扫描快照及远端分支，拒绝过期数据和强推。
+
 ## 相关仓库
 
 [TrollFools LSP 修改版插件源](https://github.com/wm0104/trollfools-repo)
 
 ## 下载
 
-[下载 RepoPocket](https://github.com/wm0104/RepoPocket/releases/download/v1.0.0/RepoPocket.ipa)
+[下载 RepoPocket 1.0.1（build 7）](https://github.com/wm0104/RepoPocket/releases/download/v1.0.1/RepoPocket.ipa) · [SHA256 校验文件](https://github.com/wm0104/RepoPocket/releases/download/v1.0.1/RepoPocket.ipa.sha256) · [历史版本](https://github.com/wm0104/RepoPocket/releases)
 
 系统要求：iOS 16 或更高版本。低于 iOS 16 的系统未测试，请自行测试。
+
+### 1.0.1（build 7）更新
+
+- 修复 ZIP 导入路径、文件选择器及取消导入，编辑时请使用应用中的实际副本。
+- 本地新增、修改、删除均可勾选，勾选与远端提交资格分开检查；刷新保留删除项勾选，首次可靠关联保留已有勾选。
+- 历史 ZIP 通过原始导入快照及目标分支历史 commit 验证可信基线；填写 ZIP 对应 commit 后关联，不以当前编辑冒充远端。拉取冲突逐项确认，不自动覆盖、不强推。
+- 远端文件下载断线／超时最多重试三次，完成后校验长度及哈希。
+- 新工作区使用实际可读目录 `owner-repo`，非 main/master 分支附分支名，重复目录追加 `-2`、`-3`；旧工作区可手动“重命名实际目录”，失败回滚。
+- 取消返回前台自动扫描，改为手动刷新；取消仓库折叠，恢复圆角及整宽分割线。
+
+已通过自动化测试、云端编译及签名校验；未进行真机触控验收。

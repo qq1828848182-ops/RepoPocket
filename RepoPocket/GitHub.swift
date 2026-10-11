@@ -248,10 +248,11 @@ final class GitHub: ObservableObject {
         }
         _ = try await data(Self.repoPath(repo) + "/git/refs", method: "POST", object: ["ref": "refs/heads/" + name, "sha": expectedHead])
     }
-    func fetchWorkspace(_ repo: String, branch: String) async throws -> (WorkspaceBinding, URL) {
+    func fetchWorkspace(_ repo: String, branch: String, revision: String = "") async throws -> (WorkspaceBinding, URL) {
         let branch = try await resolvedBranch(repo, branch: branch)
         let endpoint = try Self.repoPath(repo)
-        let head = try await workspaceHead(repo, branch: branch)
+        let head: String
+        if revision.isEmpty { head = try await workspaceHead(repo, branch: branch) } else { head = revision }
         let commit = try await decoded(GitCommitInfo.self, endpoint + "/git/commits/" + Self.component(head))
         let tree = try await decoded(GitTreeInfo.self, endpoint + "/git/trees/" + Self.component(commit.tree.sha), query: [.init(name: "recursive", value: "1")])
         guard !tree.truncated, tree.tree.count <= 20000, tree.tree.allSatisfy({ $0.type == "tree" || ($0.type == "blob" && ["100644", "100755"].contains($0.mode)) }) else { throw AppError(text: "远端树过大或含符号链接/子模块，不支持安全拉取") }
@@ -275,24 +276,21 @@ final class GitHub: ObservableObject {
                 guard free > Int64(size) * 3 + 64 * 1024 * 1024 else { throw AppError(text: "磁盘空间不足：" + item.path) }
                 let target = stage.appendingPathComponent(item.path)
                 try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                var r = try request(url(endpoint + "/contents/" + Self.filePath(item.path), query: [.init(name: "ref", value: head)]))
+                // Immutable Git blob endpoint: no per-byte AsyncBytes loop or contents redirect.
+                var r = try request(url(endpoint + "/git/blobs/" + Self.component(item.sha)))
                 r.setValue("application/vnd.github.raw+json", forHTTPHeaderField: "Accept")
-                let (stream, response) = try await session.bytes(for: r)
-                try check(Data(), response, operation: "下载 " + item.path)
-                FileManager.default.createFile(atPath: target.path, contents: nil)
-                let handle = try FileHandle(forWritingTo: target)
-                do {
+                r.timeoutInterval = 180
+                let tmp = try await downloadBlob(r, path: item.path)
+                defer { try? FileManager.default.removeItem(at: tmp) }
+                let expectedSHA256 = try await Task.detached(priority: .userInitiated) {
+                    let handle = try FileHandle(forReadingFrom: tmp)
+                    defer { try? handle.close() }
                     var hash = StreamingBlobHash(size: size)
-                    var chunk = Data(); chunk.reserveCapacity(256 * 1024)
-                    for try await byte in stream {
-                        chunk.append(byte)
-                        if chunk.count == 256 * 1024 { try hash.update(chunk); try handle.write(contentsOf: chunk); chunk.removeAll(keepingCapacity: true) }
-                    }
-                    if !chunk.isEmpty { try hash.update(chunk); try handle.write(contentsOf: chunk) }
-                    let expectedSHA256 = try hash.finish(expectedGit: item.sha)
-                    try handle.close()
-                    guard try LocalStore.snapshotFileSHA256(target) == expectedSHA256 else { throw AppError(text: "磁盘 SHA256 校验失败") }
-                } catch { try? handle.close(); throw AppError(text: item.path + "：" + error.localizedDescription) }
+                    while let chunk = try handle.read(upToCount: 256 * 1024), !chunk.isEmpty { try hash.update(chunk) }
+                    return try hash.finish(expectedGit: item.sha)
+                }.value
+                try FileManager.default.moveItem(at: tmp, to: target)
+                guard try LocalStore.snapshotFileSHA256(target) == expectedSHA256 else { throw AppError(text: "磁盘 SHA256 校验失败：" + item.path) }
             }
             let snapshot = try LocalStore.snapshot(stage)
             let binding = WorkspaceBinding(repo: repo, branch: branch, head: head, tree: commit.tree.sha, modes: Dictionary(uniqueKeysWithValues: tree.tree.filter { $0.type == "blob" }.map { ($0.path, $0.mode) }), snapshot: snapshot, remoteAuthorDate: commit.author?.date, remoteCommitterDate: commit.committer?.date, lastChecked: Date())
@@ -302,7 +300,7 @@ final class GitHub: ObservableObject {
     func downloadWorkspace(repo: String, branch: String) async throws -> URL {
         let (binding, stage) = try await fetchWorkspace(repo, branch: branch)
         defer { try? FileManager.default.removeItem(at: stage) }
-        let folder = try LocalStore.importFolder(stage)
+        let folder = try LocalStore.importFolder(stage, name: binding.repo.replacingOccurrences(of: "/", with: "-") + (binding.branch == "main" || binding.branch == "master" ? "" : "-" + binding.branch))
         var downloadedBinding = binding
         downloadedBinding.lastPulled = Date()
         do { try LocalStore.saveBinding(downloadedBinding, folder: folder) }
@@ -317,25 +315,52 @@ final class GitHub: ObservableObject {
     func workspaceHead(_ repo: String, branch: String) async throws -> String {
         try await decoded(GitReference.self, Self.repoPath(repo) + "/git/ref/heads/" + Self.filePath(branch)).object.sha
     }
-    func associateWorkspace(_ folder: URL, repo: String, branch: String) async throws -> WorkspaceBinding {
+    func associateWorkspace(_ folder: URL, repo: String, branch: String, revision: String = "") async throws -> WorkspaceBinding {
         let repo = repo.trimmingCharacters(in: .whitespacesAndNewlines)
         let branch = try await resolvedBranch(repo, branch: branch.trimmingCharacters(in: .whitespacesAndNewlines))
-        let head = try await workspaceHead(repo, branch: branch)
-        let commit = try await decoded(GitCommitInfo.self, Self.repoPath(repo) + "/git/commits/" + Self.component(head))
-        let tree = try await decoded(GitTreeInfo.self, Self.repoPath(repo) + "/git/trees/" + Self.component(commit.tree.sha), query: [.init(name: "recursive", value: "1")])
-        guard !tree.truncated, tree.tree.allSatisfy({ $0.type == "tree" || ($0.type == "blob" && ["100644", "100755"].contains($0.mode)) }) else {
-            throw AppError(text: "远端树过大或含符号链接/子模块，暂不支持关联")
+        let selected = revision.trimmingCharacters(in: .whitespacesAndNewlines)
+        let head: String
+        if selected.isEmpty { head = try await workspaceHead(repo, branch: branch) }
+        else {
+            guard WorkspaceBaselineRules.validRevision(selected) else { throw AppError(text: "历史提交请输入 ZIP 对应的 7–40 位十六进制 commit SHA，不要输入分支名") }
+            let commit = try await decoded(GitCommitInfo.self, Self.repoPath(repo) + "/commits/" + Self.component(selected))
+            head = commit.sha
+            let comparison = try await decoded(WorkspaceComparison.self, Self.repoPath(repo) + "/compare/" + Self.component(head) + "..." + Self.component(branch))
+            guard ["ahead", "identical"].contains(comparison.status) else { throw AppError(text: "选择的历史提交不是目标分支的祖先，请确认 ZIP 来源和分支") }
         }
-        let baseline = try await Task.detached { try LocalStore.snapshot(folder) }.value
-        let hashes = try await Task.detached(priority: .userInitiated) { try LocalStore.gitHashes(folder) }.value
-        let remote = Dictionary(uniqueKeysWithValues: tree.tree.filter { $0.type == "blob" }.map { ($0.path, $0.sha) })
-        guard hashes == remote else { throw AppError(text: "本地副本与当前远端不完全一致，拒绝建立不可靠基线。请导入该分支最新 ZIP（保留文件夹层级）后立即关联，再编辑。") }
-        guard try await workspaceHead(repo, branch: branch) == head else { throw AppError(text: "关联期间远端已变化，请重试") }
-        let after = try await Task.detached { try LocalStore.snapshot(folder) }.value
-        guard baseline.hashes == after.hashes else { throw AppError(text: "关联期间本地文件已变化，请重试") }
-        let binding = WorkspaceBinding(repo: repo, branch: branch, head: head, tree: commit.tree.sha, modes: Dictionary(uniqueKeysWithValues: tree.tree.filter { $0.type == "blob" }.map { ($0.path, $0.mode) }), snapshot: baseline, remoteAuthorDate: commit.author?.date, remoteCommitterDate: commit.committer?.date, lastChecked: Date())
-        try LocalStore.saveBinding(binding, folder: folder)
-        return binding
+        // Never promote edited local bytes to a trusted remote baseline.
+        let original = try JSONDecoder().decode(LocalSnapshot.self, from: Data(contentsOf: LocalStore.metadata(folder)))
+        let (verified, stage) = try await fetchWorkspace(repo, branch: branch, revision: head)
+        defer { try? FileManager.default.removeItem(at: stage) }
+        guard WorkspaceBaselineRules.matches(original: original, verified: verified.snapshot) else {
+            throw AppError(text: "原始导入副本与选定远端提交不匹配，关联未建立。请填写 ZIP 对应历史 commit（例如文件名中的 9230587），或重新导入未编辑的原始 ZIP；原始 ZIP 若含额外文件也需核实。当前编辑副本不会被覆盖。也可另建远端工作区。")
+        }
+        // Persist the verified REMOTE snapshot, retaining every current edit/deletion.
+        try ensureActiveAccount()
+        try LocalStore.saveBinding(verified, folder: folder)
+        return verified
+    }
+    private func downloadBlob(_ request: URLRequest, path: String) async throws -> URL {
+        for attempt in 0..<3 {
+            do {
+                let (tmp, response) = try await session.download(for: request)
+                do {
+                    try ensureActiveAccount()
+                    let body = (response as? HTTPURLResponse)?.statusCode == 200 ? Data() : ((try? Data(contentsOf: tmp, options: .mappedIfSafe)) ?? Data())
+                    // Only read API error text; successful binary remains untouched on disk.
+                    try check((response as? HTTPURLResponse)?.statusCode == 200 ? Data() : Data(body.prefix(8192)), response, operation: "下载 " + path)
+                    return tmp
+                } catch { try? FileManager.default.removeItem(at: tmp); throw error }
+            } catch {
+                let e = error as NSError
+                guard attempt < 2, WorkspaceBaselineRules.retryable(domain: e.domain, code: e.code) else {
+                    throw AppError(text: path + "：" + error.localizedDescription + "。下载未完成，不会建立基线；请检查网络后手动重试。")
+                }
+                try await Task.sleep(nanoseconds: UInt64(attempt + 1) * 1_000_000_000)
+                try ensureActiveAccount()
+            }
+        }
+        throw AppError(text: "下载失败：" + path)
     }
     func commitWorkspace(_ binding: WorkspaceBinding, writes: [WorkspaceWrite], message: String) async throws -> WorkspaceBinding {
         guard !writes.isEmpty, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请选择变更并填写提交说明") }
@@ -603,9 +628,13 @@ final class GitHub: ObservableObject {
         return try await download(request(url(endpoint)), name: repo.replacingOccurrences(of: "/", with: "-") + ".zip")
     }
     private func download(_ request: URLRequest, name: String) async throws -> URL {
-        let (tmp, response) = try await session.download(for: request)
+        let (tmp, response) = try await session.download(for: request, delegate: ArchiveRedirectPolicy())
         try ensureActiveAccount()
-        guard let h = response as? HTTPURLResponse, (200..<300).contains(h.statusCode) else { throw AppError(text: "下载失败，请检查权限和文件大小") }
+        do {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let body = (200..<300).contains(status) ? Data() : ((try? Data(contentsOf: tmp)) ?? Data())
+            try check(Data(body.prefix(8192)), response, operation: "下载归档/文件")
+        } catch { try? FileManager.default.removeItem(at: tmp); throw error }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let safe = (name as NSString).lastPathComponent

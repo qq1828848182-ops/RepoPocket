@@ -5,6 +5,16 @@ import CryptoKit
 struct LocalSnapshot: Codable {
     var hashes: [String: String] = [:]
     var texts: [String: String] = [:]
+    enum CodingKeys: String, CodingKey { case hashes, texts }
+    init(hashes: [String: String] = [:], texts: [String: String] = [:]) {
+        self.hashes = hashes; self.texts = texts
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Hashes are mandatory; legacy hash-only snapshots may omit preview texts.
+        hashes = try c.decode([String: String].self, forKey: .hashes)
+        texts = try c.decodeIfPresent([String: String].self, forKey: .texts) ?? [:]
+    }
 }
 struct LocalChange: Identifiable {
     var id: String { path }
@@ -102,7 +112,47 @@ enum LocalStore {
         do { try fm.removeItem(at: quarantine) }
         catch { throw AppError(text: "清理未完成；剩余数据位于 \(quarantine.path)，请手动确认后处理：\(error.localizedDescription)") }
     }
-    static func importFolder(_ source: URL) throws -> URL {
+    static func readableName(_ proposed: String) -> String {
+        let cleaned = proposed.map { $0 == "/" || $0 == "\\" || $0 == ":" || $0.isNewline ? "-" : String($0) }.joined().trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty || cleaned == "." || cleaned == ".." || cleaned.hasPrefix(".") ? "workspace" : String(cleaned.prefix(100))
+    }
+    static func availableFolder(_ proposed: String) throws -> URL {
+        let base = try root(), name = readableName(proposed)
+        var candidate = base.appendingPathComponent(name, isDirectory: true), number = 2
+        func occupied(_ url: URL) throws -> Bool {
+            let meta = try metadata(url), remote = try bindingURL(url)
+            return FileManager.default.fileExists(atPath: url.path) || FileManager.default.fileExists(atPath: meta.path) || FileManager.default.fileExists(atPath: remote.path)
+        }
+        while try occupied(candidate) {
+            candidate = base.appendingPathComponent(name + "-" + String(number), isDirectory: true); number += 1
+        }
+        return candidate
+    }
+    // Explicit user operation; no automatic directory migration during refresh.
+    static func renameWorkspace(_ folder: URL, to proposed: String) throws -> URL {
+        let fm = FileManager.default
+        guard folder.standardizedFileURL.deletingLastPathComponent() == (try root()).standardizedFileURL,
+              try folder.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]).isDirectory == true,
+              try folder.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else { throw AppError(text: "拒绝重命名工作区外路径") }
+        let destination = try availableFolder(proposed)
+        let oldMeta = try metadata(folder), newMeta = try metadata(destination)
+        let oldBinding = try bindingURL(folder), newBinding = try bindingURL(destination)
+        var movedFolder = false, movedMeta = false, movedBinding = false
+        do {
+            try fm.moveItem(at: folder, to: destination); movedFolder = true
+            try fm.moveItem(at: oldMeta, to: newMeta); movedMeta = true
+            if fm.fileExists(atPath: oldBinding.path) { try fm.moveItem(at: oldBinding, to: newBinding); movedBinding = true }
+            return destination
+        } catch {
+            do {
+                if movedBinding { try fm.moveItem(at: newBinding, to: oldBinding) }
+                if movedMeta { try fm.moveItem(at: newMeta, to: oldMeta) }
+                if movedFolder { try fm.moveItem(at: destination, to: folder) }
+            } catch { throw AppError(text: "重命名回滚失败；请保留 \(folder.path) 与 \(destination.path)，不要清理：\(error.localizedDescription)") }
+            throw error
+        }
+    }
+    static func importFolder(_ source: URL, name: String? = nil) throws -> URL {
         let fm = FileManager.default
         guard try source.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]).isDirectory == true,
               try source.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
@@ -112,7 +162,7 @@ enum LocalStore {
         _ = try snapshot(source)
         let base = try root()
         // Always use a fresh directory: never overwrite a previous local checkout.
-        let destination = base.appendingPathComponent(source.lastPathComponent + "-" + String(UUID().uuidString.prefix(8)), isDirectory: true)
+        let destination = try availableFolder(name ?? source.lastPathComponent)
         do {
             try fm.copyItem(at: source, to: destination)
             let baseline = try snapshot(destination)
@@ -126,14 +176,14 @@ struct WorkspaceView: View {
     @ObservedObject var api: GitHub
     @State private var roots: [URL] = []
     @State private var changes: [LocalChange] = []
-    @State private var importing = false
-    @State private var zip = false
+    @State private var importRequest: WorkspaceImportRequest?
     @State private var busy = false
     @State private var message = ""
     @State private var folder: URL?
     @State private var binding: WorkspaceBinding?
     @State private var repo = ""
     @State private var branch = ""
+    @State private var baselineRevision = ""
     @EnvironmentObject private var selectionStore: WorkspaceSelectionStore
     @State private var hasScanned = false
     private var selectionScope: WorkspaceSelectionScope? {
@@ -146,6 +196,11 @@ struct WorkspaceView: View {
     }
     @State private var commitMessage = ""
     @State private var scannedSnapshot: LocalSnapshot?
+    @State private var scannedFolder: URL?
+    private var commitBlockReason: String? {
+        WorkspaceCommitEligibility.reason(binding: binding, selected: selected, scanned: scannedSnapshot,
+            sameWorkspace: folder != nil && folder == scannedFolder, message: commitMessage)
+    }
     @State private var confirming = false
     @State private var pull: WorkspacePull?
     @State private var pullChoices: [String: Bool] = [:]
@@ -156,7 +211,10 @@ struct WorkspaceView: View {
     @State private var confirmDirtyDelete = false
     @State private var deletionIsDirty = false
     @State private var confirmPull = false
-    @FocusState private var commitMessageFocused: Bool
+    @State private var renameName = ""
+    @State private var confirmingRename = false
+    private enum Field: Hashable { case remoteRepo, remoteBranch, associationRepo, associationBranch, baselineRevision, commitMessage }
+    @FocusState private var focusedField: Field?
     var body: some View {
         NavigationStack {
             List {
@@ -171,14 +229,25 @@ struct WorkspaceView: View {
             .navigationTitle("本地工作区")
             .adaptiveWorkspaceLayout()
             .refreshable { await scan() }
-            .scrollDismissesKeyboard(.never)
-            .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { commitMessageFocused = false } } }
+            .scrollDismissesKeyboard(.interactively)
+            .onSubmit { focusedField = nil }
+            .onChange(of: importRequest?.id) { _ in focusedField = nil }
+            .onChange(of: folder) { _ in focusedField = nil }
+            .onDisappear { focusedField = nil }
+            .toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focusedField = nil } } }
             .confirmationDialog("检查远端更新？此操作不会修改本地文件；检查完成后仍需确认才会拉取。", isPresented: $confirmPull, titleVisibility: .visible) {
                 Button("检查更新") { Task { await checkRemote() } }
                 Button("取消", role: .cancel) {}
             }
             .task { if !hasScanned { folder = selectionStore.session.rememberedFolder(accountID: api.accountID); await scan() } }
-            .sheet(isPresented: $importing) { WorkspaceDocumentPicker(zip: zip) { urls in Task { await importItems(urls, zip: zip) } } }
+            .sheet(item: $importRequest) { request in
+                WorkspaceDocumentPicker(request: request) { urls in
+                    importRequest = nil
+                    guard let urls else { return }
+                    Task { await importItems(urls, zip: request.isZIP) }
+                }
+                .id(request.id)
+            }
             .sheet(isPresented: $resolvingPull, onDismiss: { discardPull() }) { conflictSheet }
             .confirmationDialog("确认提交到 \(binding?.repo ?? "") · \(binding?.branch ?? "")？包含勾选的删除操作。", isPresented: $confirming, titleVisibility: .visible) {
                 Button("确认提交 \(selected.count) 项") { Task { await commit() } }
@@ -192,6 +261,11 @@ struct WorkspaceView: View {
                 Button("永久删除未提交更改与工作区", role: .destructive) { deleteSelected() }
                 Button("取消", role: .cancel) { pendingDelete = nil }
             }
+            .alert("重命名实际工作区目录", isPresented: $confirmingRename) {
+                TextField("可读目录名", text: $renameName)
+                Button("重命名") { Task { await renameCurrentWorkspace() } }
+                Button("取消", role: .cancel) {}
+            } message: { Text("将同步移动文件及基线记录，保留勾选。不会修改远端；请勿同时在文件 App 移动目录。") }
             .alert("提示", isPresented: Binding(get: { !message.isEmpty }, set: { if !$0 { message = "" } })) {
                 Button("好", role: .cancel) { message = "" }
             } message: { Text(message) }
@@ -220,17 +294,17 @@ struct WorkspaceView: View {
     }
     private var remoteSection: some View {
 Section("从远端建立工作区") {
-                    TextField("用户名/仓库名", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
-                    TextField("分支（空白为默认分支）", text: $branch).softGroupedRow()
+                    TextField("用户名/仓库名", text: $repo).focused($focusedField, equals: .remoteRepo).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
+                    TextField("分支（空白为默认分支）", text: $branch).focused($focusedField, equals: .remoteBranch).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                     Button("下载远端并建立可靠基线") { Task { await downloadRemote() } }.disabled(busy).softGroupedRow(bottom: true)
                 }
     }
 
     private var localSection: some View {
 Section("本地工作目录") {
-                    Text("导入副本保存在 Documents/Repositories，可在“文件”App 中修改。目录和 ZIP 使用独立系统选择器。") .font(.caption).softGroupedRow(top: true)
-                    Button("导入一个或多个文件夹") { zip = false; importing = true }.disabled(busy).softGroupedRow()
-                    Button("导入一个或多个 ZIP") { zip = true; importing = true }.disabled(busy).softGroupedRow()
+                    Text("导入会复制文件，不会跟踪原目录。请在“文件”App → 我的 iPhone → RepoPocket → Repositories 中编辑或删除导入后的副本；不要修改原下载目录。不会在返回前台时自动扫描；编辑后请点“刷新变更”或下拉手动刷新。") .font(.caption).softGroupedRow(top: true)
+                    Button("导入一个或多个文件夹") { importRequest = WorkspaceImportRequest(kind: .folder) }.disabled(busy).softGroupedRow()
+                    Button("导入一个或多个 ZIP") { importRequest = WorkspaceImportRequest(kind: .zip) }.disabled(busy).softGroupedRow()
                     ForEach(roots, id: \.path) { root in
                         Button { folder = root; Task { await scan() } } label: {
                             VStack(alignment: .leading) {
@@ -254,7 +328,13 @@ Section("本地工作目录") {
 
     private func bindingSection(_ folder: URL) -> some View {
 Section("关联仓库 / 分支") {
-                        Text(folder.lastPathComponent).font(.caption).softGroupedRow(top: true)
+                        Text("实际副本：我的 iPhone / RepoPocket / Repositories / " + folder.lastPathComponent)
+                            .font(.caption).textSelection(.enabled).softGroupedRow(top: true)
+                        Text("绝对路径：" + folder.path).font(.caption2).textSelection(.enabled).softGroupedRow()
+                        Button("重命名实际目录") {
+                            renameName = binding?.repo.replacingOccurrences(of: "/", with: "-") ?? folder.lastPathComponent
+                            focusedField = nil; confirmingRename = true
+                        }.disabled(busy).softGroupedRow()
                         if let binding = binding {
                             Text(binding.repo + " · " + binding.branch).softGroupedRow()
                             Text("基线 " + String(binding.head.prefix(12))).font(.caption).softGroupedRow()
@@ -262,25 +342,36 @@ Section("关联仓库 / 分支") {
                             if let d = binding.remoteCommitterDate { Text("最新提交 committer：" + d.formatted()).font(.caption).softGroupedRow() }
                             if let d = binding.lastChecked { Text("上次检查：" + d.formatted()).font(.caption).softGroupedRow() }
                             if let d = binding.lastPulled { Text("上次拉取：" + d.formatted()).font(.caption).softGroupedRow() }
-                            Button("检查更新") { commitMessageFocused = false; confirmPull = true }
+                            Button("检查更新") { focusedField = nil; confirmPull = true }
                                 .buttonStyle(.borderless)
                                 .disabled(busy).softGroupedRow()
                             Button("删除本地工作区", role: .destructive) { pendingDelete = folder; confirmDelete = true }
                                 .buttonStyle(.borderless)
                                 .disabled(busy).softGroupedRow(bottom: true)
                         } else {
-                            TextField("用户名/仓库名", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
-                            TextField("分支（空白为默认分支）", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
-                            Button("验证副本并关联当前远端") { Task { await associate(folder) } }.disabled(busy).softGroupedRow()
-                            Text("先导入当前分支的完整副本并关联，再编辑。关联必须逐文件匹配远端 Git blob；不匹配拒绝关联。") .font(.caption).softGroupedRow(bottom: true)
+                            TextField("用户名/仓库名", text: $repo).focused($focusedField, equals: .associationRepo).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
+                            TextField("分支（空白为默认分支）", text: $branch).focused($focusedField, equals: .associationBranch).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
+                            TextField("原始 ZIP 历史 commit（可选，如 9230587）", text: $baselineRevision).focused($focusedField, equals: .baselineRevision).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
+                            Button("验证副本并关联当前远端") { focusedField = nil; Task { await associate(folder) } }.disabled(busy).softGroupedRow()
+                            Text("验证原始导入哈希，不使用编辑后的文件作基线。旧 ZIP 请填写确切历史 commit；关联保留当前编辑和删除。分支已前进时须手动检查／拉取后提交。") .font(.caption).softGroupedRow(bottom: true)
                         }
                     }
     }
 
     private var changesSection: some View {
 Section("本地变更预览 / 勾选提交") {
-                        if busy && changes.isEmpty { ProgressView("处理中，请保持前台…").softGroupedRow(top: true) }
-                        if changes.isEmpty && !busy { Text("没有变更；在“文件”修改副本后刷新。").softGroupedRow(top: true) }
+                        if changes.isEmpty {
+                            // One stable text row: busy does not replace/fade its font or identity.
+                            Text("没有变更；请修改上方实际副本，而不是原下载目录，然后手动刷新。")
+                                .softGroupedRow(top: true)
+                        }
+                        if busy {
+                            ProgressView("处理中，请保持前台…").softGroupedRow()
+                        }
+                        if binding == nil {
+                            Text("本地新增、修改、删除均可先勾选；尚未建立可靠远端基线，提交暂不可用。可验证原始导入快照及对应历史 commit 来关联，保留当前编辑。无需让当前本地内容等于远端；远端前进后请检查并三方拉取，冲突逐项确认。")
+                                .font(.caption).foregroundStyle(.secondary).softGroupedRow(top: !changes.isEmpty && !busy)
+                        }
                         ForEach(changes) { change in
                             HStack {
                                 Button {
@@ -288,17 +379,19 @@ Section("本地变更预览 / 勾选提交") {
                                 } label: {
                                     Image(systemName: selected.contains(change.path) ? "checkmark.circle.fill" : "circle")
                                         .frame(width: 44, height: 44).contentShape(Rectangle())
-                                }.buttonStyle(.borderless)
+                                }.buttonStyle(.plain)
                                 .accessibilityLabel("勾选 " + change.relativePath)
                                 .accessibilityValue(selected.contains(change.path) ? "已勾选" : "未勾选")
-                                .disabled(busy || binding == nil)
+                                .accessibilityHint(busy ? "处理中，请稍候" : "轻点切换本地选择；远端提交资格单独检查")
+                                .disabled(busy)
                                 NavigationLink { LocalDiffView(change: change) } label: { VStack(alignment: .leading) { Text(change.relativePath); Text(change.kind).font(.caption) } }
-                            }.softGroupedRow(top: change.id == changes.first?.id)
+                            }.softGroupedRow(top: change.id == changes.first?.id && binding != nil && !busy)
                         }
                         Button("刷新变更") { Task { await scan() } }.disabled(busy).softGroupedRow()
-                        Button("拉取更新") { commitMessageFocused = false; confirmPull = true }.disabled(busy || binding == nil).softGroupedRow()
-                        TextField("提交说明", text: $commitMessage).focused($commitMessageFocused).softGroupedRow()
-                        Button("提交勾选的 \(selected.count) 项变更") { confirming = true }.disabled(busy || binding == nil || selected.isEmpty || commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()
+                        Button("拉取更新") { focusedField = nil; confirmPull = true }.disabled(busy || binding == nil).softGroupedRow()
+                        TextField("提交说明", text: $commitMessage).focused($focusedField, equals: .commitMessage).submitLabel(.done).softGroupedRow()
+                        Button("提交勾选的 \(selected.count) 项变更") { confirming = true }.disabled(busy || commitBlockReason != nil).softGroupedRow()
+                        if let commitBlockReason { Text(commitBlockReason).font(.caption).foregroundStyle(.secondary).softGroupedRow() }
                         Text("新增、修改、删除一次原子更新分支。单文件 ≤10 MiB；大文件使用 Release。远端变化拒绝提交，不强推；未勾选项保持本地修改。") .font(.caption).softGroupedRow(bottom: true)
                     }
     }
@@ -324,6 +417,7 @@ Section("本地变更预览 / 勾选提交") {
                 }.interactiveDismissDisabled(busy)
     }
     @MainActor private func importItems(_ urls: [URL], zip: Bool) async {
+        guard !busy else { return }
         busy = true
         var failures: [String] = []
         for source in urls {
@@ -337,13 +431,17 @@ Section("本地变更预览 / 勾选提交") {
                     NSFileCoordinator().coordinate(readingItemAt: source, options: .withoutChanges, error: &coordinationError) { readable in
                         do {
                             if zip {
+                                let values = try readable.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                                guard values.isRegularFile == true, values.isSymbolicLink != true else {
+                                    throw AppError(text: "请选择 ZIP 文件，不是文件夹或符号链接")
+                                }
                                 let stage = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
                                 try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
                                 defer { try? FileManager.default.removeItem(at: stage) }
                                 try WorkspaceZIP.extract(readable, to: stage)
                                 let children = try FileManager.default.contentsOfDirectory(at: stage, includingPropertiesForKeys: [.isDirectoryKey])
                                 let content = children.count == 1 && (try? children[0].resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true ? children[0] : stage
-                                destination = try LocalStore.importFolder(content)
+                                destination = try LocalStore.importFolder(content, name: children.count == 1 && content != stage ? content.lastPathComponent : source.deletingPathExtension().lastPathComponent)
                             } else { destination = try LocalStore.importFolder(readable) }
                         } catch { failure = error }
                     }
@@ -357,10 +455,13 @@ Section("本地变更预览 / 勾选提交") {
         }
         busy = false
         await scan()
-        if !failures.isEmpty { message = "以下项目导入失败（成功项目已保留）：\n" + failures.joined(separator: "\n") + "\n可将目录压缩为 ZIP 后使用 ZIP 导入。" }
+        if !failures.isEmpty {
+            let advice = zip ? "请确认 ZIP 完整且未超过限制；无需再次压缩 ZIP。" : "请先将目录下载到本机；文件提供器无法读取时可尝试 ZIP 导入。"
+            message = "以下项目导入失败（成功项目已保留）：\n" + failures.joined(separator: "\n") + "\n" + advice
+        }
     }
     @MainActor private func checkRemote() async {
-        guard let folder, let binding else { return }
+        guard let folder, let binding, !busy else { return }
         busy = true; defer { busy = false }
         do {
             discardCheck()
@@ -377,7 +478,7 @@ Section("本地变更预览 / 勾选提交") {
         checkPending = nil
     }
     @MainActor private func inspectDeletion() {
-        guard let target = pendingDelete else { return }
+        guard let target = pendingDelete, !busy else { return }
         do {
             deletionIsDirty = try !LocalStore.changes([target]).isEmpty
             confirmDirtyDelete = true
@@ -387,13 +488,15 @@ Section("本地变更预览 / 勾选提交") {
         guard let target = pendingDelete, !busy else { return }
         do {
             try LocalStore.removeWorkspace(target)
-            if folder == target { folder = nil; binding = nil; discardCheck(); discardPull() }
+            if folder == target { folder = nil; binding = nil; changes = []; scannedSnapshot = nil; discardCheck(); discardPull() }
             pendingDelete = nil
             roots.removeAll { $0 == target }
+            selectionStore.session.reconcileWorkspaces(Set(roots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }), accountID: api.accountID)
             Task { await scan() }
         } catch { if !RefreshFailure.isCancellation(error) { message = error.localizedDescription }; pendingDelete = nil }
     }
     @MainActor private func downloadRemote() async {
+        guard !busy else { return }
         busy = true
         do { folder = try await api.downloadWorkspace(repo: repo.trimmingCharacters(in: .whitespacesAndNewlines), branch: branch.trimmingCharacters(in: .whitespacesAndNewlines)) }
         catch { if !RefreshFailure.isCancellation(error) { message = error.localizedDescription } }
@@ -401,7 +504,7 @@ Section("本地变更预览 / 勾选提交") {
         await scan()
     }
     @MainActor private func pullChecked() async {
-        guard let pending = checkPending, let folder, let binding else { return }
+        guard let pending = checkPending, let folder, let binding, !busy else { return }
         checkPending = nil
         await applyPendingPull(pending, folder: folder, binding: binding)
     }
@@ -423,7 +526,7 @@ Section("本地变更预览 / 勾选提交") {
         if pull == nil { await scan() }
     }
     @MainActor private func applyResolvedPull() async {
-        guard let pull = pull, let folder = folder, let binding = binding else { return }
+        guard let pull = pull, let folder = folder, let binding = binding, !busy else { return }
         busy = true
         do {
             guard try await api.workspaceHead(binding.repo, branch: binding.branch) == pull.binding.head else {
@@ -441,15 +544,36 @@ Section("本地变更预览 / 勾选提交") {
         if let pull = pull { try? FileManager.default.removeItem(at: pull.remoteFolder) }
         pull = nil; pullChoices = [:]
     }
-    @MainActor private func associate(_ folder: URL) async {
+    @MainActor private func renameCurrentWorkspace() async {
+        guard let old = folder, !busy else { return }
         busy = true
-        do { binding = try await api.associateWorkspace(folder, repo: repo, branch: branch) }
+        do {
+            let new = try LocalStore.renameWorkspace(old, to: renameName)
+            selectionStore.session.workspaceRenamed(from: old, to: new)
+            folder = new; scannedFolder = nil; scannedSnapshot = nil
+            changes = changes.map { LocalChange(path: new.lastPathComponent + "/" + $0.relativePath, kind: $0.kind, before: $0.before, after: $0.after) }
+            roots = roots.map { $0 == old ? new : $0 }
+            pendingDelete = nil; discardCheck(); discardPull()
+        } catch { message = error.localizedDescription }
+        busy = false
+        await scan()
+    }
+    @MainActor private func associate(_ folder: URL) async {
+        guard !busy else { return }
+        busy = true
+        let localScope = binding == nil ? selectionScope : nil
+        do {
+            binding = try await api.associateWorkspace(folder, repo: repo, branch: branch, revision: baselineRevision)
+            if let localScope, let remoteScope = selectionScope {
+                selectionStore.session.associateLocalSelection(from: localScope, to: remoteScope)
+            }
+        }
         catch { if !RefreshFailure.isCancellation(error) { message = error.localizedDescription } }
         busy = false
         await scan()
     }
     @MainActor private func commit() async {
-        guard let folder = folder, let binding = binding, let scope = selectionScope, !busy else { return }
+        guard let folder = folder, let binding = binding, let scope = selectionScope, !busy, commitBlockReason == nil else { return }
         let generation = AccountStore.generation
         let committing = selected
         var succeeded = false
@@ -457,6 +581,13 @@ Section("本地变更预览 / 勾选提交") {
         do {
             let paths = Set(committing.map { String($0.dropFirst(folder.lastPathComponent.count + 1)) })
             guard let scanned = scannedSnapshot else { throw AppError(text: "请先刷新变更") }
+            let persisted = try LocalStore.binding(folder)
+            guard persisted.repo == binding.repo, persisted.branch == binding.branch,
+                  persisted.head == binding.head, persisted.tree == binding.tree,
+                  persisted.snapshot.hashes == binding.snapshot.hashes else {
+                throw AppError(text: "磁盘关联与预览已不同，请刷新；未提交")
+            }
+            guard committing.isSubset(of: Set(changes.map { $0.path })) else { throw AppError(text: "选择已过期，请刷新") }
             let writes = try await Task.detached { try LocalStore.prepare(folder, paths: paths, expected: scanned) }.value
             let updated = try await api.commitWorkspace(binding, writes: writes, message: commitMessage)
             guard generation == AccountStore.generation, selectionScope == scope else { busy = false; return }
@@ -497,7 +628,8 @@ Section("本地变更预览 / 勾选提交") {
             try Task.checkCancellation()
             guard generation == AccountStore.generation, api.accountID == AccountStore.activeID, folder == requestedFolder else { return }
             roots = result.0; folder = result.1; binding = result.2
-            changes = result.3; scannedSnapshot = result.4; hasScanned = true
+            changes = result.3; scannedSnapshot = result.4; scannedFolder = result.1; hasScanned = true
+            selectionStore.session.reconcileWorkspaces(Set(roots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }), accountID: api.accountID)
             selectionStore.session.remember(folder, accountID: api.accountID)
             if let selectionScope { selectionStore.session.scanSucceeded(Set(changes.map { $0.path }), in: selectionScope) }
         } catch { if !RefreshFailure.isCancellation(error) { message = error.localizedDescription } }

@@ -1,0 +1,45 @@
+"""Static lifecycle contracts; not a substitute for Files/provider device tests."""
+from pathlib import Path
+picker = Path('RepoPocket/WorkspaceDocumentPicker.swift').read_text()
+view = Path('RepoPocket/WorkspaceView.swift').read_text()
+assert 'let id = UUID()' in picker and 'let kind: Kind' in picker
+assert '@State private var importRequest: WorkspaceImportRequest?' in view
+assert '.sheet(item: $importRequest)' in view and '.id(request.id)' in view
+assert 'WorkspaceImportRequest(kind: .zip)' in view
+assert 'WorkspaceImportRequest(kind: .folder)' in view
+assert 'zip = true' not in view and 'zip = false' not in view
+assert 'zip: request.isZIP' in view
+assert 'importRequest = nil\n                    guard let urls else' in view
+assert 'request.isZIP ? [.zip] : [.folder], asCopy: false' in picker
+assert 'picker.allowsMultipleSelection = true' in picker
+assert 'picker.delegate = context.coordinator' in picker
+assert 'documentPickerWasCancelled' in picker and 'finish(nil)' in picker
+assert 'guard !finished else' in picker and 'finished = true' in picker
+assert 'workspace.import.cancel' in picker and '取消导入' in picker
+assert 'addChild(picker)' in picker and 'picker.didMove(toParent: self)' in picker
+assert 'picker.view.topAnchor.constraint(equalTo: bar.bottomAnchor)' in picker
+assert 'view.safeAreaLayoutGuide.topAnchor' in picker
+assert 'button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)' in picker
+for forbidden in ['setValue(', 'value(forKey:', 'navigationItem', 'UTType.data', '[.item]', '[.content]']:
+    assert forbidden not in picker
+assert 'source.startAccessingSecurityScopedResource()' in view
+assert 'source.stopAccessingSecurityScopedResource()' in view
+assert 'NSFileCoordinator().coordinate' in view
+assert 'values.isRegularFile == true, values.isSymbolicLink != true' in view
+assert 'WorkspaceZIP.extract(readable, to: stage)' in view
+# Abstract request/lifecycle model: every presentation gets a new identity,
+# immutable captured mode; nil cancels without import, duplicate callbacks ignored.
+import uuid
+for sequence in [('zip',), ('folder', 'zip'), ('zip', 'folder', 'zip'), ('zip', 'zip')]:
+    identities = set()
+    for kind in sequence:
+        identity = uuid.uuid4(); assert identity not in identities; identities.add(identity)
+        for events in [(None, ['file']), (['file'], None), (['file'], ['file'])]:
+            finished = False; imports = []
+            for urls in events:
+                if finished: continue
+                finished = True
+                if urls is not None: imports.append((kind, urls))
+            assert len(imports) == (0 if events[0] is None else 1)
+            assert not imports or imports[0][0] == kind
+print('PASS static picker identity, ZIP-only filter, explicit dismissal, public cancel containment, scoped/coordinated strict extraction; abstract lifecycle model')

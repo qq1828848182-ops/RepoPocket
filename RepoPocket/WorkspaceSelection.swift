@@ -29,7 +29,33 @@ struct WorkspaceSelectionSession {
     mutating func commitSucceeded(_ committed: Set<String>, in scope: WorkspaceSelectionScope) {
         selections[scope] = selected(in: scope).subtracting(committed)
     }
+    // Explicit verified first association only. Never copy across repositories/branches.
+    mutating func associateLocalSelection(from local: WorkspaceSelectionScope, to remote: WorkspaceSelectionScope) {
+        guard local.accountID == remote.accountID, local.workspace == remote.workspace,
+              local.repository.isEmpty, local.branch.isEmpty,
+              !remote.repository.isEmpty, !remote.branch.isEmpty else { return }
+        selections[remote] = selected(in: remote).union(selected(in: local))
+        selections[local] = nil
+    }
+    // Called only after a successful physical+metadata rename; preserve each isolated scope.
+    mutating func workspaceRenamed(from old: URL, to new: URL) {
+        let oldPath = old.standardizedFileURL.path
+        let matching = selections.filter { $0.key.workspace == oldPath }
+        for (scope, paths) in matching {
+            let replacement = WorkspaceSelectionScope(accountID: scope.accountID, folder: new, repository: scope.repository, branch: scope.branch)
+            selections[replacement] = Set(paths.map { new.lastPathComponent + "/" + $0.dropFirst(old.lastPathComponent.count + 1) })
+            selections[scope] = nil
+        }
+        for (account, remembered) in folders where remembered.standardizedFileURL.path == oldPath { folders[account] = new }
+    }
     mutating func remember(_ folder: URL?, accountID: String) { folders[accountID] = folder }
+    // A successful directory scan is the only authority for removed workspaces.
+    mutating func reconcileWorkspaces(_ available: Set<String>, accountID: String) {
+        selections = selections.filter { $0.key.accountID != accountID || available.contains($0.key.workspace) }
+        if let folder = folders[accountID], !available.contains(folder.resolvingSymlinksInPath().standardizedFileURL.path) {
+            folders[accountID] = nil
+        }
+    }
     func rememberedFolder(accountID: String) -> URL? { folders[accountID] }
 }
 

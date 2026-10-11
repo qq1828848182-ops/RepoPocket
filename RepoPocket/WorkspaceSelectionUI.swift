@@ -34,7 +34,7 @@ extension View {
     /// content-inset separator. This keeps the line aligned with the complete
     /// grouped row while leaving List scrolling, navigation and swipe actions
     /// native.
-    func softGroupedRow(top: Bool = false, bottom: Bool = false) -> some View {
+    func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true) -> some View {
         listRowSeparator(.hidden)
             .listRowBackground(
                 SoftGroupShape(top: top, bottom: bottom)
@@ -47,6 +47,12 @@ extension View {
                         }
                     }
                     .clipShape(Rectangle())
+                    .transaction { transaction in
+                        if !animateBackground {
+                            transaction.animation = nil
+                            transaction.disablesAnimations = true
+                        }
+                    }
             )
     }
 }

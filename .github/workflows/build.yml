@@ -10,6 +10,10 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - name: Test original baseline historic commit and disk download regressions
+        run: python3 test_workspace_baseline.py
+      - name: Test production local checkbox and strict commit eligibility
+        run: python3 test_local_selection.py
       - name: Test scanner, selective commit and three-way pull
         run: python3 test_local_store.py
       - name: Test ZIPFoundation safe extraction
@@ -32,6 +36,14 @@ jobs:
         run: python3 test_selection_lifecycle.py
       - name: Test equal-width cards and soft grouped UI
         run: python3 test_soft_groups.py
+      - name: Test always-visible repository list contracts
+        run: python3 test_repository_disclosure.py
+      - name: Test foreground inertness and operation guards
+        run: python3 test_manual_refresh.py
+      - name: Test workspace keyboard focus and submit contracts
+        run: python3 test_workspace_keyboard.py
+      - name: Test document picker identity and cancellation contracts
+        run: python3 test_workspace_picker.py
       - name: Generate Xcode project
         run: |
           brew install xcodegen
@@ -45,11 +57,11 @@ jobs:
           set -euo pipefail
           APP=build/Build/Products/Release-iphoneos/RepoPocket.app
           test -d "$APP"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.1"
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "2"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "7"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
           codesign --display --entitlements :- "$APP"

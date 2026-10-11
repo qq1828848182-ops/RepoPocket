@@ -19,7 +19,10 @@ assert '.appearance()' not in style and '.blur(' not in style
 for text in [ui, workspace, upload, detail]:
     assert '.softGroupedRow(top: true)' in text
     assert '.softGroupedRow(bottom: true)' in text
-assert 'top: repo.id == repos.first?.id, bottom: repo.id == repos.last?.id' in ui
+section = ui.split('Section("我的仓库") {', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
+assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
+assert 'top: repo.id == repos.first?.id, bottom: repo.id == repos.last?.id' in section
+assert 'refresh()' not in section and 'repos = []' not in section
 assert 'top: account.id == AccountStore.accounts.first?.id, bottom: account.id == AccountStore.accounts.last?.id' in ui
 assert '.listStyle(.insetGrouped)' in workspace and '.listStyle(.insetGrouped)' in ui
 assert '.formStyle(.grouped)' in upload
