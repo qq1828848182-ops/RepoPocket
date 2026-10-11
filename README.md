@@ -31,14 +31,3 @@ RepoPocket 是一款适用于 iOS 16+、TrollStore 的 GitHub 文件管理工具
 [下载 RepoPocket 1.0.1（build 7）](https://github.com/wm0104/RepoPocket/releases/download/v1.0.1/RepoPocket.ipa) · [SHA256 校验文件](https://github.com/wm0104/RepoPocket/releases/download/v1.0.1/RepoPocket.ipa.sha256) · [历史版本](https://github.com/wm0104/RepoPocket/releases)
 
 系统要求：iOS 16 或更高版本。低于 iOS 16 的系统未测试，请自行测试。
-
-### 1.0.1（build 7）更新
-
-- 修复 ZIP 导入路径、文件选择器及取消导入，编辑时请使用应用中的实际副本。
-- 本地新增、修改、删除均可勾选，勾选与远端提交资格分开检查；刷新保留删除项勾选，首次可靠关联保留已有勾选。
-- 历史 ZIP 通过原始导入快照及目标分支历史 commit 验证可信基线；填写 ZIP 对应 commit 后关联，不以当前编辑冒充远端。拉取冲突逐项确认，不自动覆盖、不强推。
-- 远端文件下载断线／超时最多重试三次，完成后校验长度及哈希。
-- 新工作区使用实际可读目录 `owner-repo`，非 main/master 分支附分支名，重复目录追加 `-2`、`-3`；旧工作区可手动“重命名实际目录”，失败回滚。
-- 取消返回前台自动扫描，改为手动刷新；取消仓库折叠，恢复圆角及整宽分割线。
-
-已通过自动化测试、云端编译及签名校验；未进行真机触控验收。
