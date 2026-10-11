@@ -1,0 +1,395 @@
+name: Private local deb validation
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh DebControlEditorTests/run-macos.sh
+      - run: mkdir -p /tmp/rpp-local-chunks
+      - name: Stage masked local input chunk group 0
+        env:
+          RPP_LOCAL_0_0: ${{ secrets.RPP_LOCAL_0_0 }}
+          RPP_LOCAL_1_0: ${{ secrets.RPP_LOCAL_1_0 }}
+          RPP_LOCAL_1_1: ${{ secrets.RPP_LOCAL_1_1 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 1
+        env:
+          RPP_LOCAL_1_2: ${{ secrets.RPP_LOCAL_1_2 }}
+          RPP_LOCAL_1_3: ${{ secrets.RPP_LOCAL_1_3 }}
+          RPP_LOCAL_1_4: ${{ secrets.RPP_LOCAL_1_4 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 2
+        env:
+          RPP_LOCAL_1_5: ${{ secrets.RPP_LOCAL_1_5 }}
+          RPP_LOCAL_1_6: ${{ secrets.RPP_LOCAL_1_6 }}
+          RPP_LOCAL_1_7: ${{ secrets.RPP_LOCAL_1_7 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 3
+        env:
+          RPP_LOCAL_1_8: ${{ secrets.RPP_LOCAL_1_8 }}
+          RPP_LOCAL_1_9: ${{ secrets.RPP_LOCAL_1_9 }}
+          RPP_LOCAL_1_10: ${{ secrets.RPP_LOCAL_1_10 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 4
+        env:
+          RPP_LOCAL_1_11: ${{ secrets.RPP_LOCAL_1_11 }}
+          RPP_LOCAL_1_12: ${{ secrets.RPP_LOCAL_1_12 }}
+          RPP_LOCAL_1_13: ${{ secrets.RPP_LOCAL_1_13 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 5
+        env:
+          RPP_LOCAL_1_14: ${{ secrets.RPP_LOCAL_1_14 }}
+          RPP_LOCAL_1_15: ${{ secrets.RPP_LOCAL_1_15 }}
+          RPP_LOCAL_1_16: ${{ secrets.RPP_LOCAL_1_16 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 6
+        env:
+          RPP_LOCAL_1_17: ${{ secrets.RPP_LOCAL_1_17 }}
+          RPP_LOCAL_1_18: ${{ secrets.RPP_LOCAL_1_18 }}
+          RPP_LOCAL_1_19: ${{ secrets.RPP_LOCAL_1_19 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 7
+        env:
+          RPP_LOCAL_1_20: ${{ secrets.RPP_LOCAL_1_20 }}
+          RPP_LOCAL_1_21: ${{ secrets.RPP_LOCAL_1_21 }}
+          RPP_LOCAL_1_22: ${{ secrets.RPP_LOCAL_1_22 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 8
+        env:
+          RPP_LOCAL_1_23: ${{ secrets.RPP_LOCAL_1_23 }}
+          RPP_LOCAL_1_24: ${{ secrets.RPP_LOCAL_1_24 }}
+          RPP_LOCAL_1_25: ${{ secrets.RPP_LOCAL_1_25 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 9
+        env:
+          RPP_LOCAL_1_26: ${{ secrets.RPP_LOCAL_1_26 }}
+          RPP_LOCAL_1_27: ${{ secrets.RPP_LOCAL_1_27 }}
+          RPP_LOCAL_1_28: ${{ secrets.RPP_LOCAL_1_28 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 10
+        env:
+          RPP_LOCAL_1_29: ${{ secrets.RPP_LOCAL_1_29 }}
+          RPP_LOCAL_1_30: ${{ secrets.RPP_LOCAL_1_30 }}
+          RPP_LOCAL_1_31: ${{ secrets.RPP_LOCAL_1_31 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 11
+        env:
+          RPP_LOCAL_1_32: ${{ secrets.RPP_LOCAL_1_32 }}
+          RPP_LOCAL_1_33: ${{ secrets.RPP_LOCAL_1_33 }}
+          RPP_LOCAL_1_34: ${{ secrets.RPP_LOCAL_1_34 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 12
+        env:
+          RPP_LOCAL_1_35: ${{ secrets.RPP_LOCAL_1_35 }}
+          RPP_LOCAL_1_36: ${{ secrets.RPP_LOCAL_1_36 }}
+          RPP_LOCAL_1_37: ${{ secrets.RPP_LOCAL_1_37 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 13
+        env:
+          RPP_LOCAL_1_38: ${{ secrets.RPP_LOCAL_1_38 }}
+          RPP_LOCAL_1_39: ${{ secrets.RPP_LOCAL_1_39 }}
+          RPP_LOCAL_1_40: ${{ secrets.RPP_LOCAL_1_40 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 14
+        env:
+          RPP_LOCAL_1_41: ${{ secrets.RPP_LOCAL_1_41 }}
+          RPP_LOCAL_1_42: ${{ secrets.RPP_LOCAL_1_42 }}
+          RPP_LOCAL_1_43: ${{ secrets.RPP_LOCAL_1_43 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 15
+        env:
+          RPP_LOCAL_1_44: ${{ secrets.RPP_LOCAL_1_44 }}
+          RPP_LOCAL_1_45: ${{ secrets.RPP_LOCAL_1_45 }}
+          RPP_LOCAL_1_46: ${{ secrets.RPP_LOCAL_1_46 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 16
+        env:
+          RPP_LOCAL_1_47: ${{ secrets.RPP_LOCAL_1_47 }}
+          RPP_LOCAL_1_48: ${{ secrets.RPP_LOCAL_1_48 }}
+          RPP_LOCAL_1_49: ${{ secrets.RPP_LOCAL_1_49 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 17
+        env:
+          RPP_LOCAL_1_50: ${{ secrets.RPP_LOCAL_1_50 }}
+          RPP_LOCAL_1_51: ${{ secrets.RPP_LOCAL_1_51 }}
+          RPP_LOCAL_1_52: ${{ secrets.RPP_LOCAL_1_52 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 18
+        env:
+          RPP_LOCAL_1_53: ${{ secrets.RPP_LOCAL_1_53 }}
+          RPP_LOCAL_1_54: ${{ secrets.RPP_LOCAL_1_54 }}
+          RPP_LOCAL_1_55: ${{ secrets.RPP_LOCAL_1_55 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 19
+        env:
+          RPP_LOCAL_1_56: ${{ secrets.RPP_LOCAL_1_56 }}
+          RPP_LOCAL_1_57: ${{ secrets.RPP_LOCAL_1_57 }}
+          RPP_LOCAL_1_58: ${{ secrets.RPP_LOCAL_1_58 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 20
+        env:
+          RPP_LOCAL_1_59: ${{ secrets.RPP_LOCAL_1_59 }}
+          RPP_LOCAL_1_60: ${{ secrets.RPP_LOCAL_1_60 }}
+          RPP_LOCAL_1_61: ${{ secrets.RPP_LOCAL_1_61 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 21
+        env:
+          RPP_LOCAL_1_62: ${{ secrets.RPP_LOCAL_1_62 }}
+          RPP_LOCAL_1_63: ${{ secrets.RPP_LOCAL_1_63 }}
+          RPP_LOCAL_1_64: ${{ secrets.RPP_LOCAL_1_64 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 22
+        env:
+          RPP_LOCAL_1_65: ${{ secrets.RPP_LOCAL_1_65 }}
+          RPP_LOCAL_1_66: ${{ secrets.RPP_LOCAL_1_66 }}
+          RPP_LOCAL_1_67: ${{ secrets.RPP_LOCAL_1_67 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 23
+        env:
+          RPP_LOCAL_1_68: ${{ secrets.RPP_LOCAL_1_68 }}
+          RPP_LOCAL_1_69: ${{ secrets.RPP_LOCAL_1_69 }}
+          RPP_LOCAL_1_70: ${{ secrets.RPP_LOCAL_1_70 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 24
+        env:
+          RPP_LOCAL_1_71: ${{ secrets.RPP_LOCAL_1_71 }}
+          RPP_LOCAL_1_72: ${{ secrets.RPP_LOCAL_1_72 }}
+          RPP_LOCAL_1_73: ${{ secrets.RPP_LOCAL_1_73 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 25
+        env:
+          RPP_LOCAL_1_74: ${{ secrets.RPP_LOCAL_1_74 }}
+          RPP_LOCAL_1_75: ${{ secrets.RPP_LOCAL_1_75 }}
+          RPP_LOCAL_1_76: ${{ secrets.RPP_LOCAL_1_76 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 26
+        env:
+          RPP_LOCAL_1_77: ${{ secrets.RPP_LOCAL_1_77 }}
+          RPP_LOCAL_1_78: ${{ secrets.RPP_LOCAL_1_78 }}
+          RPP_LOCAL_1_79: ${{ secrets.RPP_LOCAL_1_79 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 27
+        env:
+          RPP_LOCAL_1_80: ${{ secrets.RPP_LOCAL_1_80 }}
+          RPP_LOCAL_1_81: ${{ secrets.RPP_LOCAL_1_81 }}
+          RPP_LOCAL_1_82: ${{ secrets.RPP_LOCAL_1_82 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 28
+        env:
+          RPP_LOCAL_1_83: ${{ secrets.RPP_LOCAL_1_83 }}
+          RPP_LOCAL_1_84: ${{ secrets.RPP_LOCAL_1_84 }}
+          RPP_LOCAL_1_85: ${{ secrets.RPP_LOCAL_1_85 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 29
+        env:
+          RPP_LOCAL_1_86: ${{ secrets.RPP_LOCAL_1_86 }}
+          RPP_LOCAL_1_87: ${{ secrets.RPP_LOCAL_1_87 }}
+          RPP_LOCAL_1_88: ${{ secrets.RPP_LOCAL_1_88 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 30
+        env:
+          RPP_LOCAL_1_89: ${{ secrets.RPP_LOCAL_1_89 }}
+          RPP_LOCAL_1_90: ${{ secrets.RPP_LOCAL_1_90 }}
+          RPP_LOCAL_1_91: ${{ secrets.RPP_LOCAL_1_91 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 31
+        env:
+          RPP_LOCAL_1_92: ${{ secrets.RPP_LOCAL_1_92 }}
+          RPP_LOCAL_1_93: ${{ secrets.RPP_LOCAL_1_93 }}
+          RPP_LOCAL_1_94: ${{ secrets.RPP_LOCAL_1_94 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Stage masked local input chunk group 32
+        env:
+          RPP_LOCAL_1_95: ${{ secrets.RPP_LOCAL_1_95 }}
+          RPP_LOCAL_1_96: ${{ secrets.RPP_LOCAL_1_96 }}
+          RPP_LOCAL_2_0: ${{ secrets.RPP_LOCAL_2_0 }}
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          for k,v in os.environ.items():
+              if k.startswith('RPP_LOCAL_'): pathlib.Path('/tmp/rpp-local-chunks',k).write_text(v)
+          PY
+      - name: Reconstruct private inputs only in runner temporary storage
+        env:
+          RPP_LOCAL_MANIFEST: ${{ secrets.RPP_LOCAL_MANIFEST }}
+        run: |
+          python3 - <<'PY'
+          import os,json,pathlib,base64
+          root=pathlib.Path('/tmp/rpp-private-inputs');root.mkdir()
+          for m in json.loads(os.environ['RPP_LOCAL_MANIFEST']):
+              directory=root/str(m['index']);directory.mkdir()
+              encoded=''.join(pathlib.Path('/tmp/rpp-local-chunks','RPP_LOCAL_'+str(m['index'])+'_'+str(i)).read_text() for i in range(m['chunks']))
+              (directory/m['name']).write_bytes(base64.b85decode(encoded))
+          PY
+      - name: Compile and run production Swift engine on private local inputs
+        run: |
+          swiftc -import-objc-header Vendor/DebCodecs/DebCodecs.h /tmp/repopocket-deb-control-tests/*.o RepoPocket/DebControlEditor.swift DebControlEditorTests/LocalSamples.swift -lz -o /tmp/rpp-local-harness
+          /tmp/rpp-local-harness
+          brew install dpkg
+          python3 DebControlEditorTests/verify-local.py
+      - name: Remove private input and output files
+        if: always()
+        run: rm -rf /tmp/rpp-private-inputs /tmp/rpp-private-outputs /tmp/rpp-private-repaired /tmp/rpp-local-chunks

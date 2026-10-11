@@ -1,0 +1,77 @@
+name: Build TrollStore IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test scanner, selective commit and three-way pull
+        run: python3 test_local_store.py
+      - name: Test ZIPFoundation safe extraction
+        run: python3 test_workspace_zip.py
+      - name: Test deb control editor
+        run: sh DebControlEditorTests/run-macos.sh
+      - name: Test deb UI lifecycle and commit feedback
+        run: python3 test_deb_ui_static.py
+      - name: Test workspace and TrollFools UI contracts
+        run: python3 test_workspace_troll_static.py
+      - name: Test queue and streamed blob core
+        run: python3 test_repo_queue.py
+      - name: Test metadata-only plugin editing
+        run: python3 test_troll_metadata.py
+      - name: Test multi-account isolation and avatar repository models
+        run: python3 test_accounts.py
+      - name: Test Desktop history, diff and branches
+        run: python3 test_desktop.py
+      - name: Test selection lifecycle, refresh and landscape contracts
+        run: python3 test_selection_lifecycle.py
+      - name: Test equal-width cards and soft grouped UI
+        run: python3 test_soft_groups.py
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Compile iOS app
+        run: |
+          set -o pipefail
+          xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log
+      - name: Ad-hoc sign and package IPA
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Release-iphoneos/RepoPocket.app
+          test -d "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "2"
+          codesign --force --sign - --entitlements Entitlements.plist "$APP"
+          codesign --verify --deep --strict "$APP"
+          codesign --display --entitlements :- "$APP"
+          mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/
+          cd dist
+          zip -qry RepoPocket.ipa Payload
+          unzip -t RepoPocket.ipa
+          mkdir verify
+          unzip -q RepoPocket.ipa -d verify
+          codesign --verify --deep --strict verify/Payload/RepoPocket.app
+          shasum -a 256 RepoPocket.ipa > RepoPocket.ipa.sha256
+          shasum -a 256 -c RepoPocket.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RepoPocket-iOS16-TrollStore
+          path: |
+            dist/RepoPocket.ipa
+            dist/RepoPocket.ipa.sha256
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log
+          path: build.log
