@@ -26,6 +26,11 @@ final class GitCore: ObservableObject {
     @Published private(set) var repositories: [LocalGitRepository] = []
     @Published private(set) var isBusy = false
     private var scopedURLs = Set<URL>()
+    private let bookmarkKey = "RepoPocket.git.repository.bookmarks"
+
+    init() {
+        restoreBookmarks()
+    }
 
     deinit {
         for url in scopedURLs { url.stopAccessingSecurityScopedResource() }
@@ -40,6 +45,7 @@ final class GitCore: ObservableObject {
         if !repositories.contains(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) {
             repositories.append(LocalGitRepository(url: url))
             scopedURLs.insert(url)
+            persistBookmarks()
         } else {
             url.stopAccessingSecurityScopedResource()
         }
@@ -50,6 +56,25 @@ final class GitCore: ObservableObject {
         if let scoped = scopedURLs.first(where: { $0.standardizedFileURL == repository.url.standardizedFileURL }) {
             scoped.stopAccessingSecurityScopedResource()
             scopedURLs.remove(scoped)
+        }
+        persistBookmarks()
+    }
+
+    private func persistBookmarks() {
+        let data = scopedURLs.compactMap { try? $0.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil) }
+        UserDefaults.standard.set(data, forKey: bookmarkKey)
+    }
+
+    private func restoreBookmarks() {
+        let values = UserDefaults.standard.array(forKey: bookmarkKey) as? [Data] ?? []
+        for bookmark in values {
+            var stale = false
+            guard let url = try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale),
+                  url.startAccessingSecurityScopedResource(),
+                  FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) else { continue }
+            repositories.append(LocalGitRepository(url: url))
+            scopedURLs.insert(url)
+            if stale { persistBookmarks() }
         }
     }
 }
