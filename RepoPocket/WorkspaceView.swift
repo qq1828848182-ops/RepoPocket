@@ -160,7 +160,7 @@ enum LocalStore {
         }
         // Validate before copying so rejected links cannot be followed by a provider.
         _ = try snapshot(source)
-        let base = try root()
+        _ = try root()
         // Always use a fresh directory: never overwrite a previous local checkout.
         let destination = try availableFolder(name ?? source.lastPathComponent)
         do {

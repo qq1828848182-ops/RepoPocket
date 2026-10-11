@@ -25,7 +25,7 @@ final class UpdateChecker: ObservableObject {
             let remote = value.tag_name.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
             let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
             release = compare(remote, local) == .orderedDescending ? value : nil
-        } catch { error = "检查更新失败：\(error.localizedDescription)" }
+        } catch let caught { self.error = "检查更新失败：\(caught.localizedDescription)" }
     }
     private func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
         let a = lhs.split(separator: ".").map { Int($0) ?? 0 }, b = rhs.split(separator: ".").map { Int($0) ?? 0 }
@@ -38,10 +38,12 @@ struct UpdatePrompt: ViewModifier {
     @StateObject private var checker = UpdateChecker()
     func body(content: Content) -> some View {
         content.environmentObject(checker).task { await checker.check() }
-            .alert("发现 RepoPocket 新版本", item: $checker.release) { release in
-                Button("打开 GitHub 发布页") { UIApplication.shared.open(release.html_url) }
+            .alert("发现 RepoPocket 新版本", isPresented: Binding(get: { checker.release != nil }, set: { if !$0 { checker.release = nil } })) {
+                Button("打开 GitHub 发布页") {
+                    if let url = checker.release?.html_url { UIApplication.shared.open(url) }
+                }
                 Button("稍后", role: .cancel) {}
-            } message: { Text(release.name ?? release.tag_name) }
+            } message: { Text(checker.release.map { $0.name ?? $0.tag_name } ?? "") }
             .alert("更新检查", isPresented: Binding(get: { checker.error != nil }, set: { if !$0 { checker.error = nil } })) {
                 Button("好", role: .cancel) {}
             } message: { Text(checker.error ?? "") }
