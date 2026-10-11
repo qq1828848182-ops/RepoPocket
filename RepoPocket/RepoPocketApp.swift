@@ -28,7 +28,6 @@ struct AccountRootView: View {
             .alert("提示", isPresented: Binding(get: { !api.message.isEmpty }, set: { if !$0 { api.message = "" } })) {
                 Button("好", role: .cancel) { api.message = "" }
             } message: { Text(api.message) }
-            .modifier(UpdatePrompt())
     }
 }
 
@@ -360,7 +359,6 @@ struct SettingsView: View {
     @State private var pendingRemoval: GitHubAccount?
     @State private var token = ""
     @State private var busy = false
-    @EnvironmentObject private var updateChecker: UpdateChecker
     var body: some View {
         NavigationStack {
             Form {
@@ -392,7 +390,6 @@ struct SettingsView: View {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)
                 }
                 Section {
-                    Button(updateChecker.checking ? "检查中…" : "检查应用更新") { Task { await updateChecker.check() } }.disabled(updateChecker.checking)
                     Text("RepoPocket 1.0.1（build 6）· iOS 16+").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true)
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
