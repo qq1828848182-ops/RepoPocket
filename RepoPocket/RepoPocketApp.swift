@@ -18,9 +18,11 @@ struct RepoPocketApp: App {
 
 struct AccountRootView: View {
     @StateObject private var api = GitHub()
+    @StateObject private var gitCore = GitCore()
     var body: some View {
             TabView {
                 RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }
+                GitWorkspaceView().environmentObject(gitCore).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }
                 WorkspaceView(api: api).tabItem { Label("本地", systemImage: "folder.badge.gearshape") }
                 UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }
                 SettingsView(api: api).tabItem { Label("设置", systemImage: "gear") }
