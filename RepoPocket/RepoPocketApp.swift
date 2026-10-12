@@ -155,6 +155,8 @@ struct BrowserView: View {
     let branch: String
     @State private var selectedBranch = ""
     @State private var repositoryInfo: Repository?
+    @StateObject private var copyFeedback = RepositoryCopyFeedback()
+    @StateObject private var forkMenu = RepositoryForkMenuState()
     private var canWrite: Bool { RepositoryWriteRules.canWrite(push: repositoryInfo?.permissions?.push, sessionMatches: api.isCurrentSession) }
     @State private var showBranches = false
     @State private var repositoryDeletionTarget: RepositoryDeletionTarget?
@@ -178,7 +180,7 @@ struct BrowserView: View {
             Section {
                 Group {
                     if let repositoryInfo {
-                        RepositoryCard(repository: repositoryInfo, account: api.login, api: api, descriptionLineLimit: nil)
+                        RepositoryCard(repository: repositoryInfo, account: api.login, api: api, descriptionLineLimit: nil, copyLinkContextMenu: false)
                     } else {
                         CompactRepositorySummary(fullName: repo, name: "")
                     }
@@ -232,6 +234,8 @@ struct BrowserView: View {
         .toolbar {
             if canWrite { Button("上传") { showUpload = true }.disabled(busy) }
             Menu {
+                CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)
+                ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
                 Button("下载整个仓库 ZIP") { Task { await zip() } }
@@ -243,6 +247,8 @@ struct BrowserView: View {
                 }.disabled(repositoryInfo?.permissions?.admin != true || deleting)
             } label: { Image(systemName: "ellipsis.circle") }.disabled(busy)
         }
+        .repositoryCopyNotice(copyFeedback)
+        .repositoryForkConfirmation(forkMenu, api: api)
         .task { if !loaded { await load() } }
         .sheet(item: $repositoryDeletionTarget) { target in
             RepositoryDeletionView(api: api, repository: target.repository, context: target.context) {

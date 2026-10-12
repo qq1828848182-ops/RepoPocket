@@ -140,6 +140,9 @@ struct RepositoryCard: View {
     let account: String
     let api: GitHub
     var descriptionLineLimit: Int? = 2
+    var copyLinkContextMenu = true
+    @StateObject private var copyFeedback = RepositoryCopyFeedback()
+    @StateObject private var forkMenu = RepositoryForkMenuState()
     @State private var parent: RepositoryReference?
     @State private var showParent = false
     var body: some View {
@@ -148,6 +151,14 @@ struct RepositoryCard: View {
             description: repository.description, repository: repository,
             descriptionLineLimit: descriptionLineLimit, parent: repository.fork == true ? (repository.parent ?? parent) : nil,
             openParent: { showParent = true })
+        .contextMenu {
+            if copyLinkContextMenu {
+                CopyRepositoryLinkButton(repository: repository.full_name, feedback: copyFeedback)
+                ForkRepositoryMenuButton(repository: repository.full_name, api: api, state: forkMenu)
+            }
+        }
+        .repositoryCopyNotice(copyFeedback)
+        .repositoryForkConfirmation(forkMenu, api: api)
         .task(id: repository.id) {
             let resolved = await api.forkParent(for: repository)
             guard !Task.isCancelled else { return }
