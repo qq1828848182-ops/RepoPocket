@@ -135,6 +135,7 @@ struct BrowserView: View {
     let path: String
     let branch: String
     @State private var selectedBranch = ""
+    @State private var repositoryInfo: Repository?
     @State private var showBranches = false
     private var activeBranch: String { selectedBranch.isEmpty ? branch : selectedBranch }
     @State private var entries: [Entry] = []
@@ -152,7 +153,20 @@ struct BrowserView: View {
     @State private var deleteBranch = ""
     var body: some View {
         List {
-            Section { Text(repo).font(.headline); Label("访问账号：" + (api.login.isEmpty ? (AccountStore.accounts.first { $0.id == api.accountID }?.login ?? "待验证") : api.login), systemImage: "person.crop.circle").font(.caption).foregroundColor(.secondary); if !activeBranch.isEmpty { Text("分支：" + activeBranch).font(.caption) } }
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(repo).font(.headline).textSelection(.enabled)
+                    if let repositoryInfo {
+                        RepositoryStatistics(repository: repositoryInfo)
+                    }
+                    Label("访问账号：" + (api.login.isEmpty ? (AccountStore.accounts.first { $0.id == api.accountID }?.login ?? "待验证") : api.login), systemImage: "person.crop.circle")
+                        .font(.caption).foregroundColor(.secondary)
+                    if !activeBranch.isEmpty {
+                        Label(activeBranch, systemImage: "arrow.triangle.branch")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                }.padding(.vertical, 4).softGroupedRow(top: true, bottom: true)
+            }
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {
                 Label("此目录没有文件", systemImage: "folder").foregroundColor(.secondary).padding(.vertical)
@@ -240,6 +254,15 @@ struct BrowserView: View {
             guard generation == AccountStore.generation, activeBranch == requestedBranch else { return }
             selectedBranch = resolved; entries = result; loaded = true
         } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        // Statistics are optional metadata: their failure must not block file browsing.
+        // Clear stale values rather than displaying invented zeroes or old counts.
+        repositoryInfo = nil
+        do {
+            let info = try await api.repository(repo)
+            try Task.checkCancellation()
+            guard generation == AccountStore.generation else { return }
+            repositoryInfo = info
+        } catch { /* Unavailable metadata stays hidden; contents errors remain visible. */ }
     }
     private func deleteRemote(_ entry: Entry, account: String, generation: UUID, branch: String) async {
         defer { deleting = false; deleteEntry = nil }
@@ -364,6 +387,23 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    HStack(alignment: .top, spacing: 14) {
+                        GitHubAvatar(url: api.profile?.avatar_url ?? savedAccount?.avatarURL, size: 56)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(api.profile?.name.flatMap { $0.isEmpty ? nil : $0 } ?? api.profile?.login ?? savedAccount?.login ?? "尚未登录")
+                                .font(.title3.weight(.semibold))
+                            if let login = api.profile?.login ?? savedAccount?.login {
+                                Text("@" + login).font(.subheadline).foregroundColor(.secondary)
+                            }
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) { socialCounts }
+                                VStack(alignment: .leading, spacing: 4) { socialCounts }
+                            }.font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }.padding(.vertical, 8).softGroupedRow(top: true, bottom: true)
+                }
                 Section("已保存账号") {
                     if AccountStore.accounts.isEmpty { Text("尚无已验证账号").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true) }
                     ForEach(AccountStore.accounts) { account in
@@ -392,7 +432,7 @@ struct SettingsView: View {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)
                 }
                 Section {
-                    Text("RepoPocket 1.0.1（build 6）· iOS 16+").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true)
+                    Text("RepoPocket \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")（build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—")）· iOS 16+").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true)
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }
@@ -403,6 +443,13 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+    private var savedAccount: GitHubAccount? {
+        AccountStore.accounts.first { $0.id == api.accountID }
+    }
+    @ViewBuilder private var socialCounts: some View {
+        if let followers = api.profile?.followers { Text("关注者 \(followers.formatted())") }
+        if let following = api.profile?.following { Text("正在关注 \(following.formatted())") }
     }
     private func verify() async {
         busy = true; defer { busy = false }

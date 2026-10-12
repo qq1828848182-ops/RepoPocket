@@ -59,6 +59,35 @@ struct GitHubAvatar: View {
     }
 }
 
+struct RepositoryStatistics: View {
+    let repository: Repository
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) { counts }
+            VStack(alignment: .leading, spacing: 4) { counts }
+        }
+        .font(.caption)
+        .monospacedDigit()
+        .foregroundColor(.secondary)
+    }
+    @ViewBuilder private var counts: some View {
+        if let language = repository.language, !language.isEmpty {
+            Label(language, systemImage: "chevron.left.forwardslash.chevron.right")
+        }
+        if let date = repository.updated_at.flatMap({ ISO8601DateFormatter().date(from: $0) }) {
+            Text("更新：" + date.formatted(.dateTime.locale(Locale(identifier: "zh_CN")).year().month(.twoDigits).day(.twoDigits)))
+        }
+        if let stars = repository.stargazers_count {
+            Label("\(stars.formatted()) Stars", systemImage: "star")
+                .accessibilityLabel("\(stars) 个星标")
+        }
+        if let forks = repository.forks_count {
+            Label("\(forks.formatted()) Forks", systemImage: "tuningfork")
+                .accessibilityLabel("\(forks) 个派生仓库")
+        }
+    }
+}
+
 struct RepositoryCard: View {
     let repository: Repository
     let account: String
@@ -81,9 +110,7 @@ struct RepositoryCard: View {
                         Label(repository.default_branch ?? "未设置", systemImage: "arrow.triangle.branch")
                     }
                 }.font(.caption).foregroundColor(.secondary)
-                if let date = repository.updated_at.flatMap({ ISO8601DateFormatter().date(from: $0) }) {
-                    Text("更新：" + date.formatted(date: .abbreviated, time: .shortened)).font(.caption2).foregroundColor(.secondary)
-                }
+                RepositoryStatistics(repository: repository)
                 Text("访问账号：" + (account.isEmpty ? "待验证" : account)).font(.caption2).foregroundColor(.secondary)
             }
         }.padding(.vertical, verticalSizeClass == .compact ? 3 : 7)

@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct GitWorkspaceView: View {
     @EnvironmentObject private var gitCore: GitCore
-    @State private var pickerPresented = false
+    @State private var importRequest: WorkspaceImportRequest?
     @State private var errorMessage = ""
 
     var body: some View {
@@ -27,7 +27,7 @@ struct GitWorkspaceView: View {
                     }
                 }
                 Section {
-                    Button { pickerPresented = true } label: {
+                    Button { importRequest = WorkspaceImportRequest(kind: .folder) } label: {
                         Label("导入本地仓库", systemImage: "folder.badge.plus")
                     }
                 } footer: {
@@ -35,34 +35,17 @@ struct GitWorkspaceView: View {
                 }
             }
             .navigationTitle("Git")
-            .sheet(isPresented: $pickerPresented) {
-                FolderPicker { url in
+            .sheet(item: $importRequest) { request in
+                WorkspaceDocumentPicker(request: request, allowsMultipleSelection: false) { urls in
+                    importRequest = nil
+                    guard let url = urls?.first else { return }
                     do { try gitCore.importRepository(url) }
                     catch { errorMessage = error.localizedDescription }
-                }
+                }.id(request.id)
             }
             .alert("无法导入", isPresented: Binding(get: { !errorMessage.isEmpty }, set: { if !$0 { errorMessage = "" } })) {
                 Button("好", role: .cancel) {}
             } message: { Text(errorMessage) }
-        }
-    }
-}
-
-private struct FolderPicker: UIViewControllerRepresentable {
-    let onPick: (URL) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [UTType.folder], asCopy: false)
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = false
-        return picker
-    }
-    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onPick: (URL) -> Void
-        init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            if let url = urls.first { onPick(url) }
         }
     }
 }

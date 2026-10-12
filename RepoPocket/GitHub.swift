@@ -65,6 +65,9 @@ struct User: Decodable {
     let id: Int?
     let login: String
     let avatar_url: String?
+    let name: String?
+    let followers: Int?
+    let following: Int?
 }
 
 struct RepoAccess: Decodable {
@@ -82,6 +85,10 @@ struct Repository: Decodable, Identifiable {
     let owner: User?
     let `private`: Bool?
     let updated_at: String?
+    // Optional API fields keep older/missing payloads decodable; nil is not zero.
+    let stargazers_count: Int?
+    let forks_count: Int?
+    let language: String?
 }
 struct Entry: Decodable, Identifiable {
     var id: String { path }
@@ -130,6 +137,7 @@ final class GitHub: ObservableObject {
     @Published var message = ""
     @Published var login = ""
     @Published var avatarURL: String?
+    @Published var profile: User?
     let accountID = AccountStore.activeID
     private let session: URLSession
     private let accountGeneration = AccountStore.generation
@@ -413,7 +421,8 @@ final class GitHub: ObservableObject {
     }
     func identify() async throws {
         let user = try await decoded(User.self, "/user")
-        login = user.login; avatarURL = user.avatar_url
+        try ensureActiveAccount()
+        login = user.login; avatarURL = user.avatar_url; profile = user
         if accountID == "legacy", let id = user.id {
             let account = GitHubAccount(id: String(id), login: user.login, avatarURL: user.avatar_url)
             try CredentialStore.save(CredentialStore.read(account: "legacy"), account: account.id)
@@ -431,6 +440,7 @@ final class GitHub: ObservableObject {
         let (bytes, response) = try await session.data(for: request)
         try check(bytes, response, operation: "验证账号")
         let user = try JSONDecoder().decode(User.self, from: bytes)
+        try ensureActiveAccount()
         guard let id = user.id else { throw AppError(text: "GitHub 未返回账号标识") }
         let account = GitHubAccount(id: String(id), login: user.login, avatarURL: user.avatar_url)
         try CredentialStore.save(token, account: account.id)
@@ -446,6 +456,9 @@ final class GitHub: ObservableObject {
             if batch.count < 100 { break }
         }
         return result
+    }
+    func repository(_ repo: String) async throws -> Repository {
+        try await decoded(Repository.self, Self.repoPath(repo))
     }
     func inspectAccess(_ repo: String) async throws -> String {
         try await identify()

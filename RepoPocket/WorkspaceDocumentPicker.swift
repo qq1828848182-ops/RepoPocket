@@ -13,11 +13,12 @@ struct WorkspaceImportRequest: Identifiable {
 // Native picker avoids SwiftUI fileImporter's iOS 16 folder-provider regressions.
 struct WorkspaceDocumentPicker: UIViewControllerRepresentable {
     let request: WorkspaceImportRequest
+    var allowsMultipleSelection = true
     let completion: ([URL]?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(completion) }
     func makeUIViewController(context: Context) -> WorkspacePickerContainer {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: request.isZIP ? [.zip] : [.folder], asCopy: false)
-        picker.allowsMultipleSelection = true
+        picker.allowsMultipleSelection = allowsMultipleSelection
         picker.delegate = context.coordinator
         return WorkspacePickerContainer(picker: picker, title: request.isZIP ? "导入 ZIP" : "导入文件夹", cancel: { context.coordinator.finish(nil) })
     }

@@ -11,7 +11,18 @@ assert 'zip = true' not in view and 'zip = false' not in view
 assert 'zip: request.isZIP' in view
 assert 'importRequest = nil\n                    guard let urls else' in view
 assert 'request.isZIP ? [.zip] : [.folder], asCopy: false' in picker
-assert 'picker.allowsMultipleSelection = true' in picker
+assert 'var allowsMultipleSelection = true' in picker
+assert 'picker.allowsMultipleSelection = allowsMultipleSelection' in picker
+git_view = Path('RepoPocket/GitWorkspaceView.swift').read_text()
+core = Path('RepoPocket/GitCore.swift').read_text()
+assert 'FolderPicker' not in git_view and 'UIDocumentPickerViewController' not in git_view
+assert '.sheet(item: $importRequest)' in git_view and '.id(request.id)' in git_view
+assert 'WorkspaceDocumentPicker(request: request, allowsMultipleSelection: false)' in git_view
+assert 'importRequest = nil\n                    guard let url = urls?.first else { return }' in git_view
+assert 'try gitCore.importRepository(url)' in git_view
+for required in ('restoreBookmarks()', 'persistBookmarks()', 'startAccessingSecurityScopedResource()', 'stopAccessingSecurityScopedResource()', 'bookmarkData(options: []', 'URL(resolvingBookmarkData: bookmark, options: []'):
+    assert required in core
+assert 'withSecurityScope]' not in core
 assert 'picker.delegate = context.coordinator' in picker
 assert 'documentPickerWasCancelled' in picker and 'finish(nil)' in picker
 assert 'guard !finished else' in picker and 'finished = true' in picker
@@ -42,4 +53,19 @@ for sequence in [('zip',), ('folder', 'zip'), ('zip', 'folder', 'zip'), ('zip', 
                 if urls is not None: imports.append((kind, urls))
             assert len(imports) == (0 if events[0] is None else 1)
             assert not imports or imports[0][0] == kind
+# Both folder and ZIP entry points must use the shared external cancel container.
+assert 'return WorkspacePickerContainer(picker: picker' in picker
+assert view.count('WorkspaceDocumentPicker(request: request)') == 1
+assert 'UIDocumentPickerViewController' not in view
+# Simulate providers at arbitrary directory depth: app cancel does not pop Files
+# navigation, and duplicate delegate cancel callbacks cannot import anything.
+for depth in (0, 1, 2, 10, 100):
+    finished = False
+    completions = []
+    for event in (None, None, ['late-provider-selection']):
+        if finished:
+            continue
+        finished = True
+        completions.append(event)
+    assert completions == [None], depth
 print('PASS static picker identity, ZIP-only filter, explicit dismissal, public cancel containment, scoped/coordinated strict extraction; abstract lifecycle model')
