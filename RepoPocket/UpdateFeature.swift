@@ -112,22 +112,25 @@ struct AppUpdateSection: View {
     @State private var share: SharedFile?
     var body: some View {
         Group {
-            Button(checker.checking ? "检查中…" : "检查应用更新") { Task { await checker.check() } }.disabled(checker.checking || checker.downloading)
-            if !checker.message.isEmpty { Text(checker.message).font(.caption).textSelection(.enabled) }
-            Link("打开 RepoPocket 官方仓库下载页", destination: URL(string: "https://github.com/wm0104/RepoPocket/releases")!)
+            Button(checker.checking ? "检查中…" : "检查应用更新") { Task { await checker.check() } }.disabled(checker.checking || checker.downloading).softGroupedRow(top: true)
+            if !checker.message.isEmpty { Text(checker.message).font(.caption).textSelection(.enabled).softGroupedRow() }
+            Link("打开 RepoPocket 官方仓库下载页", destination: URL(string: "https://github.com/wm0104/RepoPocket/releases")!).softGroupedRow()
             if let release = checker.release {
-                Link("查看正式发布 \(release.tag_name)", destination: release.html_url)
-                if let ipa = release.ipaURL { Link("到官方仓库下载 IPA（可靠兜底）", destination: ipa) }
-                Text("适配官方 TrollStore（com.opa334.TrollStore），其他修改版未验证。OTA 接口按官方文档实现，设备安装转交尚未真机验证。") .font(.caption)
+                Link("查看正式发布 \(release.tag_name)", destination: release.html_url).softGroupedRow()
+                if let ipa = release.ipaURL { Link("到官方仓库下载 IPA（可靠兜底）", destination: ipa).softGroupedRow() }
+                Text("适配官方 TrollStore（com.opa334.TrollStore），其他修改版未验证。OTA 接口按官方文档实现，设备安装转交尚未真机验证。") .font(.caption).softGroupedRow()
                 if checker.downloaded == nil {
-                    Button("更新：下载 IPA") { checker.download() }.disabled(checker.downloading || release.ipaURL == nil)
-                    Button("不接受本次更新") { checker.ignore() }.disabled(checker.downloading)
+                    Button("更新：下载 IPA") { checker.download() }.disabled(checker.downloading || release.ipaURL == nil).softGroupedRow()
+                    Button("不接受本次更新") { checker.ignore() }.disabled(checker.downloading).softGroupedRow()
                 }
             }
-            if checker.downloading { ProgressView(value: checker.progress); Button("取消下载", role: .cancel) { checker.cancelDownload() } }
+            if checker.downloading {
+                ProgressView(value: checker.progress).softGroupedRow()
+                Button("取消下载", role: .cancel) { checker.cancelDownload() }.softGroupedRow()
+            }
             if let file = checker.downloaded {
-                Button("分享已下载 IPA 给 TrollStore") { share = SharedFile(url: file) }
-                Button("打开 TrollStore 安装（远端重新下载）") { checker.openTrollStore() }
+                Button("分享已下载 IPA 给 TrollStore") { share = SharedFile(url: file) }.softGroupedRow()
+                Button("打开 TrollStore 安装（远端重新下载）") { checker.openTrollStore() }.softGroupedRow()
             }
         }.sheet(item: $share) { ShareSheet(url: $0.url) }
     }
