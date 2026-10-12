@@ -846,7 +846,7 @@ final class GitHub: ObservableObject {
         guard page > 0 else { throw AppError(text: "无效页码") }
         let r = try request(url(Self.repoPath(repo) + "/releases", query: [
             .init(name: "per_page", value: "100"), .init(name: "page", value: String(page))]))
-        let (bytes, response) = try await session.data(for: r)
+        let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
         try Task.checkCancellation()
         try check(bytes, response, operation: "读取发行版")
         let values = try JSONDecoder().decode([Release].self, from: bytes)
@@ -857,7 +857,11 @@ final class GitHub: ObservableObject {
     }
     func repositoryLatestRelease(_ repo: String) async throws -> Release? {
         do {
-            let value = try await decoded(Release.self, Self.repoPath(repo) + "/releases/latest")
+            let r = try request(url(Self.repoPath(repo) + "/releases/latest"))
+            let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
+            try Task.checkCancellation()
+            try check(bytes, response, operation: "读取最新正式发行版")
+            let value = try JSONDecoder().decode(Release.self, from: bytes)
             guard !value.draft, value.prerelease != true else { throw AppError(text: "GitHub latest 响应无效") }
             return value
         } catch let error as GitHubAPIError where error.status == 404 {

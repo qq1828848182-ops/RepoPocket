@@ -150,7 +150,7 @@ func release(_ id: Int, draft: Bool = false, pre: Bool = false, date: String? = 
    policy.urlSession(session,task:task,willPerformHTTPRedirection:response,newRequest:req) { redirected=$0 }
    precondition(redirected != nil && redirected?.value(forHTTPHeaderField:"Authorization") == nil && redirected?.value(forHTTPHeaderField:"Cookie") == nil)
   }
-  for address in ["http://github.com/a","https://github.com.evil.invalid/a","https://evil.invalid/a"] {
+  for address in ["http://github.com/a","https://github.com.evil.invalid/a","https://evil.invalid/a","https://user:pass@github.com/a","https://github.com:8443/a"] {
    var accepted=true
    policy.urlSession(session,task:task,willPerformHTTPRedirection:response,newRequest:URLRequest(url:URL(string:address)!)) { accepted = $0 != nil }
    precondition(!accepted)

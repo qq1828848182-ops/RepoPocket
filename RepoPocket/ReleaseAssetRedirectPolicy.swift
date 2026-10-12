@@ -11,7 +11,8 @@ final class ReleaseAssetRedirectPolicy: NSObject, URLSessionDownloadDelegate {
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void) {
-        guard let url = request.url, url.scheme == "https",
+        guard let url = request.url, url.scheme == "https", url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443,
               ["api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"].contains(url.host ?? "") else { completionHandler(nil); return }
         var redirected = request
         // Even same-host redirects are unsigned; never send account tokens to attachment/CDN.
