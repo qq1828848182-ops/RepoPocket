@@ -45,12 +45,34 @@ struct AppUpdateRelease: Decodable {
     }
 }
 enum AppUpdateRules {
-    static func statusError(_ status: Int) -> String {
-        switch status {
-        case 404: return "尚无可用的正式 Release，或发布源暂不可用。"
-        case 403, 429: return "GitHub 公共接口访问受限或达到速率限制，请稍后重试；此检查不使用 Token。"
-        default: return "检查更新失败：GitHub HTTP \(status)，请稍后重试。"
+    static func statusError(_ status: Int, headers: [AnyHashable: Any] = [:], body: Data = Data(), authenticated: Bool = false) -> String {
+        func header(_ name: String) -> String? {
+            headers.first { String(describing: $0.key).lowercased() == name.lowercased() }.map { String(describing: $0.value) }
         }
+        let payload = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        let reason = (payload?["message"] as? String ?? "").lowercased()
+        let fallback = " 可打开下方官方仓库下载页手动下载。"
+        let identity = authenticated ? "当前账号" : "匿名出口 IP"
+        if [403, 429].contains(status) {
+            if header("x-ratelimit-remaining") == "0" || reason.contains("api rate limit exceeded") {
+                var retry = "请稍后重试。"
+                if let raw = header("x-ratelimit-reset"), let seconds = TimeInterval(raw), seconds.isFinite, seconds > 0, seconds < 253402300799 {
+                    let formatter = DateFormatter(); formatter.dateStyle = .short; formatter.timeStyle = .medium
+                    retry = "预计 \(formatter.string(from: Date(timeIntervalSince1970: seconds))) 重置后可重试。"
+                }
+                let advice = authenticated ? "" : " 已登录时将使用当前账号的现有 Token 检查；不会扩大权限。"
+                return "GitHub \(identity)主速率额度已用尽。\(retry)\(advice)" + fallback
+            }
+            if reason.contains("secondary rate limit") || reason.contains("abuse") || header("retry-after") != nil {
+                let retry = header("retry-after").flatMap(Int.init).flatMap { $0 > 0 ? "请至少等待 \($0) 秒再重试。" : nil } ?? "请稍后重试，避免连续检查。"
+                return "GitHub 次级速率限制。" + retry + fallback
+            }
+            if status == 429 { return "GitHub 请求过于频繁，请稍后重试。" + fallback }
+            return "GitHub 拒绝访问更新接口（HTTP 403），未确认是速率限制；请检查当前账号访问权限或稍后重试。" + fallback
+        }
+        if status == 401 { return "GitHub 当前账号凭据无效或已过期，请在账号管理中重新验证。" + fallback }
+        if status == 404 { return "尚无可用的正式 Release，或发布源暂不可用。" + fallback }
+        return "检查更新失败：GitHub HTTP \(status)，请稍后重试。" + fallback
     }
     static func isNewer(_ release: AppUpdateRelease, local: String, localBuild: String) throws -> Bool {
         guard !release.draft, !release.prerelease, let remote = AppVersion(release.tag_name), remote.prerelease.isEmpty, let current = AppVersion(local) else { throw AppError(text: "发布版本格式无效或不是正式版本，无法安全比较。") }

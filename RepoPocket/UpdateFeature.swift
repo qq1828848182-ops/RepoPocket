@@ -12,20 +12,11 @@ import ZIPFoundation
     private var downloadTask: URLSessionDownloadTask?
     private var downloadSession: URLSession?
     private var delegate: UpdateDownloadDelegate?
-    func check() async {
+    func check(api: GitHub) async {
         guard !checking, !downloading else { return }
         checking = true; release = nil; downloaded = nil; message = ""; defer { checking = false }
         do {
-            var request = URLRequest(url: URL(string: "https://api.github.com/repos/wm0104/RepoPocket/releases/latest")!)
-            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            request.setValue("RepoPocket", forHTTPHeaderField: "User-Agent")
-            request.timeoutInterval = 30
-            let config = URLSessionConfiguration.ephemeral
-            config.urlCredentialStorage = nil; config.httpCookieStorage = nil
-            let session = URLSession(configuration: config); defer { session.finishTasksAndInvalidate() }
-            let (data, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard status == 200 else { throw AppError(text: AppUpdateRules.statusError(status)) }
+            let data = try await api.officialAppUpdateData()
             let value = try JSONDecoder().decode(AppUpdateRelease.self, from: data)
             guard value.html_url.scheme == "https", value.html_url.host == "github.com", value.html_url.path.hasPrefix("/wm0104/RepoPocket/releases/") else { throw AppError(text: "发布页地址不可信。") }
             let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
@@ -108,11 +99,12 @@ final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) { completion(error.map { .failure($0) } ?? result ?? .failure(AppError(text: "下载未生成文件。"))) }
 }
 struct AppUpdateSection: View {
+    @ObservedObject var api: GitHub
     @StateObject private var checker = UpdateChecker()
     @State private var share: SharedFile?
     var body: some View {
         Group {
-            Button(checker.checking ? "检查中…" : "检查应用更新") { Task { await checker.check() } }.disabled(checker.checking || checker.downloading).softGroupedRow(top: true)
+            Button(checker.checking ? "检查中…" : "检查应用更新") { Task { await checker.check(api: api) } }.disabled(checker.checking || checker.downloading).softGroupedRow(top: true)
             if !checker.message.isEmpty { Text(checker.message).font(.caption).textSelection(.enabled).softGroupedRow() }
             Link("打开 RepoPocket 官方仓库下载页", destination: URL(string: "https://github.com/wm0104/RepoPocket/releases")!).softGroupedRow()
             if let release = checker.release {

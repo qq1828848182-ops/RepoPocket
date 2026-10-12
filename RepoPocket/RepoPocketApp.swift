@@ -427,7 +427,7 @@ struct SettingsView: View {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)
                 }
                 Section {
-                    AppUpdateSection()
+                    AppUpdateSection(api: api)
                     // The version is the stable final row of the update group in every state.
                     Text("RepoPocket \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")（build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—")）· iOS 16+").foregroundColor(.secondary).softGroupedRow(bottom: true)
                 }

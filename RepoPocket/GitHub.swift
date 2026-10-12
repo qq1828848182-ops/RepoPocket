@@ -201,6 +201,24 @@ final class GitHub: ObservableObject {
         }
         return r
     }
+    // Public official update metadata only. Use the account-bound session and
+    // never forward its credentials to release assets, CDN hosts or redirects.
+    func officialAppUpdateData() async throws -> Data {
+        try ensureActiveAccount()
+        let endpoint = URL(string: "https://api.github.com/repos/wm0104/RepoPocket/releases/latest")!
+        let authenticated = !CredentialStore.read(account: accountID).isEmpty
+        var r = authenticated ? try request(endpoint) : URLRequest(url: endpoint)
+        r.timeoutInterval = 30
+        r.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        r.setValue("RepoPocket", forHTTPHeaderField: "User-Agent")
+        let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
+        try ensureActiveAccount()
+        guard let http = response as? HTTPURLResponse else { throw AppError(text: "更新接口未返回有效 HTTP 响应。") }
+        guard http.statusCode == 200 else {
+            throw AppError(text: AppUpdateRules.statusError(http.statusCode, headers: http.allHeaderFields, body: bytes, authenticated: authenticated))
+        }
+        return bytes
+    }
     func deletionContext(_ repository: Repository) -> RepositoryDeletionContext {
         RepositoryDeletionContext(accountID: accountID, generation: accountGeneration,
                                   repositoryID: repository.id, fullName: repository.full_name)
