@@ -471,7 +471,7 @@ struct SettingsView: View {
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }
-            .task { await updateChecker.enterPage(api: api) }
+            .task { updateChecker.enterPage() }
             .onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }
             .refreshable { await refreshProfile() }
             .sheet(isPresented: $showAccountManagement, onDismiss: { token = "" }) {

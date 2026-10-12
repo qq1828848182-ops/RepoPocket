@@ -26,10 +26,10 @@ import ZIPFoundation
         self.noticeSleep = noticeSleep
         self.installedVersion = installedVersion
     }
-    func enterPage(api: GitHub) async {
+    // Page entry is local-only. Release metadata is fetched only by the check button.
+    func enterPage() {
         guard !entered else { return }
         entered = true
-        await check(api: api)
     }
     private func clearNotice() {
         noticeTask?.cancel(); noticeTask = nil; message = ""

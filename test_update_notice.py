@@ -32,7 +32,9 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     let delay: UInt64
     let failure: String
     init(_ failure: String, delay: UInt64 = 0) { self.failure = failure; self.delay = delay }
+    var calls = 0
     func officialAppUpdateData() async throws -> Data {
+        calls += 1
         if delay > 0 { try await Task.sleep(nanoseconds: delay) }
         if failure == "latest" || failure == "new" {
             let tag = failure == "new" ? "v999.0.0" : "v0.0.0"
@@ -53,6 +55,20 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
 }
 @main struct Tests {
  @MainActor static func main() async throws {
+    let manual = UpdateChecker()
+    let counted = GitHub("latest", delay: 100_000_000)
+    for _ in 0..<3 { manual.enterPage(); manual.leavePage() }
+    manual.enterPage()
+    precondition(counted.calls == 0)
+    let clicked = Task { await manual.check(api: counted) }
+    for _ in 0..<100 { if counted.calls == 1 { break }; await Task.yield() }
+    await manual.check(api: counted)
+    await clicked.value
+    precondition(counted.calls == 1 && !manual.checking)
+    manual.leavePage(); manual.enterPage()
+    precondition(counted.calls == 1)
+    manual.leavePage()
+    print("PASS settings entry/exit zero API calls; manual button one call; busy duplicate rejected")
     let clock = MockNoticeClock()
     let timed = UpdateChecker(noticeSleep: { try await clock.sleep($0) }, installedVersion: { ("1.0.3", "11") })
     await timed.check(api: GitHub("latest"))

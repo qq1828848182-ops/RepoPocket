@@ -6,7 +6,11 @@ feature = Path('RepoPocket/UpdateFeature.swift').read_text()
 
 class UpdateTests(unittest.TestCase):
     def test_manual_safe_contract(self):
-        self.assertIn('.task { await updateChecker.enterPage(api: api) }', Path('RepoPocket/RepoPocketApp.swift').read_text())
+        self.assertIn('.task { updateChecker.enterPage() }', Path('RepoPocket/RepoPocketApp.swift').read_text())
+        entry = feature.split('func enterPage()', 1)[1].split('private func clearNotice', 1)[0]
+        self.assertNotIn('check(api:', entry)
+        self.assertNotIn('officialAppUpdateData', entry)
+        self.assertEqual(feature.count('await checker.check(api: api)'), 1)
         self.assertNotIn('Authorization', feature)
         for forbidden in ['TrollStore', 'apple-magnifier', 'openTrollStore', 'URLQueryItem(name: "url"']:
             self.assertNotIn(forbidden, feature)
