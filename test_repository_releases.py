@@ -13,13 +13,17 @@ class ReleasesTests(unittest.TestCase):
         self.assertIn('if path.isEmpty { RepositoryReleaseSection',app)
         self.assertIn('.task(id: repo)',app)
         self.assertIn('releases.reset()',app)
-        self.assertIn('count > 0', UI)
+        self.assertIn('if let recent = state.recent', UI)
         self.assertIn('ForEach(release.assets)', UI)
         self.assertIn('ShareSheet(url:',UI)
         self.assertIn('download.cancel()',UI)
         self.assertIn('download.reset()',UI)
-        self.assertIn('Text(release.body?',UI)
-        self.assertNotIn('Link(',UI)
+        self.assertIn('Text(verbatim: noteChunks[index])',UI)
+        self.assertNotIn('ISO8601DateFormatter()', UI)
+        self.assertIn('decodePage(bytes)',API)
+        self.assertNotIn('while true',STATE)
+        self.assertIn('state.cancelPage()',UI)
+        self.assertNotRegex(UI, r'(?<!Navigation)Link\(')
         latest=API.split('func repositoryLatestRelease(',1)[1].split('func downloadReleaseAsset(',1)[0]
         self.assertIn('"/releases/latest"',latest)
         self.assertIn('_ = try await repository(repo)',latest)
@@ -35,7 +39,7 @@ class ReleasesTests(unittest.TestCase):
         self.assertIn('DownloadStore.shared.persist(temporary, session: generation)',STATE)
         self.assertIn('DownloadStore.shared.requireAuthorization()',STATE)
         self.assertIn('temporary.deletingLastPathComponent()',STATE)
-        self.assertIn('CURRENT_PROJECT_VERSION: "17"',(R/'project.yml').read_text())
+        self.assertIn('CURRENT_PROJECT_VERSION: "18"',(R/'project.yml').read_text())
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Production Swift tests execute on macOS CI')
     def test_production_decoding_state_cancel_identity_and_redirects(self):
@@ -64,8 +68,10 @@ enum AccountStore { static var generation = UUID() }
  var pages: [ReleasePage] = []
  var latest: Release?
  var failed = false, slow = false, switchDuring = false, slowDownload = false
+ var slowLatest = false
  var calls: [Int] = [], downloadTargets: [String] = []
  func repositoryLatestRelease(_ repo: String) async throws -> Release? {
+  while slowLatest { try await Task.sleep(nanoseconds: 1_000_000) }
   if failed { throw AppError(text: "403") }; return latest
  }
  func repositoryReleasePage(_ repo: String, page: Int) async throws -> ReleasePage {
@@ -83,6 +89,9 @@ enum AccountStore { static var generation = UUID() }
   let file=folder.appendingPathComponent(asset.name)
   try Data("mock".utf8).write(to: file); return file
  }
+}
+func JSONEncoderFixture(_ release: Release) throws -> Data {
+ try JSONSerialization.data(withJSONObject:["id":release.id,"tag_name":release.tag_name,"draft":false,"upload_url":"u","html_url":"h","assets":[],"published_at":release.published_at!])
 }
 func release(_ id: Int, draft: Bool = false, pre: Bool = false, date: String? = "2026-10-12T10:00:00Z") throws -> Release {
  let object: [String:Any] = ["id":id,"tag_name":"v\(id)","name":"Version \(id)","draft":draft,"prerelease":pre,"published_at":date as Any? ?? NSNull(),"body":"Full\nnotes **raw**", "upload_url":"https://uploads.github.com/repos/o/r/releases/\(id)/assets{?name}","html_url":"https://github.com/o/r/releases/tag/v\(id)","assets":[["id":id,"name":"file\(id).ipa","size":4,"browser_download_url":"https://evil.invalid/steal"]]]
@@ -108,13 +117,19 @@ func release(_ id: Int, draft: Bool = false, pre: Bool = false, date: String? = 
   let api=GitHub(), state=RepositoryReleaseState()
   api.pages=[ReleasePage(values:[official,draft],hasNext:true),ReleasePage(values:[official,preview,unpublished],hasNext:false)]
   api.latest=official
+  api.slowLatest=true
   await state.load(api:api,repo:"o/r")
-  precondition(state.count == 2 && state.recent?.id == 2 && state.latestID == 1 && api.calls == [1,2])
-  await state.load(api:api,repo:"o/r"); precondition(api.calls == [1,2])
-  state.more(api:api,repo:"o/r"); try await Task.sleep(nanoseconds:10_000_000)
-  precondition(state.history.map(\.id) == [1] && state.hasNext)
-  state.more(api:api,repo:"o/r"); try await Task.sleep(nanoseconds:10_000_000)
-  precondition(state.history.map(\.id) == [1,2] && !state.hasNext)
+  precondition(state.count == nil && state.recent?.id == 1 && state.latestID == nil && api.calls == [1])
+  precondition(state.history.map(\.id) == [1])
+  for _ in 0..<200 { await state.load(api:api,repo:"o/r") }
+  precondition(api.calls == [1])
+  api.slowLatest=false
+  try await waitUntil { state.latestID == 1 }
+  api.slow=true
+  for _ in 0..<200 { state.more(api:api,repo:"o/r") }
+  try await waitUntil { !state.paging }
+  precondition(api.calls == [1,2] && state.history.map(\.id) == [1,2] && state.count == 2 && !state.hasNext)
+  api.slow=false
   api.latest=nil; api.pages=[ReleasePage(values:[],hasNext:false)]
   await state.load(api:api,repo:"o/tags-only")
   precondition(state.count == 0 && state.error == nil && state.recent == nil && state.latestID == nil)
@@ -131,6 +146,39 @@ func release(_ id: Int, draft: Bool = false, pre: Bool = false, date: String? = 
   api.switchDuring=true; await state.load(api:api,repo:"o/stale")
   precondition(state.count == nil && state.recent == nil)
   api.switchDuring=false; api.isCurrentSession=true; api.slow=false
+  // 1000 available pages never trigger summary enumeration or automatic history preload.
+  api.pages=Array(repeating:ReleasePage(values:[official],hasNext:true),count:1000)
+  api.calls=[]; await state.load(api:api,repo:"o/huge")
+  precondition(api.calls == [1] && state.count == nil)
+  for _ in 0..<100 { await state.load(api:api,repo:"o/huge") }
+  precondition(api.calls == [1])
+  api.slow=true
+  state.more(api:api,repo:"o/huge")
+  try await waitUntil { api.calls.count == 2 }
+  state.cancelPage()
+  try await Task.sleep(nanoseconds:60_000_000)
+  precondition(state.history.count == 1 && !state.paging)
+  state.more(api:api,repo:"o/huge")
+  try await waitUntil { !state.paging }
+  precondition(api.calls == [1,2,2] && state.history.count == 1)
+  api.failed=true; state.more(api:api,repo:"o/huge")
+  try await waitUntil { !state.paging }
+  let requests=api.calls.count
+  for _ in 0..<100 { state.more(api:api,repo:"o/huge") }
+  precondition(api.calls.count == requests && state.historyError != nil)
+  api.failed=false; state.more(api:api,repo:"o/huge",retry:true)
+  try await waitUntil { !state.paging }
+  precondition(state.historyError == nil && state.history.count == 1)
+  let cancelled=Task { await state.load(api:api,repo:"o/cancel") }
+  try await Task.sleep(nanoseconds:5_000_000); cancelled.cancel(); await cancelled.value
+  precondition(!state.loading && state.history.isEmpty)
+  let processor=RepositoryReleaseProcessing.shared
+  let prepared=try await processor.decodeLatest(try JSONEncoderFixture(official))
+  precondition(prepared.displayDate != nil)
+  let longNotes=String(repeating:"汉🙂**raw**\n",count:20000)
+  let chunks=try await processor.notes(longNotes)
+  precondition(chunks.joined() == longNotes && chunks.allSatisfy { $0.count <= 2048 })
+  api.slow=false
   let downloader=RepositoryAssetDownload(), store=DownloadStore.shared
   api.slowDownload=true
   downloader.start(api:api,repo:"o/old",asset:official.assets[0])

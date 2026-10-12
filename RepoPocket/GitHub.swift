@@ -110,7 +110,7 @@ struct Entry: Decodable, Identifiable {
     let content: String?
     let encoding: String?
 }
-struct Release: Decodable, Identifiable {
+struct Release: Decodable, Identifiable, Sendable {
     let id: Int
     let tag_name: String
     let name: String?
@@ -121,8 +121,12 @@ struct Release: Decodable, Identifiable {
     let prerelease: Bool?
     let published_at: String?
     let body: String?
+    var displayDate: Date? = nil
+    private enum CodingKeys: String, CodingKey {
+        case id, tag_name, name, draft, upload_url, html_url, assets, prerelease, published_at, body
+    }
 }
-struct Asset: Decodable, Identifiable {
+struct Asset: Decodable, Identifiable, Sendable {
     let id: Int
     let name: String
     let size: Int
@@ -845,11 +849,14 @@ final class GitHub: ObservableObject {
     func repositoryReleasePage(_ repo: String, page: Int) async throws -> ReleasePage {
         guard page > 0 else { throw AppError(text: "无效页码") }
         let r = try request(url(Self.repoPath(repo) + "/releases", query: [
-            .init(name: "per_page", value: "100"), .init(name: "page", value: String(page))]))
+            .init(name: "per_page", value: "20"), .init(name: "page", value: String(page))]))
         let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
         try Task.checkCancellation()
+        try ensureActiveAccount()
         try check(bytes, response, operation: "读取发行版")
-        let values = try JSONDecoder().decode([Release].self, from: bytes)
+        let values = try await RepositoryReleaseProcessing.shared.decodePage(bytes)
+        try Task.checkCancellation()
+        try ensureActiveAccount()
         let link = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Link") ?? ""
         // Follow page numbers only; never follow a server-provided arbitrary Link URL with credentials.
         let next = link.components(separatedBy: ",").contains { $0.contains("rel=\"next\"") }
@@ -861,7 +868,9 @@ final class GitHub: ObservableObject {
             let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
             try Task.checkCancellation()
             try check(bytes, response, operation: "读取最新正式发行版")
-            let value = try JSONDecoder().decode(Release.self, from: bytes)
+            let value = try await RepositoryReleaseProcessing.shared.decodeLatest(bytes)
+            try Task.checkCancellation()
+            try ensureActiveAccount()
             guard !value.draft, value.prerelease != true else { throw AppError(text: "GitHub latest 响应无效") }
             return value
         } catch let error as GitHubAPIError where error.status == 404 {
