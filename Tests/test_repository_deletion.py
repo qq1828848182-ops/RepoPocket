@@ -1,14 +1,16 @@
 """Network-free production deletion gates and settings contracts. No HTTP requests."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import shutil
 import subprocess
 import tempfile
 import unittest
 
-api = Path('RepoPocket/GitHub.swift').read_text()
-core = Path('RepoPocket/RepositoryDeletion.swift').read_text()
-ui = Path('RepoPocket/RepositoryDeletionView.swift').read_text()
-app = Path('RepoPocket/RepoPocketApp.swift').read_text()
+api = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
+core = Path(REPO_ROOT, 'RepoPocket/RepositoryDeletion.swift').read_text()
+ui = Path(REPO_ROOT, 'RepoPocket/RepositoryDeletionView.swift').read_text()
+app = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
 
 class DeletionTests(unittest.TestCase):
     def test_production_wiring(self):
@@ -28,8 +30,8 @@ class DeletionTests(unittest.TestCase):
         self.assertNotIn('Section("已保存账号")', app)
         self.assertIn('账号管理：切换、添加或移除本机账号', app)
         self.assertIn('.refreshable { await refreshProfile() }', app)
-        self.assertIn('不会删除 GitHub 账号、远端仓库或本地工作区', Path('RepoPocket/AccountManagement.swift').read_text())
-        management = Path('RepoPocket/AccountManagement.swift').read_text()
+        self.assertIn('不会删除 GitHub 账号、远端仓库或本地工作区', Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text())
+        management = Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text()
         self.assertIn('AccountStore.activate(account.id)', management)
         self.assertIn('AccountStore.remove(account.id)', management)
 

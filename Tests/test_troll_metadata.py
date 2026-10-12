@@ -1,6 +1,8 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile
-s='import Foundation\nstruct AppError: Error { let text: String }\nstruct WorkspaceBinding {}\n'+Path('RepoPocket/TrollMetadata.swift').read_text().split('struct TrollMetadataSnapshot')[0]+r'''
+s='import Foundation\nstruct AppError: Error { let text: String }\nstruct WorkspaceBinding {}\n'+Path(REPO_ROOT, 'RepoPocket/TrollMetadata.swift').read_text().split('struct TrollMetadataSnapshot')[0]+r'''
 let url = "https://owner.github.io/Repo/downloads/%E4%B8%AD%E6%96%87.dylib"
 precondition(TrollMetadata.matches(url, repo:"owner/Repo", branch:"main", path:"downloads/中文.dylib"))
 precondition(!TrollMetadata.matches(url, repo:"other/Repo", branch:"main", path:"downloads/中文.dylib"))
@@ -22,17 +24,17 @@ with tempfile.TemporaryDirectory() as d:
  p=Path(d)/'main.swift';p.write_text(s)
  subprocess.run(['swiftc',str(p),'-o',d+'/test'],check=True)
  subprocess.run([d+'/test'],check=True)
- fixture = Path('tests/MetadataTextFixture.swift').read_text()
- production = Path('RepoPocket/TrollMetadata.swift').read_text().split('struct TrollMetadataSnapshot')[0]
+ fixture = Path(REPO_ROOT, 'tests/MetadataTextFixture.swift').read_text()
+ production = Path(REPO_ROOT, 'RepoPocket/TrollMetadata.swift').read_text().split('struct TrollMetadataSnapshot')[0]
  p.write_text(production + '\n' + fixture)
  subprocess.run(['swiftc',str(p),'-o',d+'/fixture'],check=True)
  subprocess.run([d+'/fixture'],check=True)
 # Test-only top-level code and AppError stubs must not enter the app target.
-assert 'sources: [RepoPocket, Vendor/DebCodecs]' in Path('project.yml').read_text()
-g=Path('RepoPocket/GitHub.swift').read_text();m=g[g.index('    func saveMetadata'):g.index('    func saveRemoteDeb')]
+assert 'sources: [RepoPocket, Vendor/DebCodecs]' in Path(REPO_ROOT, 'project.yml').read_text()
+g=Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text();m=g[g.index('    func saveMetadata'):g.index('    func saveRemoteDeb')]
 assert 'workspaceHead(original.binding.repo, branch: original.binding.branch) == original.binding.head' in m
 assert 'writes: [WorkspaceWrite(path: "trollpackages.json", bytes: bytes)]' in m
 assert 'trollPublish(' not in m and 'downloadFile(' not in m
-v=Path('RepoPocket/TrollMetadataView.swift').read_text();a=Path('RepoPocket/RepoPocketApp.swift').read_text()
+v=Path(REPO_ROOT, 'RepoPocket/TrollMetadataView.swift').read_text();a=Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
 assert 'UploadView' not in v and 'TrollMetadataView(api:' in a and '编辑插件信息' in a
 print('PASS metadata-only UI and stale HEAD guard contracts')

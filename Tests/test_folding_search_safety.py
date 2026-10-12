@@ -1,6 +1,8 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile, shutil, unittest
-root = Path('RepoPocket')
+root = Path(REPO_ROOT, 'RepoPocket')
 
 class Regressions(unittest.TestCase):
     def test_static_contracts(self):

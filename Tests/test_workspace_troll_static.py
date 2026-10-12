@@ -1,11 +1,13 @@
 """Source-level regressions for 0.4 workspaces and TrollFools.
-Run with python3 test_workspace_troll_static.py when Swift/Xcode are unavailable.
+Run with python3 Tests/test_workspace_troll_static.py when Swift/Xcode are unavailable.
 These tests do not replace iOS compilation or device tests.
 """
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import unittest
 
-ROOT = Path(__file__).parent / "RepoPocket"
+ROOT = REPO_ROOT / "RepoPocket"
 
 
 class WorkspaceTrollStaticTests(unittest.TestCase):

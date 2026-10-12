@@ -1,4 +1,6 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import itertools
 import re
 import shutil
@@ -6,10 +8,10 @@ import subprocess
 import tempfile
 import unittest
 
-feature = Path('RepoPocket/UpdateFeature.swift').read_text()
+feature = Path(REPO_ROOT, 'RepoPocket/UpdateFeature.swift').read_text()
 body = feature.split('struct AppUpdateSection: View {', 1)[1]
-settings = Path('RepoPocket/RepoPocketApp.swift').read_text().split('struct SettingsView: View {', 1)[1]
-style = Path('RepoPocket/WorkspaceSelectionUI.swift').read_text()
+settings = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text().split('struct SettingsView: View {', 1)[1]
+style = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelectionUI.swift').read_text()
 
 
 class UpdateGroupTests(unittest.TestCase):

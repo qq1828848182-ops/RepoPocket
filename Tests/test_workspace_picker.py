@@ -1,7 +1,9 @@
 """Static lifecycle contracts; not a substitute for Files/provider device tests."""
 from pathlib import Path
-picker = Path('RepoPocket/WorkspaceDocumentPicker.swift').read_text()
-view = Path('RepoPocket/WorkspaceView.swift').read_text()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+picker = Path(REPO_ROOT, 'RepoPocket/WorkspaceDocumentPicker.swift').read_text()
+view = Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
 assert 'let id = UUID()' in picker and 'let kind: Kind' in picker
 assert '@State private var importRequest: WorkspaceImportRequest?' in view
 assert '.sheet(item: $importRequest)' in view and '.id(request.id)' in view
@@ -13,8 +15,8 @@ assert 'importRequest = nil\n                    guard let urls else' in view
 assert 'request.isZIP ? [.zip] : [.folder], asCopy: false' in picker
 assert 'var allowsMultipleSelection = true' in picker
 assert 'picker.allowsMultipleSelection = allowsMultipleSelection' in picker
-git_view = Path('RepoPocket/GitWorkspaceView.swift').read_text()
-core = Path('RepoPocket/GitCore.swift').read_text()
+git_view = Path(REPO_ROOT, 'RepoPocket/GitWorkspaceView.swift').read_text()
+core = Path(REPO_ROOT, 'RepoPocket/GitCore.swift').read_text()
 assert 'FolderPicker' not in git_view and 'UIDocumentPickerViewController' not in git_view
 assert '.sheet(item: $importRequest)' in git_view and '.id(request.id)' in git_view
 assert 'WorkspaceDocumentPicker(request: request, allowsMultipleSelection: false)' in git_view

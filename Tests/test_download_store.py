@@ -1,9 +1,11 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import unittest, shutil, subprocess, tempfile
-rules = Path('RepoPocket/DownloadRules.swift').read_text()
-store = Path('RepoPocket/DownloadStore.swift').read_text()
-app = Path('RepoPocket/RepoPocketApp.swift').read_text()
-account = Path('RepoPocket/AccountManagement.swift').read_text()
+rules = Path(REPO_ROOT, 'RepoPocket/DownloadRules.swift').read_text()
+store = Path(REPO_ROOT, 'RepoPocket/DownloadStore.swift').read_text()
+app = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+account = Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text()
 class DownloadTests(unittest.TestCase):
  def test_real_callsites_and_lifecycle(self):
   for text in ['resolvingBookmarkData', 'bookmarkDataIsStale', 'startAccessingSecurityScopedResource', 'stopAccessingSecurityScopedResource', 'NSFileCoordinator', 'volumeAvailableCapacityForImportantUsageKey', 'LocalStore.snapshotFileSHA256', 'AccountStore.generation']:
@@ -11,10 +13,10 @@ class DownloadTests(unittest.TestCase):
   self.assertNotIn('Data(contentsOf:', store + rules)
   self.assertNotIn('downloadsDirectory', store)
   self.assertIn('DownloadStore.shared.persist(temporary, session: generation)', app)
-  upload = Path('RepoPocket/UploadView.swift').read_text()
+  upload = Path(REPO_ROOT, 'RepoPocket/UploadView.swift').read_text()
   self.assertIn('api.downloadAsset(repo, asset: asset)', upload)
   self.assertIn('DownloadStore.shared.persist(temporary, session: generation)', upload)
-  update = Path('RepoPocket/UpdateFeature.swift').read_text()
+  update = Path(REPO_ROOT, 'RepoPocket/UpdateFeature.swift').read_text()
   self.assertIn('DownloadStore.shared.persist(file, session: accountSession)', update)
   self.assertNotIn('removeItem(at: downloaded)', update)
   self.assertIn('archive.extract', update)
@@ -27,15 +29,15 @@ class DownloadTests(unittest.TestCase):
   self.assertIn('Button("完成") { close() }', account)
   self.assertNotIn('Button("完成") { close() }.disabled', account)
   self.assertIn('verification?.cancel()', account)
-  self.assertIn('try Task.checkCancellation()\n        try CredentialStore.save', Path('RepoPocket/GitHub.swift').read_text())
-  cache = Path('RepoPocket/CacheSettings.swift').read_text()
+  self.assertIn('try Task.checkCancellation()\n        try CredentialStore.save', Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text())
+  cache = Path(REPO_ROOT, 'RepoPocket/CacheSettings.swift').read_text()
   self.assertIn('confirmationDialog', cache)
   self.assertIn('clearIfIdle()', cache)
   self.assertIn('downloads.operations > 0', cache)
   self.assertIn('CacheRules.clear(root: root', cache)
-  redirect = Path('RepoPocket/ReleaseAssetRedirectPolicy.swift').read_text()
+  redirect = Path(REPO_ROOT, 'RepoPocket/ReleaseAssetRedirectPolicy.swift').read_text()
   self.assertIn('redirected.setValue(nil, forHTTPHeaderField: "Authorization")', redirect)
-  self.assertIn('canCheckAppUpdate', Path('RepoPocket/GitHub.swift').read_text())
+  self.assertIn('canCheckAppUpdate', Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text())
  @unittest.skipUnless(shutil.which('swiftc'), 'Pure Swift mocks run in Actions; no Apple device data touched')
  def test_production_rules_mock(self):
   source = rules + r'''

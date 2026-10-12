@@ -1,5 +1,7 @@
 from pathlib import Path
-r=Path('RepoPocket')
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+r=Path(REPO_ROOT, 'RepoPocket')
 a=(r/'RepoPocketApp.swift').read_text()
 u=(r/'UploadView.swift').read_text()
 d=(r/'DebEditorView.swift').read_text()

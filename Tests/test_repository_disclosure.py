@@ -1,8 +1,10 @@
 """Inline native List rows preserve swipe; stable end caps suppress path morphs."""
 from pathlib import Path
-ui = Path('RepoPocket/RepoPocketApp.swift').read_text()
-sections = Path('RepoPocket/RepositorySections.swift').read_text()
-style = Path('RepoPocket/WorkspaceSelectionUI.swift').read_text()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ui = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+sections = Path(REPO_ROOT, 'RepoPocket/RepositorySections.swift').read_text()
+style = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelectionUI.swift').read_text()
 home = ui.split('struct RepositoriesView:', 1)[1].split('struct BrowserView:', 1)[0]
 settings = ui.split('struct SettingsView:', 1)[1]
 assert home.count('RepositoryInlineSection(api:') == 2

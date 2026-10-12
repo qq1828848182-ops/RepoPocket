@@ -13,65 +13,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test build workflow entry points
-        run: python3 test_build_workflow.py
+        run: python3 Tests/test_build_workflow.py
       - name: Test original baseline historic commit and disk download regressions
-        run: python3 test_workspace_baseline.py
+        run: python3 Tests/test_workspace_baseline.py
       - name: Test production local checkbox and strict commit eligibility
-        run: python3 test_local_selection.py
+        run: python3 Tests/test_local_selection.py
       - name: Test scanner, selective commit and three-way pull
-        run: python3 test_local_store.py
+        run: python3 Tests/test_local_store.py
       - name: Test ZIPFoundation safe extraction
-        run: python3 test_workspace_zip.py
+        run: python3 Tests/test_workspace_zip.py
       - name: Test deb control editor
         run: sh DebControlEditorTests/run-macos.sh
       - name: Test deb UI lifecycle and commit feedback
-        run: python3 test_deb_ui_static.py
+        run: python3 Tests/test_deb_ui_static.py
       - name: Test workspace and TrollFools UI contracts
-        run: python3 test_workspace_troll_static.py
+        run: python3 Tests/test_workspace_troll_static.py
       - name: Test queue and streamed blob core
-        run: python3 test_repo_queue.py
+        run: python3 Tests/test_repo_queue.py
       - name: Test metadata-only plugin editing
-        run: python3 test_troll_metadata.py
+        run: python3 Tests/test_troll_metadata.py
       - name: Test repository deletion with network-free mocks and account management
-        run: python3 test_repository_deletion.py
+        run: python3 Tests/test_repository_deletion.py
       - name: Test manual update SemVer and transient notice contracts
-        run: python3 test_app_update.py
+        run: python3 Tests/test_app_update.py
       - name: Test production update notice lifecycle mocks
-        run: python3 test_update_notice.py
+        run: python3 Tests/test_update_notice.py
       - name: Test dynamic update group boundaries and production Swift corner geometry
-        run: python3 test_update_groups.py
+        run: python3 Tests/test_update_groups.py
       - name: Test production GitHub repository links and shared input contracts
-        run: python3 test_repository_input.py
+        run: python3 Tests/test_repository_input.py
       - name: Test repository menu canonical links and isolated fork mocks
-        run: python3 test_repository_copy_link.py
+        run: python3 Tests/test_repository_copy_link.py
       - name: Test production star state and account guards with network-free mocks
-        run: python3 test_repository_star.py
+        run: python3 Tests/test_repository_star.py
       - name: Test repository statistics and legacy decoding
-        run: python3 test_repository_statistics.py
+        run: python3 Tests/test_repository_statistics.py
       - name: Test multi-account isolation and avatar repository models
-        run: python3 test_accounts.py
+        run: python3 Tests/test_accounts.py
       - name: Test Desktop history, diff and branches
-        run: python3 test_desktop.py
+        run: python3 Tests/test_desktop.py
       - name: Test selection lifecycle, refresh and landscape contracts
-        run: python3 test_selection_lifecycle.py
+        run: python3 Tests/test_selection_lifecycle.py
       - name: Test equal-width cards and soft grouped UI
-        run: python3 test_soft_groups.py
+        run: python3 Tests/test_soft_groups.py
       - name: Test always-visible repository list contracts
-        run: python3 test_repository_disclosure.py
+        run: python3 Tests/test_repository_disclosure.py
       - name: Test persistent downloads, cache whitelist and account lifecycle mocks
-        run: python3 test_download_store.py
+        run: python3 Tests/test_download_store.py
       - name: Test foreground inertness and operation guards
-        run: python3 test_manual_refresh.py
+        run: python3 Tests/test_manual_refresh.py
       - name: Test workspace keyboard focus and submit contracts
-        run: python3 test_workspace_keyboard.py
+        run: python3 Tests/test_workspace_keyboard.py
       - name: Test document picker identity and cancellation contracts
-        run: python3 test_workspace_picker.py
+        run: python3 Tests/test_workspace_picker.py
       - name: Test folding search history and fail-closed permissions
-        run: python3 test_folding_search_safety.py
+        run: python3 Tests/test_folding_search_safety.py
       - name: Test repository UI performance and parent cache contracts
-        run: python3 test_repository_ui_performance.py
+        run: python3 Tests/test_repository_ui_performance.py
       - name: Test restored Browser navigation without repository release requests
-        run: python3 test_browser_no_releases.py
+        run: python3 Tests/test_browser_no_releases.py
       - name: Generate Xcode project
         run: |
           brew install xcodegen

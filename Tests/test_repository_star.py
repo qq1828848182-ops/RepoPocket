@@ -1,7 +1,9 @@
 """No real GitHub mutation: execute production Swift store with an isolated mock."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import unittest, shutil, tempfile, subprocess
-ROOT = Path(__file__).parent
+ROOT = REPO_ROOT
 
 class StarTests(unittest.TestCase):
     def test_menu_and_auth_contract(self):

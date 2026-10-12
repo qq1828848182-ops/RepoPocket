@@ -1,11 +1,13 @@
 """Compact summaries / targeted search and avatar regressions; no FPS claims."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import shutil
 import subprocess
 import tempfile
 import unittest
 
-ROOT = Path(__file__).parent
+ROOT = REPO_ROOT
 UI = (ROOT/'RepoPocket/RepositoryUI.swift').read_text()
 SEARCH = (ROOT/'RepoPocket/RepositorySearchView.swift').read_text()
 APP = (ROOT/'RepoPocket/RepoPocketApp.swift').read_text()

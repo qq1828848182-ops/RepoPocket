@@ -1,8 +1,10 @@
 import subprocess, tempfile
 from pathlib import Path
-source = Path('RepoPocket/WorkspaceView.swift').read_text()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+source = Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
 core = source[source.index('struct LocalSnapshot:'):source.index('\nstruct WorkspaceView:')]
-remote = Path('RepoPocket/WorkspaceRemote.swift').read_text().replace('import Foundation','').replace('import CryptoKit','')
+remote = Path(REPO_ROOT, 'RepoPocket/WorkspaceRemote.swift').read_text().replace('import Foundation','').replace('import CryptoKit','')
 tests = r'''
 let fm = FileManager.default
 let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -178,5 +180,5 @@ print("PASS: 27 three-way matrix cases; both conflict choices; staged filesystem
 tests = tests.replace('precondition(try LocalStore.binding(checkout).snapshot.hashes == latest.snapshot.hashes)', 'let saved = try LocalStore.binding(checkout)\nprecondition(saved.snapshot.hashes == latest.snapshot.hashes)')
 with tempfile.TemporaryDirectory() as d:
  p = Path(d) / 'tests.swift'
- p.write_text('import Foundation\nimport CryptoKit\nstruct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }\n'+core+remote+Path('RepoPocket/WorkspaceSelection.swift').read_text()+tests)
+ p.write_text('import Foundation\nimport CryptoKit\nstruct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }\n'+core+remote+Path(REPO_ROOT, 'RepoPocket/WorkspaceSelection.swift').read_text()+tests)
  subprocess.run(['swift', str(p)], check=True)

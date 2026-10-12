@@ -1,6 +1,8 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile
-source = Path('RepoPocket/DesktopModels.swift').read_text() + r'''
+source = Path(REPO_ROOT, 'RepoPocket/DesktopModels.swift').read_text() + r'''
 for name in ["main", "feature/mobile", "中文分支", "release-0.7"] { precondition(DesktopRules.validBranch(name)) }
 for name in ["", "HEAD", "@", "a..b", "a b", "a\\b", "/a", "a/", ".a", "a.lock", "a/.b", "a//b", "a@{b", "a?b", "a:", "a[", "a*", "a~", "a^", "-bad", "a\n"] { precondition(!DesktopRules.validBranch(name)) }
 let raw = #"{"sha":"abc","commit":{"message":"Title\n\nBody","author":{"name":"Test","date":"2026-10-10T00:00:00Z"}},"stats":{"total":3,"additions":2,"deletions":1},"files":[{"filename":"目录/new.txt","previous_filename":"old.txt","status":"renamed","additions":2,"deletions":1,"patch":"@@ -1 +1 @@\n-old\n+new"},{"filename":"file.deb","status":"modified","additions":0,"deletions":0}]}"#
@@ -18,9 +20,9 @@ with tempfile.TemporaryDirectory() as d:
     p=Path(d)/'main.swift'; p.write_text(source)
     subprocess.run(['swiftc',str(p),'-o',d+'/tests'],check=True)
     subprocess.run([d+'/tests'],check=True)
-g=Path('RepoPocket/GitHub.swift').read_text()
-a=Path('RepoPocket/RepoPocketApp.swift').read_text()
-v=Path('RepoPocket/DesktopViews.swift').read_text()
+g=Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
+a=Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+v=Path(REPO_ROOT, 'RepoPocket/DesktopViews.swift').read_text()
 assert v.count('@ScaledMetric(relativeTo: .body)') == 2
 assert 'messageExpanded ? nil : 4' in v and 'messageExpanded.toggle()' in v
 assert '.font(.system(size: messageSize, weight: .medium))' in v

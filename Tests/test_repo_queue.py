@@ -1,5 +1,7 @@
 import subprocess, tempfile, hashlib
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 payload = b'0123456789abcdef' * (11 * 1024 * 1024 // 16)
 git = hashlib.sha1(b'blob ' + str(len(payload)).encode() + b'\0' + payload).hexdigest()
 sha = hashlib.sha256(payload).hexdigest()
@@ -65,7 +67,7 @@ print("PASS: queue targets/reselection, atomic multi-folder tree/delete, conflic
 # Throwing expressions must be evaluated outside precondition's nonthrowing autoclosure.
 tests = tests.replace('precondition(try hash.finish(expectedGit:', 'let verified = try hash.finish(expectedGit:').replace('"'+git+'") == "'+sha+'")','"'+git+'")\nprecondition(verified == "'+sha+'")')
 tests = tests.replace('precondition(try LocalStore.snapshotFileSHA256(file) == "'+sha+'")','let diskHash = try LocalStore.snapshotFileSHA256(file)\nprecondition(diskHash == "'+sha+'")')
-source = 'import Foundation\nimport CryptoKit\nstruct AppError: Error { let text: String }\nenum LocalStore {}\n' + Path('RepoPocket/RepoQueue.swift').read_text() + tests
+source = 'import Foundation\nimport CryptoKit\nstruct AppError: Error { let text: String }\nenum LocalStore {}\n' + Path(REPO_ROOT, 'RepoPocket/RepoQueue.swift').read_text() + tests
 with tempfile.TemporaryDirectory() as d:
     f=Path(d)/'main.swift'; f.write_text(source)
     subprocess.run(['swiftc', str(f), '-o',d+'/test'],check=True)

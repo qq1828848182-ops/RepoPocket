@@ -1,8 +1,10 @@
 """Foreground is inert; scans only first-load/manual/actual operations."""
 from pathlib import Path
-w=Path('RepoPocket/WorkspaceView.swift').read_text()
-a=Path('RepoPocket/RepoPocketApp.swift').read_text()
-for source in Path('RepoPocket').glob('*.swift'):
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+w=Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
+a=Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+for source in Path(REPO_ROOT, 'RepoPocket').glob('*.swift'):
     s=source.read_text()
     for forbidden in ['scenePhase', 'willEnterForegroundNotification', 'didBecomeActiveNotification']:
         assert forbidden not in s, source
@@ -28,7 +30,7 @@ for signature in ['importItems(_ urls: [URL], zip: Bool)', 'downloadRemote()', '
     assert '!busy' in body.split('busy = true',1)[0], signature
 assert 'hasScanned = true' in scan  # no foreground reset/recreation identity
 import re
-build = re.search(r'CURRENT_PROJECT_VERSION: "(\d+)"', Path("project.yml").read_text()).group(1)
+build = re.search(r'CURRENT_PROJECT_VERSION: "(\d+)"', Path(REPO_ROOT, "project.yml").read_text()).group(1)
 assert int(build) >= 15
-assert f'CFBundleVersion\' "$APP/Info.plist")" = "{build}"' in Path(".github/workflows/build.yml").read_text()
+assert f'CFBundleVersion\' "$APP/Info.plist")" = "{build}"' in Path(REPO_ROOT, ".github/workflows/build.yml").read_text()
 print('PASS manual-only foreground contract, stable Text, explicit safety reason, no blocking overlay, atomic scan/reconciliation, operation busy gates and internal build12')

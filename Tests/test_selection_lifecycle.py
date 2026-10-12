@@ -1,7 +1,9 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile
 
-model = Path('RepoPocket/WorkspaceSelection.swift').read_text()
+model = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelection.swift').read_text()
 tests = r'''
 let folder = URL(fileURLWithPath: "/tmp/workspace")
 let scope = WorkspaceSelectionScope(accountID: "alice", folder: folder, repository: "Owner/Repo", branch: "main")
@@ -40,11 +42,11 @@ with tempfile.TemporaryDirectory() as d:
     subprocess.run(['swiftc', str(p), '-o', d + '/tests'], check=True)
     subprocess.run([d + '/tests'], check=True)
 
-w = Path('RepoPocket/WorkspaceView.swift').read_text()
-a = Path('RepoPocket/RepoPocketApp.swift').read_text()
-h = Path('RepoPocket/DesktopViews.swift').read_text()
-u = Path('RepoPocket/WorkspaceSelectionUI.swift').read_text()
-c = Path('RepoPocket/RepositoryUI.swift').read_text()
+w = Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
+a = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+h = Path(REPO_ROOT, 'RepoPocket/DesktopViews.swift').read_text()
+u = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelectionUI.swift').read_text()
+c = Path(REPO_ROOT, 'RepoPocket/RepositoryUI.swift').read_text()
 assert '@State private var selected' not in w and 'selected.removeAll()' not in w
 assert '@StateObject private var selectionStore' in a and '.environmentObject(selectionStore)' in a
 assert '.buttonStyle(.plain)' in w and '.frame(width: 44, height: 44)' in w and 'Text(change.relativePath)' in w
@@ -53,7 +55,7 @@ assert scan.index('before.hashes == after.hashes') < scan.index('roots = result.
 assert 'folder == requestedFolder' in scan and 'generation == AccountStore.generation' in scan
 commit = w[w.index('@MainActor private func commit()'):w.index('@MainActor private func scan()')]
 assert 'if succeeded { await scan() }' in commit and 'commitSucceeded(committing' in commit
-sections = Path('RepoPocket/RepositorySections.swift').read_text()
+sections = Path(REPO_ROOT, 'RepoPocket/RepositorySections.swift').read_text()
 assert 'if busy && repositories.isEmpty && !refreshing' in sections and 'if busy && entries.isEmpty && !refreshing' in a
 assert '.refreshable { refreshing = true; defer { refreshing = false }; await load() }' in sections
 assert '.task { if !loaded' in a and '.task { if !hasScanned' in w
