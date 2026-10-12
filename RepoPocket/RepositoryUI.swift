@@ -127,7 +127,7 @@ struct RepositoryStatistics: View {
     }
     @ViewBuilder private var counts: some View {
         if let stars = repository.stargazers_count {
-            Label("\(stars.formatted())", systemImage: "star")
+            Label("\(max(0, stars).formatted())", systemImage: "star")
                 .accessibilityLabel("\(stars) 个星标")
         }
         if let forks = repository.forks_count {
@@ -154,13 +154,14 @@ struct RepositoryCard: View {
     var body: some View {
         CompactRepositorySummary(fullName: repository.full_name, name: repository.name,
             owner: repository.owner?.login, avatarURL: repository.owner?.avatar_url,
-            description: repository.description, repository: repository,
+            description: repository.description, repository: repository, starStore: api.stars,
             descriptionLineLimit: descriptionLineLimit, parent: repository.fork == true ? (repository.parent ?? parent) : nil,
             openParent: { showParent = true })
         .contextMenu {
             if copyLinkContextMenu {
                 CopyRepositoryLinkButton(repository: repository.full_name, feedback: copyFeedback)
                 ForkRepositoryMenuButton(repository: repository.full_name, api: api, state: forkMenu)
+                RepositoryStarMenuButton(name: repository.full_name, repository: repository, api: api)
             }
         }
         .repositoryCopyNotice(copyFeedback)
@@ -188,6 +189,7 @@ struct CompactRepositorySummary: View {
     var avatarURL: String? = nil
     var description: String? = nil
     var repository: Repository? = nil
+    var starStore: RepositoryStarStore? = nil
     var descriptionLineLimit: Int? = 2
     var parent: RepositoryReference? = nil
     var openParent: (() -> Void)? = nil
@@ -212,7 +214,10 @@ struct CompactRepositorySummary: View {
                 }.buttonStyle(.borderless)
                 .accessibilityLabel("浏览复刻来源 " + parent.full_name)
             }
-            if let repository { RepositoryStatistics(repository: repository) }
+            if let repository {
+                if let starStore { StarAwareRepositoryStatistics(repository: repository, store: starStore) }
+                else { RepositoryStatistics(repository: repository) }
+            }
         }
         .padding(.vertical, verticalSizeClass == .compact ? 3 : 7)
         .frame(maxWidth: .infinity, alignment: .leading)

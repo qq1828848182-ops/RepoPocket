@@ -99,6 +99,12 @@ struct RepositoriesView: View {
             }
             .refreshable { refreshing = true; await refresh(); refreshing = false }
             .task { if !loaded && !CredentialStore.read().isEmpty { await refresh() } }
+            .onChange(of: api.starRevision) { _ in
+                guard api.isCurrentSession else { return }
+                if let cached = api.cachedCollection(.owned) { repos = cached }
+                if let cached = api.cachedCollection(.starred) { starred = cached }
+                else if loaded && !busy { Task { await refreshStars() } }
+            }
             .sheet(item: $collectionSearch) { section in
                 NavigationStack {
                     RepositoryCollectionView(api: api, section: section, initialRepositories: loaded ? (section == .owned ? repos : starred) : nil)
@@ -135,6 +141,14 @@ struct RepositoriesView: View {
                 }
             }
         }
+    }
+    private func refreshStars() async {
+        guard api.canCheckAppUpdate else { return }
+        do {
+            let list = try await api.starredRepositories()
+            guard api.isCurrentSession else { return }
+            starred = list; api.cacheCollection(list, section: .starred)
+        } catch { if api.isCurrentSession { api.message = error.localizedDescription } }
     }
     private var isOwnRepository: Bool {
         guard !api.login.isEmpty else { return false }
@@ -256,6 +270,7 @@ struct BrowserView: View {
             Menu {
                 CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)
                 ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
+                RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
                 Button("下载整个仓库 ZIP") { Task { await zip() } }

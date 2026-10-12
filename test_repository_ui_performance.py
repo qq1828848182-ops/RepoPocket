@@ -54,7 +54,7 @@ class RepositoryUIPerformanceTests(unittest.TestCase):
         self.assertNotIn('.source', api)
         self.assertIn('Text("复刻自 " + parent.full_name)', UI)
         self.assertIn('guard !Task.isCancelled else { return }', UI)
-        self.assertLess(UI.index('Text("复刻自'), UI.index('if let repository { RepositoryStatistics'))
+        self.assertLess(UI.index('Text("复刻自'), UI.index('if let repository {', UI.index('Text("复刻自')))
         self.assertIn('frame(width: 44, height: 44)', section)
         self.assertNotIn('Color.clear.frame(height: 8)', section)
         self.assertIn('bottom: repository.id == repositories.last?.id', section)

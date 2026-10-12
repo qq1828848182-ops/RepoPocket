@@ -157,6 +157,40 @@ final class GitHub: ObservableObject {
     private var parentActive = 0
     private var parentWaiters: [CheckedContinuation<Void, Never>] = []
     private var collectionCache: [RepositoryHomeSection: [Repository]] = [:]
+    lazy var stars = RepositoryStarStore(api: self)
+    @Published private(set) var starRevision = 0
+    func requireStarSession() throws {
+        try ensureActiveAccount()
+        guard !CredentialStore.read(account: accountID).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请登录账号") }
+    }
+    func starRequest(_ name: String, method: String) async throws -> Bool {
+        try requireStarSession()
+        let canonical = try RepositoryInput.parse(name)
+        let path = "/user/starred/" + canonical.split(separator: "/").map { Self.component(String($0)) }.joined(separator: "/")
+        guard ["GET", "PUT", "DELETE"].contains(method) else { throw AppError(text: "无效星标操作") }
+        // Personal starring is not repository push access. Keep its own auth/session gate.
+        let r = try request(url(path), method: method)
+        let (_, response) = try await session.data(for: r)
+        try requireStarSession()
+        guard let http = response as? HTTPURLResponse else { throw AppError(text: "无有效服务器响应") }
+        return try RepositoryStarRules.status(http.statusCode, checking: method == "GET")
+    }
+    func applyStarChange(name: String, starred: Bool, repository: Repository?) {
+        guard isCurrentSession else { return }
+        let matches: (Repository) -> Bool = { $0.full_name.caseInsensitiveCompare(name) == .orderedSame }
+        if let repository, let owned = collectionCache[.owned] {
+            collectionCache[.owned] = owned.map { matches($0) ? repository : $0 }
+        }
+        if var list = collectionCache[.starred] {
+            list.removeAll(where: matches)
+            if starred {
+                if let repository { list.insert(repository, at: 0) }
+                else { collectionCache[.starred] = nil; starRevision += 1; return }
+            }
+            collectionCache[.starred] = list
+        }
+        starRevision += 1
+    }
     func clearMemoryCaches() {
         guard parentTasks.isEmpty else { return }
         parentCache.removeAll(); collectionCache.removeAll()
@@ -165,6 +199,7 @@ final class GitHub: ObservableObject {
     func cachedCollection(_ section: RepositoryHomeSection) -> [Repository]? { collectionCache[section] }
     func cacheCollection(_ repositories: [Repository], section: RepositoryHomeSection) {
         collectionCache[section] = repositories
+        if section == .starred { stars.seed(repositories) }
     }
     func forkParent(for repository: Repository) async -> RepositoryReference? {
         guard repository.fork == true, isCurrentSession else { return nil }
@@ -211,7 +246,10 @@ final class GitHub: ObservableObject {
         config.httpShouldSetCookies = false
         session = URLSession(configuration: config)
         accountObserver = NotificationCenter.default.publisher(for: .githubAccountChanged)
-            .sink { [weak self] _ in self?.session.invalidateAndCancel() }
+            .sink { [weak self] _ in
+                self?.session.invalidateAndCancel()
+                self?.stars.invalidate()
+            }
     }
     static func component(_ text: String) -> String {
         text.addingPercentEncoding(withAllowedCharacters:
@@ -590,7 +628,7 @@ final class GitHub: ObservableObject {
         for page in 1...50 {
             let batch = try await decoded([Repository].self, "/user/starred", query: [
                 .init(name: "per_page", value: "100"), .init(name: "page", value: String(page)),
-                .init(name: "sort", value: "updated")])
+                .init(name: "sort", value: "created"), .init(name: "direction", value: "desc")])
             result += batch
             if batch.count < 100 { return result }
             if page == 50 { throw AppError(text: "列表加载未完成：超过分页上限，请缩小范围或重试。") }

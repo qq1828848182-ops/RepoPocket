@@ -103,6 +103,11 @@ struct RepositoryCollectionView: View {
             }
             if !loaded && !CredentialStore.read().isEmpty { await load() }
         }
+        .onChange(of: api.starRevision) { _ in
+            guard api.isCurrentSession else { return }
+            if let cached = api.cachedCollection(section) { repositories = cached }
+            else if loaded && !busy { Task { await load() } }
+        }
         .confirmationDialog("复刻到我的仓库？", isPresented: Binding(get: { pendingFork != nil }, set: { if !$0 { pendingFork = nil } }), titleVisibility: .visible) {
             if let repository = pendingFork { Button("复刻") { pendingFork = nil; Task { await fork(repository) } } }
             Button("取消", role: .cancel) { pendingFork = nil }
