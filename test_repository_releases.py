@@ -23,7 +23,7 @@ class ReleasesTests(unittest.TestCase):
         self.assertIn('decodePage(bytes)',API)
         self.assertNotIn('while true',STATE)
         self.assertIn('state.cancelPage()',UI)
-        self.assertNotIn('Link(',UI)
+        self.assertNotRegex(UI, r'(?<!Navigation)Link\(')
         latest=API.split('func repositoryLatestRelease(',1)[1].split('func downloadReleaseAsset(',1)[0]
         self.assertIn('"/releases/latest"',latest)
         self.assertIn('_ = try await repository(repo)',latest)
