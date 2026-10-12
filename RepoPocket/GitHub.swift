@@ -118,6 +118,9 @@ struct Release: Decodable, Identifiable {
     let upload_url: String
     let html_url: String
     let assets: [Asset]
+    let prerelease: Bool?
+    let published_at: String?
+    let body: String?
 }
 struct Asset: Decodable, Identifiable {
     let id: Int
@@ -839,6 +842,39 @@ final class GitHub: ObservableObject {
         r.setValue("application/vnd.github.raw+json", forHTTPHeaderField: "Accept")
         return try await download(r, name: entry.name)
     }
+    func repositoryReleasePage(_ repo: String, page: Int) async throws -> ReleasePage {
+        guard page > 0 else { throw AppError(text: "无效页码") }
+        let r = try request(url(Self.repoPath(repo) + "/releases", query: [
+            .init(name: "per_page", value: "100"), .init(name: "page", value: String(page))]))
+        let (bytes, response) = try await session.data(for: r)
+        try Task.checkCancellation()
+        try check(bytes, response, operation: "读取发行版")
+        let values = try JSONDecoder().decode([Release].self, from: bytes)
+        let link = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Link") ?? ""
+        // Follow page numbers only; never follow a server-provided arbitrary Link URL with credentials.
+        let next = link.components(separatedBy: ",").contains { $0.contains("rel=\"next\"") }
+        return ReleasePage(values: values, hasNext: next)
+    }
+    func repositoryLatestRelease(_ repo: String) async throws -> Release? {
+        do {
+            let value = try await decoded(Release.self, Self.repoPath(repo) + "/releases/latest")
+            guard !value.draft, value.prerelease != true else { throw AppError(text: "GitHub latest 响应无效") }
+            return value
+        } catch let error as GitHubAPIError where error.status == 404 {
+            // Missing/private repositories and denied access must not masquerade as no latest.
+            _ = try await repository(repo)
+            return nil
+        }
+    }
+    func downloadReleaseAsset(_ repo: String, asset: Asset, progress: @escaping (Double) -> Void) async throws -> URL {
+        guard asset.id > 0, asset.size >= 0 else { throw AppError(text: "附件信息无效") }
+        // Never request browser_download_url: private and public attachments both use the authenticated asset API.
+        let endpoint = try Self.repoPath(repo) + "/releases/assets/" + String(asset.id)
+        var r = try request(url(endpoint))
+        r.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+        let delegate = ReleaseAssetRedirectPolicy(progress: progress)
+        return try await download(r, name: asset.name, redirect: delegate)
+    }
     func downloadAsset(_ repo: String, asset: Asset) async throws -> URL {
         let endpoint = try Self.repoPath(repo) + "/releases/assets/" + String(asset.id)
         var r = try request(url(endpoint))
@@ -853,6 +889,7 @@ final class GitHub: ObservableObject {
     private func download(_ request: URLRequest, name: String, redirect: URLSessionTaskDelegate = ArchiveRedirectPolicy()) async throws -> URL {
         let (tmp, response) = try await session.download(for: request, delegate: redirect)
         defer { try? FileManager.default.removeItem(at: tmp) }
+        try Task.checkCancellation()
         try ensureActiveAccount()
         do {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
