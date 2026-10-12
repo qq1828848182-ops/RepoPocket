@@ -94,8 +94,8 @@ import ZIPFoundation
                             guard self.generation == token else { throw CancellationError() }
                             guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8), let expected = text.split(whereSeparator: { $0.isWhitespace }).first, expected.count == 64, expected.allSatisfy({ $0.isHexDigit }) else { throw AppError(text: "官方 SHA256 附件无效或下载失败。") }
                             guard try LocalStore.snapshotFileSHA256(file) == expected.lowercased() else { throw AppError(text: "IPA SHA256 与官方附件不符，已阻止安装。") }
-                            self.message = "下载完成，请手动安装"
-                        } else { self.message = "下载完成，请手动安装" }
+                            self.message = "下载完成，请选择应用安装"
+                        } else { self.message = "下载完成，请选择应用安装" }
                         self.downloaded = file
                     } catch { try? FileManager.default.removeItem(at: file); throw error }
                 } catch { if self.generation == token { self.message = (error as? URLError)?.code == .cancelled ? "已取消下载。" : "下载/校验失败：\(error.localizedDescription)" } }

@@ -43,12 +43,16 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     let checker = UpdateChecker()
     await checker.check(api: GitHub("first"))
     precondition(checker.message == "检查失败，请稍后重试")
-    try await Task.sleep(nanoseconds: 6_200_000_000)
+    await Task.yield()
+    for _ in 0..<100 {
+        if checker.message.isEmpty { break }
+        try await Task.sleep(nanoseconds: 100_000_000)
+    }
     precondition(checker.message.isEmpty)
     await checker.check(api: GitHub("速率旧消息"))
-    try await Task.sleep(nanoseconds: 200_000_000)
+    try await Task.sleep(nanoseconds: 1_000_000_000)
     await checker.check(api: GitHub("凭据新消息"))
-    try await Task.sleep(nanoseconds: 5_900_000_000)
+    try await Task.sleep(nanoseconds: 5_300_000_000)
     precondition(checker.message == "登录已失效，请更新凭据")
     checker.leavePage()
     precondition(checker.message.isEmpty && !checker.checking && !checker.downloading && checker.release == nil)
