@@ -61,6 +61,7 @@ enum RepositoryReleaseRules {
         }
         summaryTask = task
         await withTaskCancellationHandler(operation: { await task.value }, onCancel: { task.cancel() })
+        if identity == token && task.isCancelled { reset() }
     }
     func more(api: GitHub, repo: String) {
         guard !paging, hasNext, target == repo, api.isCurrentSession else { return }
@@ -97,7 +98,7 @@ enum RepositoryReleaseRules {
         identity = token; activeID = asset.id; progress = 0; saved = nil; message = nil
         task = Task { [weak self] in
             guard let self else { return }
-            func valid() -> Bool { self.identity == token && generation == AccountStore.generation && api.isCurrentSession && !Task.isCancelled }
+            @MainActor func valid() -> Bool { self.identity == token && generation == AccountStore.generation && api.isCurrentSession && !Task.isCancelled }
             defer { if self.identity == token { self.activeID = nil; self.task = nil } }
             do {
                 try await DownloadStore.shared.requireAuthorization()
