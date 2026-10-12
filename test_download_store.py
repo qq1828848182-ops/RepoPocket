@@ -40,7 +40,9 @@ class DownloadTests(unittest.TestCase):
  def test_production_rules_mock(self):
   source = rules + r'''
 let fm = FileManager.default
-let root = fm.temporaryDirectory.appendingPathComponent("DownloadMock-" + UUID().uuidString)
+// macOS temporaryDirectory uses /var -> /private/var. Resolve that system alias
+// before constructing the fixture; deliberate symlinks below root remain rejected.
+let root = fm.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("DownloadMock-" + UUID().uuidString)
 try fm.createDirectory(at: root, withIntermediateDirectories: true)
 defer { try? fm.removeItem(at: root) }
 let parent = root.appendingPathComponent("chosen")
