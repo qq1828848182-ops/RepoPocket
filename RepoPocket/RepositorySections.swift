@@ -89,11 +89,12 @@ struct RepositoryCollectionView: View {
     @State private var repositories: [Repository] = []
     @State private var busy = false
     @State private var loaded = false
+    @State private var refreshing = false
     @State private var pendingFork: Repository?
 
     var body: some View {
         List {
-            if busy && repositories.isEmpty {
+            if busy && repositories.isEmpty && !refreshing {
                 ProgressView().frame(maxWidth: .infinity)
             } else if loaded && repositories.isEmpty {
                 Text(section == .owned ? "暂无仓库" : "暂无已加星标仓库")
@@ -120,7 +121,7 @@ struct RepositoryCollectionView: View {
         .navigationTitle(section.title)
         .adaptiveWorkspaceLayout()
         .toolbar { Button("刷新") { Task { await load() } }.disabled(busy) }
-        .refreshable { await load() }
+        .refreshable { refreshing = true; defer { refreshing = false }; await load() }
         .task { if !loaded && !CredentialStore.read().isEmpty { await load() } }
         .confirmationDialog("复刻到我的仓库？", isPresented: Binding(
             get: { pendingFork != nil },

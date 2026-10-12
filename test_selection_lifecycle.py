@@ -53,7 +53,9 @@ assert scan.index('before.hashes == after.hashes') < scan.index('roots = result.
 assert 'folder == requestedFolder' in scan and 'generation == AccountStore.generation' in scan
 commit = w[w.index('@MainActor private func commit()'):w.index('@MainActor private func scan()')]
 assert 'if succeeded { await scan() }' in commit and 'commitSucceeded(committing' in commit
-assert 'if busy && repos.isEmpty && !refreshing' in a and 'if busy && entries.isEmpty && !refreshing' in a
+sections = Path('RepoPocket/RepositorySections.swift').read_text()
+assert 'if busy && repositories.isEmpty && !refreshing' in sections and 'if busy && entries.isEmpty && !refreshing' in a
+assert '.refreshable { refreshing = true; defer { refreshing = false }; await load() }' in sections
 assert '.task { if !loaded' in a and '.task { if !hasScanned' in w
 assert 'guard !busy else { return }' in a and 'guard !busy else { return }' in scan
 assert 'commits = []' not in h and 'if refresh { commits = batch }' in h
