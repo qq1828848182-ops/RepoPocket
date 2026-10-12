@@ -1,12 +1,14 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import unittest, tempfile, subprocess, shutil
 
-rules = Path('RepoPocket/AppUpdateRules.swift').read_text()
-feature = Path('RepoPocket/UpdateFeature.swift').read_text()
+rules = Path(REPO_ROOT, 'RepoPocket/AppUpdateRules.swift').read_text()
+feature = Path(REPO_ROOT, 'RepoPocket/UpdateFeature.swift').read_text()
 
 class UpdateTests(unittest.TestCase):
     def test_manual_safe_contract(self):
-        self.assertIn('.task { updateChecker.enterPage() }', Path('RepoPocket/RepoPocketApp.swift').read_text())
+        self.assertIn('.task { updateChecker.enterPage() }', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
         entry = feature.split('func enterPage()', 1)[1].split('private func clearNotice', 1)[0]
         self.assertNotIn('check(api:', entry)
         self.assertNotIn('officialAppUpdateData', entry)
@@ -16,8 +18,8 @@ class UpdateTests(unittest.TestCase):
             self.assertNotIn(forbidden, feature)
         for value in ['downloadTask?.cancel()', 'snapshotFileSHA256', 'archive.extract', 'HTTPURLResponse', 'https://github.com/wm0104/RepoPocket/releases']:
             self.assertIn(value, feature)
-        self.assertIn('AppUpdateSection(api: api, checker: updateChecker)', Path('RepoPocket/RepoPocketApp.swift').read_text())
-        api = Path('RepoPocket/GitHub.swift').read_text()
+        self.assertIn('AppUpdateSection(api: api, checker: updateChecker)', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
+        api = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
         update = api.split('func officialAppUpdateData()', 1)[1].split('func deletionContext', 1)[0]
         self.assertEqual(update.count('try ensureActiveAccount()'), 2)
         self.assertIn('CredentialStore.read(account: accountID)', api)
@@ -28,12 +30,12 @@ class UpdateTests(unittest.TestCase):
         self.assertIn('session.data(for: r, delegate: OfficialUpdateRedirectPolicy())', update)
         self.assertIn('https://api.github.com/repos/wm0104/RepoPocket/releases/latest', update)
         self.assertNotIn('forHTTPHeaderField: "Authorization"', feature.split('func download()', 1)[1])
-        redirect = Path('RepoPocket/OfficialUpdateRedirectPolicy.swift').read_text()
+        redirect = Path(REPO_ROOT, 'RepoPocket/OfficialUpdateRedirectPolicy.swift').read_text()
         self.assertIn('completionHandler(nil)', redirect)
         self.assertNotIn('completionHandler(request)', redirect)
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift compiler is available in macOS Actions')
     def test_production_version_and_asset_rules(self):
-        api = Path('RepoPocket/GitHub.swift').read_text()
+        api = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
         source = 'import Foundation\n' + api[api.index('struct AppError:'):api.index('struct GitHubAPIError:')] + rules.replace('import Foundation', '') + r'''
 precondition(AppVersion("1.0.9")! < AppVersion("1.0.10")!)
 precondition(AppVersion("1.0.1-rc.9")! < AppVersion("1.0.1-rc.10")!)

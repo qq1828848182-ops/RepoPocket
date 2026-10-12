@@ -1,6 +1,8 @@
 """Source contracts are not substitutes for true-device keyboard testing."""
 from pathlib import Path
-w = Path('RepoPocket/WorkspaceView.swift').read_text()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+w = Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
 assert '@FocusState private var focusedField: Field?' in w
 for name in ['remoteRepo', 'remoteBranch', 'associationRepo', 'associationBranch', 'baselineRevision', 'commitMessage']:
     assert f'.focused($focusedField, equals: .{name})' in w

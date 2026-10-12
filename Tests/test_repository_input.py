@@ -1,10 +1,12 @@
 """Run the actual production Swift parser and API wrapper, without HTTP."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import shutil, subprocess, tempfile, unittest
 
 class RepositoryInputTests(unittest.TestCase):
     def test_shared_callsite_contracts(self):
-        api = Path('RepoPocket/GitHub.swift').read_text()
+        api = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
         wrapper = api.split('static func repoPath', 1)[1].split('static func filePath', 1)[0]
         self.assertIn('RepositoryInput.parse(fullName)', wrapper)
         for name in ['fetchWorkspace', 'associateWorkspace', 'commitQueue', 'trollPublish', 'metadataSnapshot', 'downloadZIP']:
@@ -12,17 +14,17 @@ class RepositoryInputTests(unittest.TestCase):
             self.assertIn('let repo = try RepositoryInput.parse(repo)', method)
         self.assertIn('let owner = try RepositoryInput.parse(repo)', api)
         for file in ['RepoPocketApp.swift', 'UploadView.swift', 'WorkspaceView.swift']:
-            ui = Path('RepoPocket/' + file).read_text()
+            ui = Path(REPO_ROOT, 'RepoPocket/' + file).read_text()
             self.assertNotIn('TextField("用户名/仓库名"', ui)
             self.assertNotIn('TextField("已有仓库：', ui)
             self.assertIn('TextField("仓库链接"', ui)
-        self.assertIn('repo: snapshot.binding.repo', Path('RepoPocket/TrollMetadataView.swift').read_text())
+        self.assertIn('repo: snapshot.binding.repo', Path(REPO_ROOT, 'RepoPocket/TrollMetadataView.swift').read_text())
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Production Swift execution on macOS Actions')
     def test_production_parser_and_api_path(self):
-        api = Path('RepoPocket/GitHub.swift').read_text()
+        api = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
         methods = api.split('    static func component', 1)[1].split('    static func filePath', 1)[0]
-        source = Path('RepoPocket/RepositoryInput.swift').read_text() + '\nenum GitHub { static func component' + methods + '\n}\n' + r'''
+        source = Path(REPO_ROOT, 'RepoPocket/RepositoryInput.swift').read_text() + '\nenum GitHub { static func component' + methods + '\n}\n' + r'''
 let valid: [(String, String)] = [
     ("owner/repo", "owner/repo"), (" Owner/Repo-1_2.3 \n", "Owner/Repo-1_2.3"),
     ("owner/repo.git", "owner/repo"), ("owner/repo/", "owner/repo"),

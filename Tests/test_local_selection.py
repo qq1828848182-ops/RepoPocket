@@ -1,9 +1,11 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile
-w=Path('RepoPocket/WorkspaceView.swift').read_text()
+w=Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
 core=w[w.index('struct LocalSnapshot:'):w.index('\nstruct WorkspaceView:')]
-r=Path('RepoPocket/WorkspaceRemote.swift').read_text().replace('import Foundation','').replace('import CryptoKit','')
-s=Path('RepoPocket/WorkspaceSelection.swift').read_text()
+r=Path(REPO_ROOT, 'RepoPocket/WorkspaceRemote.swift').read_text().replace('import Foundation','').replace('import CryptoKit','')
+s=Path(REPO_ROOT, 'RepoPocket/WorkspaceSelection.swift').read_text()
 tests=r'''
 let fm=FileManager.default
 let root=fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -91,6 +93,6 @@ assert 'HStack {' in row and 'NavigationLink { LocalDiffView' in row
 commit=w.split('@MainActor private func commit()',1)[1].split('@MainActor private func scan()',1)[0]
 assert 'commitBlockReason == nil' in commit and 'persisted.snapshot.hashes == binding.snapshot.hashes' in commit
 assert 'LocalStore.prepare' in commit
-api=Path('RepoPocket/GitHub.swift').read_text()
+api=Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
 assert '"force": false' in api and '提交准备期间远端已变化' in api
 print('PASS independent checkbox static hit area and strict production submit contracts; device hit testing not measured')

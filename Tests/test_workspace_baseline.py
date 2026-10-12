@@ -1,8 +1,10 @@
 """Compile production baseline/selection/redirect rules; UI and download invariants."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile
-w=Path('RepoPocket/WorkspaceView.swift').read_text()
-g=Path('RepoPocket/GitHub.swift').read_text()
+w=Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
+g=Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
 a=g.split('    func associateWorkspace(',1)[1].split('    func commitWorkspace(',1)[0]
 assert 'JSONDecoder().decode(LocalSnapshot.self' in a
 assert 'WorkspaceBaselineRules.matches(original: original, verified: verified.snapshot)' in a
@@ -19,8 +21,8 @@ assert 'top: change.id == changes.first?.id && binding != nil && !busy' in w
 assert 'softGroupedRow(top: !changes.isEmpty && !busy)' in w
 assert '.disabled(busy || binding == nil)' in w
 assert 'baselineRevision).focused($focusedField, equals: .baselineRevision)' in w
-rules=Path('RepoPocket/WorkspaceBaselineRules.swift').read_text()
-selection=Path('RepoPocket/WorkspaceSelection.swift').read_text()
+rules=Path(REPO_ROOT, 'RepoPocket/WorkspaceBaselineRules.swift').read_text()
+selection=Path(REPO_ROOT, 'RepoPocket/WorkspaceSelection.swift').read_text()
 source='import Foundation\nstruct LocalSnapshot { var hashes: [String:String] = [:] }\n'+rules+'\n'+selection+r'''
 precondition(WorkspaceBaselineRules.validRevision("9230587"))
 precondition(WorkspaceBaselineRules.validRevision(String(repeating:"a",count:40)))

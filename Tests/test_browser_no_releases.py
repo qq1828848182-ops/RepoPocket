@@ -1,7 +1,9 @@
 """Restore Browser source exactly, execute its production load against request spies."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import shutil, subprocess, tempfile, unittest
-ROOT = Path(__file__).parent
+ROOT = REPO_ROOT
 BASE = '92e8da57ce9d06d064c4f36740712697af90cd72'
 APP = (ROOT/'RepoPocket/RepoPocketApp.swift').read_text()
 BROWSER = APP.split('struct BrowserView: View {',1)[1].split('struct FileView:',1)[0]

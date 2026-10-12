@@ -1,11 +1,13 @@
 from pathlib import Path
 
-ui = Path('RepoPocket/RepoPocketApp.swift').read_text()
-workspace = Path('RepoPocket/WorkspaceView.swift').read_text()
-upload = Path('RepoPocket/UploadView.swift').read_text()
-detail = Path('RepoPocket/DesktopViews.swift').read_text()
-style = Path('RepoPocket/WorkspaceSelectionUI.swift').read_text()
-card = Path('RepoPocket/RepositoryUI.swift').read_text().split('struct RepositoryCard:')[1].split('struct LoadingRows:')[0]
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+ui = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+workspace = Path(REPO_ROOT, 'RepoPocket/WorkspaceView.swift').read_text()
+upload = Path(REPO_ROOT, 'RepoPocket/UploadView.swift').read_text()
+detail = Path(REPO_ROOT, 'RepoPocket/DesktopViews.swift').read_text()
+style = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelectionUI.swift').read_text()
+card = Path(REPO_ROOT, 'RepoPocket/RepositoryUI.swift').read_text().split('struct RepositoryCard:')[1].split('struct LoadingRows:')[0]
 assert '.frame(maxWidth: .infinity, alignment: .leading)' in card
 assert 'listRowSeparator(.hidden)' in style
 assert '.overlay(alignment: .bottom)' in style
@@ -23,7 +25,7 @@ section = ui.split('RepositoryInlineSection(api: api, section: .owned', 1)[1].sp
 assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
 assert 'softGroupedRow' not in section
 assert 'refresh()' not in section and 'repos = []' not in section
-assert 'NavigationLink("添加 / 更新 GitHub 账号")' in Path('RepoPocket/AccountManagement.swift').read_text()
+assert 'NavigationLink("添加 / 更新 GitHub 账号")' in Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text()
 assert 'Section("已保存账号")' not in ui
 assert '.sheet(isPresented: $accountPresentation.showing' in ui
 assert '.listStyle(.insetGrouped)' in workspace and '.listStyle(.insetGrouped)' in ui

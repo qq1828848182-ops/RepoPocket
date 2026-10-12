@@ -1,17 +1,19 @@
 """Network-free production UpdateChecker lifecycle regressions (macOS Swift)."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import unittest, tempfile, subprocess, shutil
-feature = Path('RepoPocket/UpdateFeature.swift').read_text()
+feature = Path(REPO_ROOT, 'RepoPocket/UpdateFeature.swift').read_text()
 
 class NoticeTests(unittest.TestCase):
     def test_source_contracts(self):
         self.assertIn('UpdateNoticeRules.failureNanoseconds', feature)
         self.assertIn('noticeTask?.cancel()', feature)
         self.assertIn('!Task.isCancelled', feature)
-        self.assertIn('.onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }', Path('RepoPocket/RepoPocketApp.swift').read_text())
+        self.assertIn('.onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
         self.assertIn('self.generation == token', feature)
         self.assertNotIn('（build', feature)
-        self.assertNotIn('CFBundleVersion', Path('RepoPocket/RepoPocketApp.swift').read_text())
+        self.assertNotIn('CFBundleVersion', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
         download = feature.split('    func download() {', 1)[1].split('final class UpdateDownloadDelegate', 1)[0]
         self.assertIn('clearNotice()', download)
         self.assertNotIn('showTransient(', download.split('downloading = true', 1)[1])
@@ -22,7 +24,7 @@ class NoticeTests(unittest.TestCase):
     def test_production_checker_with_mock_api(self):
         checker = feature.split('@MainActor final class UpdateChecker', 1)[1].split('    func download() {', 1)[0]
         checker = '@MainActor final class UpdateChecker' + checker + '\n}\n'
-        rules = Path('RepoPocket/AppUpdateRules.swift').read_text()
+        rules = Path(REPO_ROOT, 'RepoPocket/AppUpdateRules.swift').read_text()
         source = '''import Foundation
 @propertyWrapper struct Published<Value> { var wrappedValue: Value }
 protocol ObservableObject {}
@@ -44,7 +46,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
         throw AppError(text: failure)
     }
 }
-''' + rules + Path('RepoPocket/RepositorySafetyRules.swift').read_text() + checker + '''
+''' + rules + Path(REPO_ROOT, 'RepoPocket/RepositorySafetyRules.swift').read_text() + checker + '''
 @MainActor final class MockNoticeClock {
     var delays: [UInt64] = []
     var waits: [CheckedContinuation<Void, Error>] = []

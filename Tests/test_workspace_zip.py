@@ -1,5 +1,7 @@
 import subprocess, tempfile, zipfile, stat, urllib.request, hashlib, os, json
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as d:
  root = Path(d)
  (root/'Sources'/'ZIPRegression').mkdir(parents=True)
@@ -34,7 +36,7 @@ let package = Package(name: "ZIPRegression", platforms: [.macOS(.v12)], dependen
  with zipfile.ZipFile(root/'real.zip') as z:
   # Compare every extracted byte, not just a static source string contract.
   manifest=[(i.filename, hashlib.sha256(z.read(i)).hexdigest()) for i in z.infolist() if not i.is_dir()]
- original = Path('tests/WorkspaceZIP-original.swift.txt').read_text().replace('enum WorkspaceZIP {','enum OriginalWorkspaceZIP {')
+ original = Path(REPO_ROOT, 'tests/WorkspaceZIP-original.swift.txt').read_text().replace('enum WorkspaceZIP {','enum OriginalWorkspaceZIP {')
  tests = '''
 let fm = FileManager.default
 let base = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -70,7 +72,7 @@ for name in ["valid", "directory", "literal", "implicit", "real", "traversal", "
 }
 print("PASS: real ZIPFoundation extraction; zip slip, absolute, backslash, symlink and duplicate rejection before writes")
 '''
- (root/'Sources'/'ZIPRegression'/'main.swift').write_text('import Foundation\nstruct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }\n'+original+Path('RepoPocket/WorkspaceZIP.swift').read_text()+tests)
+ (root/'Sources'/'ZIPRegression'/'main.swift').write_text('import Foundation\nstruct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }\n'+original+Path(REPO_ROOT, 'RepoPocket/WorkspaceZIP.swift').read_text()+tests)
  subprocess.run(['swift','run','--package-path',str(root),'ZIPRegression',str(root)],check=True)
  for name, expected in manifest:
   assert hashlib.sha256((root/'real-out'/name).read_bytes()).hexdigest() == expected, name

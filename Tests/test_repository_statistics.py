@@ -1,14 +1,16 @@
 """Production decoding regression tests; Swift execution requires the CI Apple runner."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import shutil
 import subprocess
 import tempfile
 import unittest
 
 
-github = Path('RepoPocket/GitHub.swift').read_text()
-ui = Path('RepoPocket/RepositoryUI.swift').read_text()
-app = Path('RepoPocket/RepoPocketApp.swift').read_text()
+github = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
+ui = Path(REPO_ROOT, 'RepoPocket/RepositoryUI.swift').read_text()
+app = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
 
 
 class RepositoryStatisticsTests(unittest.TestCase):
@@ -34,7 +36,7 @@ class RepositoryStatisticsTests(unittest.TestCase):
             self.assertNotIn(f'api.profile?.{field} ?? 0', app)
         self.assertIn('GitHubAvatar(url: api.profile?.avatar_url ?? savedAccount?.avatarURL, size: 56)', app)
         self.assertIn('try ensureActiveAccount()\n        login = user.login; avatarURL = user.avatar_url; profile = user', github)
-        self.assertIn('SecureField("粘贴你自己的 Token"', Path('RepoPocket/AccountManagement.swift').read_text())
+        self.assertIn('SecureField("粘贴你自己的 Token"', Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text())
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift compiler unavailable; run on macOS Actions')
     def test_production_decoding(self):

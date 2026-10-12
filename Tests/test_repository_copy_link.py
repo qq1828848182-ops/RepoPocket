@@ -1,11 +1,13 @@
 """Network-free tests: production Swift rules, no real pasteboard access."""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import shutil
 import subprocess
 import tempfile
 import unittest
 
-ROOT = Path(__file__).parent
+ROOT = REPO_ROOT
 
 class CopyLinkTests(unittest.TestCase):
     def test_shared_list_and_detail_callsites(self):

@@ -1,10 +1,12 @@
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 import subprocess, tempfile
 
-g = Path('RepoPocket/GitHub.swift').read_text()
-accounts = Path('RepoPocket/GitHubAccounts.swift').read_text()
-ui = Path('RepoPocket/RepoPocketApp.swift').read_text()
-avatar = Path('RepoPocket/RepositoryUI.swift').read_text()
+g = Path(REPO_ROOT, 'RepoPocket/GitHub.swift').read_text()
+accounts = Path(REPO_ROOT, 'RepoPocket/GitHubAccounts.swift').read_text()
+ui = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
+avatar = Path(REPO_ROOT, 'RepoPocket/RepositoryUI.swift').read_text()
 # Compile the production account store with an in-memory Keychain adapter.
 store = accounts.replace('import Security\n', '')
 models = g[g.index('struct User:'):g.index('struct Entry:')]
@@ -53,7 +55,7 @@ assert 'AccountStore.activeID == accountID' in g
 add = g[g.index('    func addAccount'):g.index('    func repositories')]
 assert add.index('try check(') < add.index('try CredentialStore.save(')
 assert '.id(accountID)' in ui and '.githubAccountChanged' in ui
-assert 'avatars.githubusercontent.com' in Path('RepoPocket/RepositoryPresentationRules.swift').read_text() and 'NSCache<NSURL, UIImage>' in avatar
+assert 'avatars.githubusercontent.com' in Path(REPO_ROOT, 'RepoPocket/RepositoryPresentationRules.swift').read_text() and 'NSCache<NSURL, UIImage>' in avatar
 assert 'Authorization' not in avatar and 'URLCache' in avatar
 for line in (g + accounts + avatar).splitlines():
     assert not ('print(' in line or 'NSLog(' in line)
