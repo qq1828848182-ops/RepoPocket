@@ -105,7 +105,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     try await Task.sleep(nanoseconds: 1_000_000_000)
     await checker.check(api: GitHub("凭据新消息"))
     try await Task.sleep(nanoseconds: 5_300_000_000)
-    precondition(checker.message == "登录已失效，请更新凭据")
+    precondition(checker.message == "请重新登录")
     checker.leavePage()
     precondition(checker.message.isEmpty && !checker.checking && !checker.downloading && checker.release == nil)
     let late = Task { await checker.check(api: GitHub("late", delay: 200_000_000)) }
