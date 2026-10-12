@@ -17,8 +17,14 @@ import ZIPFoundation
     private var noticeTask: Task<Void, Never>?
     private var entered = false
     private let noticeSleep: (UInt64) async throws -> Void
-    init(noticeSleep: @escaping (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }) {
+    private let installedVersion: () -> (String, String)
+    init(noticeSleep: @escaping (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) },
+         installedVersion: @escaping () -> (String, String) = {
+             (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+              Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
+         }) {
         self.noticeSleep = noticeSleep
+        self.installedVersion = installedVersion
     }
     func enterPage(api: GitHub) async {
         guard !entered else { return }
@@ -57,8 +63,7 @@ import ZIPFoundation
             guard generation == token else { return }
             let value = try JSONDecoder().decode(AppUpdateRelease.self, from: data)
             guard value.html_url.scheme == "https", value.html_url.host == "github.com", value.html_url.path.hasPrefix("/wm0104/RepoPocket/releases/") else { throw AppError(text: "发布页地址不可信。") }
-            let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-            let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+            let (local, build) = installedVersion()
             if try AppUpdateRules.isNewer(value, local: local, localBuild: build) {
                 release = value
                 message = ""

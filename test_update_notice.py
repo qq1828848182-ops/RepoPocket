@@ -54,7 +54,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
 @main struct Tests {
  @MainActor static func main() async throws {
     let clock = MockNoticeClock()
-    let timed = UpdateChecker(noticeSleep: { try await clock.sleep($0) })
+    let timed = UpdateChecker(noticeSleep: { try await clock.sleep($0) }, installedVersion: { ("1.0.3", "11") })
     await timed.check(api: GitHub("latest"))
     for _ in 0..<100 { if !clock.waits.isEmpty { break }; await Task.yield() }
     precondition(clock.delays == [2_000_000_000] && timed.message == "已是最新版本")
