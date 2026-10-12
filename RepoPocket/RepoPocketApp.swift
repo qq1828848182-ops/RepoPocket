@@ -191,7 +191,6 @@ struct BrowserView: View {
     @State private var repositoryInfo: Repository?
     @StateObject private var copyFeedback = RepositoryCopyFeedback()
     @StateObject private var forkMenu = RepositoryForkMenuState()
-    @StateObject private var releases = RepositoryReleaseState()
     private var canWrite: Bool { RepositoryWriteRules.canWrite(push: repositoryInfo?.permissions?.push, sessionMatches: api.isCurrentSession) }
     @State private var showBranches = false
     @State private var repositoryDeletionTarget: RepositoryDeletionTarget?
@@ -221,7 +220,6 @@ struct BrowserView: View {
                     }
                 }.textSelection(.enabled).softGroupedRow(top: true, bottom: true)
             }
-            if path.isEmpty { RepositoryReleaseSection(api: api, repo: repo, state: releases) }
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {
                 Label("此目录没有文件", systemImage: "folder").foregroundColor(.secondary).padding(.vertical)
@@ -287,8 +285,6 @@ struct BrowserView: View {
         .repositoryCopyNotice(copyFeedback)
         .repositoryForkConfirmation(forkMenu, api: api)
         .task { if !loaded { await load() } }
-        .task(id: repo) { if path.isEmpty { await releases.load(api: api, repo: repo) } }
-        .onReceive(NotificationCenter.default.publisher(for: .githubAccountChanged)) { _ in releases.reset() }
         .sheet(item: $repositoryDeletionTarget) { target in
             RepositoryDeletionView(api: api, repository: target.repository, context: target.context) {
                 entries = []; repositoryInfo = nil; dismiss()
