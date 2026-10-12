@@ -8,10 +8,13 @@ enum DownloadRules {
         return clean.isEmpty || clean == "." || clean == ".." ? "file" : String(clean.prefix(180))
     }
     static func rejectSymlinks(_ url: URL) throws {
-        var current = url.standardizedFileURL
-        while current.path != "/" {
-            if (try? current.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true { throw NSError(domain: "DownloadStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "目录含符号链接，请重新选择保存位置。"]) }
-            current.deleteLastPathComponent()
+        // Do not standardize here: Foundation can rewrite /private/var to the
+        // /var symlink even after the caller resolved it. Inspect each literal
+        // filesystem component, without URL resource-value caching/following.
+        var current = url.path
+        while current != "/" && !current.isEmpty {
+            if (try? FileManager.default.attributesOfItem(atPath: current)[.type] as? FileAttributeType) == .typeSymbolicLink { throw NSError(domain: "DownloadStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "目录含符号链接，请重新选择保存位置。"]) }
+            current = (current as NSString).deletingLastPathComponent
         }
     }
     static func save(_ source: URL, parent: URL, valid: () -> Bool,
