@@ -26,6 +26,7 @@ struct RepositoryCopyNoticeState {
         visible = false
     }
     mutating func cancel() {
+        guard visible else { return }
         generation = UUID()
         visible = false
     }

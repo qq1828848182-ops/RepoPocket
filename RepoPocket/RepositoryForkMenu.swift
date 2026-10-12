@@ -12,6 +12,11 @@ final class RepositoryForkMenuState: ObservableObject {
     @Published var target: RepositoryForkTarget?
     @Published private(set) var busy = false
 
+    func dismiss() {
+        guard target != nil else { return }
+        target = nil
+    }
+
     func prepare(_ input: String, api: GitHub) {
         guard !busy, api.isCurrentSession,
               !api.login.isEmpty,
@@ -61,15 +66,15 @@ private struct RepositoryForkConfirmation: ViewModifier {
     @ObservedObject var state: RepositoryForkMenuState
     func body(content: Content) -> some View {
         content.confirmationDialog("复刻到我的仓库？", isPresented: Binding(
-            get: { state.target != nil }, set: { if !$0 { state.target = nil } }),
+            get: { state.target != nil }, set: { if !$0 { state.dismiss() } }),
             titleVisibility: .visible, presenting: state.target) { fixed in
                 Button("复刻") {
-                    state.target = nil
+                    state.dismiss()
                     Task { await state.confirm(fixed, api: api) }
                 }
-                Button("取消", role: .cancel) { state.target = nil }
+                Button("取消", role: .cancel) { state.dismiss() }
             } message: { fixed in Text(fixed.fullName) }
-            .onDisappear { state.target = nil }
+            .onDisappear { state.dismiss() }
     }
 }
 

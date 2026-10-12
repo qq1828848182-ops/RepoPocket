@@ -23,6 +23,9 @@ final class RepositoryCopyFeedback: ObservableObject {
     func cancel() {
         timeout?.cancel()
         timeout = nil
+        // Navigation can make several rows disappear in one transaction. An
+        // idle cleanup must not publish another view update during that move.
+        guard notice.visible else { return }
         notice.cancel()
     }
     deinit { timeout?.cancel() }
