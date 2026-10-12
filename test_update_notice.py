@@ -34,12 +34,42 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     init(_ failure: String, delay: UInt64 = 0) { self.failure = failure; self.delay = delay }
     func officialAppUpdateData() async throws -> Data {
         if delay > 0 { try await Task.sleep(nanoseconds: delay) }
+        if failure == "latest" || failure == "new" {
+            let tag = failure == "new" ? "v999.0.0" : "v0.0.0"
+            return try JSONSerialization.data(withJSONObject: ["tag_name": tag, "html_url": "https://github.com/wm0104/RepoPocket/releases/tag/" + tag, "draft": false, "prerelease": false, "assets": []] as [String: Any])
+        }
         throw AppError(text: failure)
     }
 }
 ''' + rules + Path('RepoPocket/RepositorySafetyRules.swift').read_text() + checker + '''
+@MainActor final class MockNoticeClock {
+    var delays: [UInt64] = []
+    var waits: [CheckedContinuation<Void, Error>] = []
+    func sleep(_ nanoseconds: UInt64) async throws {
+        delays.append(nanoseconds)
+        try await withCheckedThrowingContinuation { waits.append($0) }
+    }
+    func fire() { waits.removeFirst().resume() }
+}
 @main struct Tests {
  @MainActor static func main() async throws {
+    let clock = MockNoticeClock()
+    let timed = UpdateChecker(noticeSleep: { try await clock.sleep($0) })
+    await timed.check(api: GitHub("latest"))
+    for _ in 0..<100 { if !clock.waits.isEmpty { break }; await Task.yield() }
+    precondition(clock.delays == [2_000_000_000] && timed.message == "已是最新版本")
+    clock.fire()
+    for _ in 0..<100 { if timed.message.isEmpty { break }; await Task.yield() }
+    precondition(timed.message.isEmpty)
+    await timed.check(api: GitHub("new"))
+    precondition(timed.release != nil && clock.delays.count == 1)
+    timed.leavePage()
+    await timed.check(api: GitHub("failed"))
+    for _ in 0..<100 { if !clock.waits.isEmpty { break }; await Task.yield() }
+    precondition(clock.delays.last == 6_000_000_000)
+    timed.leavePage(); clock.fire(); await Task.yield()
+    precondition(timed.message.isEmpty && timed.release == nil)
+    print("PASS deterministic production clock: latest 2s, failure 6s, new release untimed, leave-generation protection")
     let checker = UpdateChecker()
     await checker.check(api: GitHub("first"))
     precondition(checker.message == "检查失败，请稍后重试")

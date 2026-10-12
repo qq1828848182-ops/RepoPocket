@@ -66,7 +66,12 @@ struct RepositorySearchView: View {
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索仓库或用户")
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .onSubmit(of: .search) { begin(.repositories) }
-            .onChange(of: query) { _ in generation = UUID(); submitted = ""; busy = false; error = "" }
+            .onChange(of: query) { _ in
+                // A history tap sets query and submits in the same transaction;
+                // do not invalidate that newly submitted request afterwards.
+                guard clean != submitted else { return }
+                generation = UUID(); submitted = ""; busy = false; error = ""
+            }
             .toolbar { Button("关闭") { dismiss() } }
             .task { history = store.read() }
             .onDisappear { generation = UUID(); busy = false }

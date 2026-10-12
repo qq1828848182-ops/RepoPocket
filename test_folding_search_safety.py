@@ -41,7 +41,7 @@ class Regressions(unittest.TestCase):
         models=api[api.index('struct User: Decodable'):api.index('struct Entry: Decodable')]
         source='import Foundation\n'+models+(root/'RepositorySafetyRules.swift').read_text()+(root/'RepositorySearchRules.swift').read_text()+r'''
 func check(_ value: Bool) { precondition(value) }
-for push: Bool? in [nil, false] { check(!RepositoryWriteRules.canWrite(push: push)) }
+for push in [Optional<Bool>.none, Optional(false)] { check(!RepositoryWriteRules.canWrite(push: push)) }
 check(RepositoryWriteRules.canWrite(push: true))
 check(!RepositoryWriteRules.canWrite(push: true, sessionMatches: false))
 check(RepositoryGroupRules.isOwned("WM0104/repo", login: "wm0104"))

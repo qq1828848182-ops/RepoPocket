@@ -16,6 +16,10 @@ import ZIPFoundation
     private var generation = UUID()
     private var noticeTask: Task<Void, Never>?
     private var entered = false
+    private let noticeSleep: (UInt64) async throws -> Void
+    init(noticeSleep: @escaping (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }) {
+        self.noticeSleep = noticeSleep
+    }
     func enterPage(api: GitHub) async {
         guard !entered else { return }
         entered = true
@@ -27,8 +31,9 @@ import ZIPFoundation
     private func showTransient(_ text: String, duration: UInt64 = UpdateNoticeRules.failureNanoseconds) {
         clearNotice(); message = text
         let token = generation
+        let sleep = noticeSleep
         noticeTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(nanoseconds: duration) } catch { return }
+            do { try await sleep(duration) } catch { return }
             guard !Task.isCancelled, let self, self.generation == token, !self.downloading else { return }
             self.message = ""; self.noticeTask = nil
         }
