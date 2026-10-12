@@ -44,6 +44,8 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 struct RepositoriesView: View {
     @ObservedObject var api: GitHub
+    @State private var ownedExpanded = true
+    @State private var starredExpanded = true
     @State private var repos: [Repository] = []
     @State private var loaded = false
     @State private var refreshing = false
@@ -56,26 +58,29 @@ struct RepositoriesView: View {
         NavigationStack {
             List {
                 Section("直接打开仓库") {
-                    TextField("用户名/仓库名", text: $input).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
+                    TextField("仓库链接", text: $input).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
                     NavigationLink("浏览") { BrowserView(api: api, repo: input, path: "", branch: "") }.disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()
                     Button("Fork 到我的账号") { Task { await fork() } }.disabled(busy || isOwnRepository || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: !isOwnRepository)
                     if isOwnRepository {
                         Text("自己的仓库无需 Fork，直接浏览或上传。").font(.caption).foregroundColor(.secondary).softGroupedRow(bottom: true)
                     }
                 }
-                Section("我的仓库") {
-                    if busy && repos.isEmpty && !refreshing {
-                        LoadingRows().softGroupedRow(top: true, bottom: true)
+                Section {
+                    RepositorySectionContainer(section: .owned, expanded: $ownedExpanded) {
+                        NavigationLink {
+                            RepositoryCollectionView(api: api, section: .owned)
+                        } label: {
+                            Label("查看仓库", systemImage: "chevron.right")
+                        }
                     }
-                    if repos.isEmpty && !busy {
-                        Text(api.login.isEmpty ? "请先到设置登录。" : "点刷新加载仓库。")
-                            .font(.caption).foregroundColor(.secondary)
-                            .softGroupedRow(top: true, bottom: true)
-                    }
-                    ForEach(repos) { repo in
-                        NavigationLink { BrowserView(api: api, repo: repo.full_name, path: "", branch: repo.default_branch ?? "") } label: {
-                            RepositoryCard(repository: repo, account: api.login)
-                        }.softGroupedRow(top: repo.id == repos.first?.id, bottom: repo.id == repos.last?.id)
+                }
+                Section {
+                    RepositorySectionContainer(section: .starred, expanded: $starredExpanded) {
+                        NavigationLink {
+                            RepositoryCollectionView(api: api, section: .starred)
+                        } label: {
+                            Label("查看已加星标仓库", systemImage: "chevron.right")
+                        }
                     }
                 }
             }
@@ -102,7 +107,7 @@ struct RepositoriesView: View {
     }
     private var isOwnRepository: Bool {
         guard !api.login.isEmpty else { return false }
-        let owner = input.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "/").first.map(String.init) ?? ""
+        let owner = (try? RepositoryInput.parse(input))?.split(separator: "/").first.map(String.init) ?? ""
         return owner.caseInsensitiveCompare(api.login) == .orderedSame
     }
     private func refresh() async {
@@ -423,6 +428,16 @@ struct SettingsView: View {
                             Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
                         }.accessibilityLabel("账号管理：切换、添加或移除本机账号")
                     }.padding(.vertical, 8).softGroupedRow(top: true, bottom: true)
+                }
+                Section {
+                    NavigationLink {
+                        RepositoryCollectionView(api: api, section: .owned)
+                    } label: { Label("我的仓库", systemImage: "folder") }
+                        .softGroupedRow(top: true)
+                    NavigationLink {
+                        RepositoryCollectionView(api: api, section: .starred)
+                    } label: { Label("已加星标", systemImage: "star") }
+                        .softGroupedRow(bottom: true)
                 }
                 Section("安全") {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)

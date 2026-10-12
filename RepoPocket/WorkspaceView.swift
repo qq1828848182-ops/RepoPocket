@@ -294,7 +294,7 @@ struct WorkspaceView: View {
     }
     private var remoteSection: some View {
 Section("从远端建立工作区") {
-                    TextField("用户名/仓库名", text: $repo).focused($focusedField, equals: .remoteRepo).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
+                    TextField("仓库链接", text: $repo).focused($focusedField, equals: .remoteRepo).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
                     TextField("分支（空白为默认分支）", text: $branch).focused($focusedField, equals: .remoteBranch).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                     Button("下载远端并建立可靠基线") { Task { await downloadRemote() } }.disabled(busy).softGroupedRow(bottom: true)
                 }
@@ -349,7 +349,7 @@ Section("关联仓库 / 分支") {
                                 .buttonStyle(.borderless)
                                 .disabled(busy).softGroupedRow(bottom: true)
                         } else {
-                            TextField("用户名/仓库名", text: $repo).focused($focusedField, equals: .associationRepo).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
+                            TextField("仓库链接", text: $repo).focused($focusedField, equals: .associationRepo).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                             TextField("分支（空白为默认分支）", text: $branch).focused($focusedField, equals: .associationBranch).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                             TextField("原始 ZIP 历史 commit（可选，如 9230587）", text: $baselineRevision).focused($focusedField, equals: .baselineRevision).submitLabel(.done).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                             Button("验证副本并关联当前远端") { focusedField = nil; Task { await associate(folder) } }.disabled(busy).softGroupedRow()

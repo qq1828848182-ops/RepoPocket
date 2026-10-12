@@ -57,7 +57,7 @@ struct TrollMetadataView: View {
         guard original == nil else { return }; busy = true; defer { busy = false }
         do {
             let snapshot = try await api.metadataSnapshot(repo: repo, branch: branch, entry: entry)
-            let package = try TrollMetadata.package(index: snapshot.index, repo: repo, branch: snapshot.binding.branch, path: entry.path)
+            let package = try TrollMetadata.package(index: snapshot.index, repo: snapshot.binding.repo, branch: snapshot.binding.branch, path: entry.path)
             name = package?["name"] as? String ?? entry.name
             version = package?["version"] as? String ?? "1.0"
             detail = package?["description"] as? String ?? ""

@@ -217,7 +217,7 @@ struct UploadView: View {
                 LabeledContent("仓库", value: repo).softGroupedRow(top: true)
                 LabeledContent("目录", value: directory.isEmpty ? "/" : directory).softGroupedRow()
             } else {
-                TextField("用户名/仓库名", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
+                TextField("仓库链接", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
             }
             Text("普通提交可多选、继续追加。每项单独选择目标；删除仅在最后确认后提交。Release / TrollFools 仍为单文件。") .font(.caption).softGroupedRow()
             ForEach(queue) { item in
@@ -248,7 +248,7 @@ struct UploadView: View {
     }
     private var trollSection: some View {
         Section("发布 TrollFools 插件") {
-            TextField("用户名/仓库名", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
+            TextField("仓库链接", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
             TextField("插件名字（必填）", text: $trollName).softGroupedRow()
             TextField("版本", text: $trollVersion).textInputAutocapitalization(.never).softGroupedRow()
             TextField("描述（留空使用名字）", text: $trollDescription).softGroupedRow()
@@ -267,7 +267,7 @@ struct UploadView: View {
                 TextField("新仓库名，例如 my-ipa-files", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                 Toggle("私有仓库", isOn: $isPrivate).softGroupedRow()
             } else {
-                TextField("已有仓库：用户名/仓库名", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
+                TextField("仓库链接", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
                 Button("加载已有 Releases") { Task { await loadReleases() } }.disabled(busy).softGroupedRow()
                 ForEach(releases) { r in
                     Button("选中 \(r.tag_name)\(r.draft ? "（草稿）" : "（已公开）")") {

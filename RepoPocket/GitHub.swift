@@ -158,11 +158,8 @@ final class GitHub: ObservableObject {
             CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""
     }
     static func repoPath(_ fullName: String) throws -> String {
-        let parts = fullName.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "/", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains(" ") }) else {
-            throw AppError(text: "仓库格式应为：用户名/仓库名")
-        }
-        return "/repos/" + parts.map { component(String($0)) }.joined(separator: "/")
+        let canonical = try RepositoryInput.parse(fullName)
+        return "/repos/" + canonical.split(separator: "/").map { component(String($0)) }.joined(separator: "/")
     }
     static func filePath(_ path: String) throws -> String {
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)
@@ -305,6 +302,7 @@ final class GitHub: ObservableObject {
         _ = try await data(Self.repoPath(repo) + "/git/refs", method: "POST", object: ["ref": "refs/heads/" + name, "sha": expectedHead])
     }
     func fetchWorkspace(_ repo: String, branch: String, revision: String = "") async throws -> (WorkspaceBinding, URL) {
+        let repo = try RepositoryInput.parse(repo)
         let branch = try await resolvedBranch(repo, branch: branch)
         let endpoint = try Self.repoPath(repo)
         let head: String
@@ -372,7 +370,7 @@ final class GitHub: ObservableObject {
         try await decoded(GitReference.self, Self.repoPath(repo) + "/git/ref/heads/" + Self.filePath(branch)).object.sha
     }
     func associateWorkspace(_ folder: URL, repo: String, branch: String, revision: String = "") async throws -> WorkspaceBinding {
-        let repo = repo.trimmingCharacters(in: .whitespacesAndNewlines)
+        let repo = try RepositoryInput.parse(repo)
         let branch = try await resolvedBranch(repo, branch: branch.trimmingCharacters(in: .whitespacesAndNewlines))
         let selected = revision.trimmingCharacters(in: .whitespacesAndNewlines)
         let head: String
@@ -446,6 +444,7 @@ final class GitHub: ObservableObject {
         return updated
     }
     func commitQueue(repo: String, branch: String, items: [PendingRepoItem], message: String) async throws {
+        let repo = try RepositoryInput.parse(repo)
         let branch = try await resolvedBranch(repo, branch: branch)
         let endpoint = try Self.repoPath(repo)
         let head = try await workspaceHead(repo, branch: branch)
@@ -505,6 +504,17 @@ final class GitHub: ObservableObject {
         }
         return result
     }
+    func starredRepositories() async throws -> [Repository] {
+        var result: [Repository] = []
+        for page in 1...50 {
+            let batch = try await decoded([Repository].self, "/user/starred", query: [
+                .init(name: "per_page", value: "100"), .init(name: "page", value: String(page)),
+                .init(name: "sort", value: "updated")])
+            result += batch
+            if batch.count < 100 { break }
+        }
+        return result
+    }
     func repository(_ repo: String) async throws -> Repository {
         try await decoded(Repository.self, Self.repoPath(repo))
     }
@@ -548,7 +558,7 @@ final class GitHub: ObservableObject {
         let endpoint = try Self.repoPath(repo)
         // Revalidate identity using the current credential, not cached UI state.
         try await identify()
-        let owner = repo.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "/").first.map(String.init) ?? ""
+        let owner = try RepositoryInput.parse(repo).split(separator: "/").first.map(String.init) ?? ""
         guard owner.caseInsensitiveCompare(login) != .orderedSame else {
             throw AppError(text: "这是你自己的仓库（\(login)）。GitHub 不允许把自己的仓库 Fork 回同一个账号。\n\n更新文件请点“浏览这个仓库”或“提交 / 发布”。如果要另外复制一份，需要新建不同名字的仓库再复制内容；这不属于 Fork，本版尚未提供完整仓库复制。")
         }
@@ -587,6 +597,7 @@ final class GitHub: ObservableObject {
         try await decoded(Release.self, Self.repoPath(repo) + "/releases/\(release.id)", method: "PATCH", object: ["draft": false])
     }
     func trollPublish(repo: String, branch: String, file: URL, pluginName: String, version: String = "1.0", description: String? = nil, bundleID: String? = nil, author: String? = nil) async throws -> TrollPublishResult {
+        let repo = try RepositoryInput.parse(repo)
         let name = pluginName.trimmingCharacters(in: .whitespacesAndNewlines)
         let filename = file.lastPathComponent
         guard filename.lowercased().hasSuffix(".dylib"), !filename.contains("/") else { throw AppError(text: "请选择 .dylib 文件") }
@@ -638,6 +649,7 @@ final class GitHub: ObservableObject {
         return TrollPublishResult(commitSHA: newCommit.sha, path: dylibPath)
     }
     func metadataSnapshot(repo: String, branch: String, entry: Entry) async throws -> TrollMetadataSnapshot {
+        let repo = try RepositoryInput.parse(repo)
         guard entry.path.lowercased().hasSuffix(".dylib") else { throw AppError(text: "只支持 dylib 元信息") }
         let resolved = try await resolvedBranch(repo, branch: branch)
         let head = try await workspaceHead(repo, branch: resolved)
@@ -685,6 +697,7 @@ final class GitHub: ObservableObject {
         return try await download(r, name: entry.name)
     }
     func downloadZIP(_ repo: String, branch: String) async throws -> URL {
+        let repo = try RepositoryInput.parse(repo)
         let endpoint = try Self.repoPath(repo) + "/zipball" + (branch.isEmpty ? "" : "/" + Self.component(branch))
         return try await download(request(url(endpoint)), name: repo.replacingOccurrences(of: "/", with: "-") + ".zip")
     }

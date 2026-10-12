@@ -19,9 +19,9 @@ assert '.appearance()' not in style and '.blur(' not in style
 for text in [ui, workspace, upload, detail]:
     assert '.softGroupedRow(top: true)' in text
     assert '.softGroupedRow(bottom: true)' in text
-section = ui.split('Section("我的仓库") {', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
+section = ui.split('RepositorySectionContainer(section: .owned', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
 assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
-assert 'top: repo.id == repos.first?.id, bottom: repo.id == repos.last?.id' in section
+assert 'softGroupedRow' not in section
 assert 'refresh()' not in section and 'repos = []' not in section
 assert 'NavigationLink("添加 / 更新 GitHub 账号")' in ui
 assert 'Section("已保存账号")' not in ui
@@ -33,7 +33,7 @@ assert '.swipeActions' in ui and 'confirmDelete' in ui
 assert 'verticalSizeClass == .compact ? 3 : 7' in card
 assert 'ViewThatFits(in: .horizontal)' in card
 # Divider regression: screenshot paths must decorate all intermediate rows.
-direct_open = ui.split('Section("直接打开仓库") {', 1)[1].split('Section("我的仓库") {', 1)[0]
+direct_open = ui.split('Section("直接打开仓库") {', 1)[1].split('RepositorySectionContainer(section: .owned', 1)[0]
 browse_row = next(line for line in direct_open.splitlines() if 'NavigationLink("浏览")' in line)
 assert browse_row.strip().endswith('.disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()'), browse_row
 assert '.softGroupedRow().softGroupedRow' not in ui + workspace + upload
