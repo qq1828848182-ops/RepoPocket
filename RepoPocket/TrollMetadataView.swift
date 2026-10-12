@@ -5,6 +5,7 @@ struct TrollMetadataView: View {
     let repo: String
     let entry: Entry
     let branch: String
+    var canWrite: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var original: TrollMetadataSnapshot?
     @State private var name = ""
@@ -26,7 +27,7 @@ struct TrollMetadataView: View {
                     Text("不下载、不重新上传 dylib；仅提交根目录 trollpackages.json。").font(.caption)
                     if !notice.isEmpty { Text(notice).foregroundColor(.orange) }
                 }
-                if original != nil {
+                if original != nil && canWrite && api.isCurrentSession {
                     Section("插件元信息") {
                         TextField("名称", text: $name)
                         TextField("版本", text: $version)

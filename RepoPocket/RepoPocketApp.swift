@@ -47,6 +47,10 @@ struct RepositoriesView: View {
     @State private var ownedExpanded = true
     @State private var starredExpanded = true
     @State private var repos: [Repository] = []
+    @State private var starred: [Repository] = []
+    @State private var showOpen = false
+    @State private var showSearch = false
+    @State private var pendingFork: Repository?
     @State private var loaded = false
     @State private var refreshing = false
     @State private var input = ""
@@ -57,42 +61,43 @@ struct RepositoriesView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("直接打开仓库") {
-                    TextField("仓库链接", text: $input).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
-                    NavigationLink("浏览") { BrowserView(api: api, repo: input, path: "", branch: "") }.disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()
-                    Button("Fork 到我的账号") { Task { await fork() } }.disabled(busy || isOwnRepository || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: !isOwnRepository)
-                    if isOwnRepository {
-                        Text("自己的仓库无需 Fork，直接浏览或上传。").font(.caption).foregroundColor(.secondary).softGroupedRow(bottom: true)
-                    }
-                }
-                Section {
-                    RepositorySectionContainer(section: .owned, expanded: $ownedExpanded) {
-                        NavigationLink {
-                            RepositoryCollectionView(api: api, section: .owned)
-                        } label: {
-                            Label("查看仓库", systemImage: "chevron.right")
-                        }
-                    }
-                }
-                Section {
-                    RepositorySectionContainer(section: .starred, expanded: $starredExpanded) {
-                        NavigationLink {
-                            RepositoryCollectionView(api: api, section: .starred)
-                        } label: {
-                            Label("查看已加星标仓库", systemImage: "chevron.right")
-                        }
-                    }
-                }
+                RepositoryInlineSection(api: api, section: .owned, expanded: $ownedExpanded,
+                    repositories: repos, loaded: loaded, busy: busy) { pendingFork = $0 }
+                RepositoryInlineSection(api: api, section: .starred, expanded: $starredExpanded,
+                    repositories: starred, loaded: loaded, busy: busy) { pendingFork = $0 }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("RepoPocket")
             .adaptiveWorkspaceLayout()
             .toolbar {
                 Button { showCreate = true } label: { Image(systemName: "plus") }.accessibilityLabel("新建仓库")
-                Button("刷新") { Task { await refresh() } }.disabled(busy)
+                Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索仓库或用户")
+                Menu {
+                    Button("打开仓库") { showOpen = true }
+                    Button("刷新") { Task { await refresh() } }.disabled(busy)
+                } label: { Image(systemName: "ellipsis") }.accessibilityLabel("仓库操作")
             }
             .refreshable { refreshing = true; await refresh(); refreshing = false }
             .task { if !loaded && !CredentialStore.read().isEmpty { await refresh() } }
+            .sheet(isPresented: $showSearch) { RepositorySearchView(api: api) }
+            .sheet(isPresented: $showOpen) {
+                NavigationStack {
+                    Form {
+                        TextField("仓库链接", text: $input).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        NavigationLink("浏览") { BrowserView(api: api, repo: input, path: "", branch: "") }
+                            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Fork 到我的账号") { Task { await fork() } }
+                            .disabled(busy || isOwnRepository || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if isOwnRepository { Text("自己的仓库无需 Fork，直接浏览或上传。").font(.caption).foregroundColor(.secondary) }
+                    }.navigationTitle("打开仓库").toolbar { Button("关闭") { showOpen = false } }
+                }
+            }
+            .confirmationDialog("复刻到我的仓库？", isPresented: Binding(get: { pendingFork != nil }, set: { if !$0 { pendingFork = nil } }), titleVisibility: .visible) {
+                if let repository = pendingFork {
+                    Button("复刻") { input = repository.full_name; pendingFork = nil; Task { await fork() } }
+                }
+                Button("取消", role: .cancel) { pendingFork = nil }
+            } message: { Text(pendingFork?.full_name ?? "") }
             .sheet(isPresented: $showCreate) {
                 NavigationStack {
                     Form {
@@ -116,20 +121,21 @@ struct RepositoriesView: View {
         busy = true; defer { busy = false }
         do {
             try await api.identify()
-            let result = try await api.repositories()
+            let result = try await api.repositories().filter { RepositoryGroupRules.isOwned($0.full_name, login: api.login) }
+            let stars = try await api.starredRepositories()
             try Task.checkCancellation()
             guard generation == AccountStore.generation else { return }
-            repos = result; loaded = true
+            repos = result; starred = stars; loaded = true
         } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func fork() async {
         busy = true; defer { busy = false }
-        do { let repo = try await api.fork(input); api.message = "已创建或找到 Fork：\(repo.full_name)。GitHub 可能需要片刻准备内容。"; repos = try await api.repositories() }
+        do { let repo = try await api.fork(input); api.message = "已创建或找到 Fork：\(repo.full_name)。GitHub 可能需要片刻准备内容。"; repos = try await api.repositories().filter { RepositoryGroupRules.isOwned($0.full_name, login: api.login) } }
         catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func create() async {
         busy = true; defer { busy = false }
-        do { let r = try await api.createRepository(name: newName, isPrivate: isPrivate); input = r.full_name; showCreate = false; api.message = "已创建 \(r.full_name)"; repos = try await api.repositories() }
+        do { let r = try await api.createRepository(name: newName, isPrivate: isPrivate); input = r.full_name; showCreate = false; api.message = "已创建 \(r.full_name)"; repos = try await api.repositories().filter { RepositoryGroupRules.isOwned($0.full_name, login: api.login) } }
         catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
 }
@@ -141,6 +147,7 @@ struct BrowserView: View {
     let branch: String
     @State private var selectedBranch = ""
     @State private var repositoryInfo: Repository?
+    private var canWrite: Bool { RepositoryWriteRules.canWrite(push: repositoryInfo?.permissions?.push, sessionMatches: api.isCurrentSession) }
     @State private var showBranches = false
     @State private var repositoryDeletionTarget: RepositoryDeletionTarget?
     @Environment(\.dismiss) private var dismiss
@@ -184,7 +191,7 @@ struct BrowserView: View {
                         .softGroupedRow(top: e.id == entries.first?.id, bottom: e.id == entries.last?.id)
                 } else if e.type == "file" {
                     HStack {
-                        NavigationLink { FileView(api: api, repo: repo, entry: e, branch: activeBranch) } label: {
+                        NavigationLink { FileView(api: api, repo: repo, entry: e, branch: activeBranch, canWrite: canWrite) } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: e.name.lowercased().hasSuffix(".deb") ? "shippingbox.fill" : "doc.text.fill")
                                     .font(.title3).foregroundColor(.accentColor)
@@ -197,18 +204,18 @@ struct BrowserView: View {
                                 VStack(alignment: .leading, spacing: 4) { Text(e.name); Text(ByteCountFormatter.string(fromByteCount: Int64(e.size ?? 0), countStyle: .file)).font(.caption).monospacedDigit().foregroundColor(.secondary) }
                             }.padding(.vertical, 6)
                         }
-                        if e.name.lowercased().hasSuffix(".deb") {
+                        if canWrite && e.name.lowercased().hasSuffix(".deb") {
                             Menu { Button("编辑包信息") { debEntry = e } } label: { Image(systemName: "ellipsis").padding(8) }.accessibilityLabel("更多操作：" + e.name)
-                        } else if e.name.lowercased().hasSuffix(".dylib") {
+                        } else if canWrite && e.name.lowercased().hasSuffix(".dylib") {
                             Menu { Button("编辑插件信息") { metadataEntry = e } } label: { Image(systemName: "ellipsis").padding(8) }.accessibilityLabel("更多操作：" + e.name)
                         }
                     }
                     .softGroupedRow(top: e.id == entries.first?.id, bottom: e.id == entries.last?.id)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("删除", role: .destructive) {
+                        if canWrite { Button("删除", role: .destructive) {
                             deleteAccount = api.accountID; deleteGeneration = AccountStore.generation
                             deleteBranch = activeBranch; deleteEntry = e
-                        }.disabled(deleting || busy || activeBranch.isEmpty)
+                        }.disabled(deleting || busy || activeBranch.isEmpty) }
                     }
                 } else { Text(e.name + " (" + e.type + ")").softGroupedRow(top: e.id == entries.first?.id, bottom: e.id == entries.last?.id) }
             }
@@ -220,7 +227,7 @@ struct BrowserView: View {
         .adaptiveWorkspaceLayout()
         .refreshable { refreshing = true; await load(); refreshing = false }
         .toolbar {
-            Button("上传") { showUpload = true }.disabled(busy)
+            if canWrite { Button("上传") { showUpload = true }.disabled(busy) }
             Menu {
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
@@ -240,16 +247,16 @@ struct BrowserView: View {
             }
         }
         .sheet(isPresented: $showBranches) {
-            BranchPickerView(api: api, repo: repo, current: activeBranch) { chosen in
+            BranchPickerView(api: api, repo: repo, current: activeBranch, canWrite: canWrite) { chosen in
                 selectedBranch = chosen; loaded = false; Task { await load() }
             }
         }
         .sheet(isPresented: $showUpload, onDismiss: { Task { await load() } }) {
-            UploadView(api: api, initialRepo: repo, directory: path, initialBranch: activeBranch, openedFromFolder: true)
+            if canWrite { UploadView(api: api, initialRepo: repo, directory: path, initialBranch: activeBranch, openedFromFolder: true) }
         }
         .sheet(item: $share) { ShareSheet(url: $0.url) }
-        .sheet(item: $metadataEntry) { entry in TrollMetadataView(api: api, repo: repo, entry: entry, branch: activeBranch) }
-        .sheet(item: $debEntry) { entry in DebEditorView(api: api, remote: (repo, entry, activeBranch)) }
+        .sheet(item: $metadataEntry) { entry in TrollMetadataView(api: api, repo: repo, entry: entry, branch: activeBranch, canWrite: canWrite) }
+        .sheet(item: $debEntry) { entry in DebEditorView(api: api, remote: (repo, entry, activeBranch), canWrite: canWrite) }
         .confirmationDialog("永久删除仓库中的文件？", isPresented: Binding(get: { deleteEntry != nil }, set: { if !$0 { deleteEntry = nil } }), titleVisibility: .visible) {
             Button("确认删除", role: .destructive) { if let entry = deleteEntry, !deleting {
                 let account = deleteAccount, generation = deleteGeneration, branch = deleteBranch
@@ -263,6 +270,7 @@ struct BrowserView: View {
         guard !busy else { return }
         let generation = AccountStore.generation
         let requestedBranch = activeBranch
+        repositoryInfo = nil
         busy = true; defer { busy = false }
         do {
             let resolved = requestedBranch.isEmpty ? try await api.resolvedBranch(repo, branch: "") : requestedBranch
@@ -313,6 +321,8 @@ struct FileView: View {
     let repo: String
     let entry: Entry
     let branch: String
+    var canWrite: Bool = false
+    private var writable: Bool { canWrite && api.isCurrentSession }
     @State private var text = ""
     @State private var currentSHA = ""
     @State private var editable = false
@@ -334,27 +344,30 @@ struct FileView: View {
                 LabeledContent("分支", value: branch.isEmpty ? "默认分支" : branch).softGroupedRow(bottom: true)
             }
             Section {
-                if entry.name.lowercased().hasSuffix(".deb") { Button("编辑包信息") { showDeb = true }.disabled(busy || deleted) }
-                if entry.name.lowercased().hasSuffix(".dylib") { Button("编辑插件信息") { showMetadata = true }.disabled(busy || deleted) }
+                if writable && entry.name.lowercased().hasSuffix(".deb") { Button("编辑包信息") { showDeb = true }.disabled(busy || deleted) }
+                if writable && entry.name.lowercased().hasSuffix(".dylib") { Button("编辑插件信息") { showMetadata = true }.disabled(busy || deleted) }
                 Button("下载 / 存到文件") { Task { await download() } }.disabled(busy || deleted)
                 Button("加载文本（最多 1 MiB）") { Task { await read() } }.disabled(busy || deleted)
                 if busy { ProgressView() }
             }
             if editable && !deleted {
+                if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled) } }
+                else {
                 Section("编辑") { TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 260).softGroupedRow(top: true, bottom: true) }
                 Section("提交") {
                     TextField("提交说明", text: $commitMessage).softGroupedRow(top: true)
                     Button("提交文本修改") { confirmSave = true }.disabled(busy).softGroupedRow(bottom: true)
                 }
             }
-            Section { Button("删除仓库里的此文件", role: .destructive) { confirmDelete = true }.disabled(busy || deleted).softGroupedRow(top: true, bottom: true) }
+            }
+            if writable { Section { Button("删除仓库里的此文件", role: .destructive) { confirmDelete = true }.disabled(busy || deleted).softGroupedRow(top: true, bottom: true) } }
             if deleted { Text("文件已删除，请返回目录刷新。") }
         }
         .navigationTitle(entry.name)
         .adaptiveWorkspaceLayout()
         .sheet(item: $share) { ShareSheet(url: $0.url) }
-        .sheet(isPresented: $showDeb) { DebEditorView(api: api, remote: (repo, entry, branch)) }
-        .sheet(isPresented: $showMetadata) { TrollMetadataView(api: api, repo: repo, entry: entry, branch: branch) }
+        .sheet(isPresented: $showDeb) { DebEditorView(api: api, remote: (repo, entry, branch), canWrite: writable) }
+        .sheet(isPresented: $showMetadata) { TrollMetadataView(api: api, repo: repo, entry: entry, branch: branch, canWrite: writable) }
         .confirmationDialog("把修改提交到 \(repo)？", isPresented: $confirmSave, titleVisibility: .visible) {
             Button("确认提交") { Task { await save() } }
         }

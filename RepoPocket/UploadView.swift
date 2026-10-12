@@ -8,6 +8,8 @@ struct UploadView: View {
     let directory: String
     let openedFromFolder: Bool
     let initialFile: URL?
+    @State private var canWrite = false
+    @State private var accessGeneration = UUID()
     @State private var showDebEditor = false
     @State private var editingQueueID: UUID?
     @State private var editorFile: URL?
@@ -191,10 +193,20 @@ struct UploadView: View {
                 if let initialFile { adoptGeneratedDeb(initialFile) }
             }
 
-            .onChange(of: repo) { _ in invalidateTarget() }
+            .task(id: repo) { await loadWriteAccess() }
+            .onChange(of: repo) { _ in canWrite = false; accessGeneration = UUID(); invalidateTarget() }
             .onChange(of: branch) { _ in invalidateTarget() }
             .onChange(of: busy) { UIApplication.shared.isIdleTimerDisabled = $0 }
         }
+    }
+    private func loadWriteAccess() async {
+        let token = UUID(); accessGeneration = token; canWrite = false
+        guard !repo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        do {
+            try await api.requireWriteAccess(repo)
+            guard token == accessGeneration, api.isCurrentSession else { return }
+            canWrite = true
+        } catch { /* Unknown or denied permissions leave writes disabled. */ }
     }
     private var fileSection: some View {
         Section("本地文件") {
@@ -234,7 +246,7 @@ struct UploadView: View {
                 }
                 Button("移除此待处理项", role: .destructive) { removePending(item.id) }.softGroupedRow()
             }
-            Button("添加远端删除") { choosingItem = nil; choosingDelete = true; Task { await openTargetPicker() } }.disabled(repo.isEmpty).softGroupedRow()
+            Button("添加远端删除") { choosingItem = nil; choosingDelete = true; Task { await openTargetPicker() } }.disabled(repo.isEmpty || !canWrite).softGroupedRow()
             TextField("提交说明", text: $note).softGroupedRow()
             DisclosureGroup("分支") {
                 TextField("留空使用默认分支", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -243,7 +255,7 @@ struct UploadView: View {
             Button("确认提交") {
                 if let reason = RepoQueue.readiness(queue, repo: repo, message: note) { alertText = reason }
                 else { confirmCommit = true }
-            }.disabled(busy).softGroupedRow(bottom: true)
+            }.disabled(busy || !canWrite).softGroupedRow(bottom: true)
         }.disabled(busy)
     }
     private var trollSection: some View {
@@ -256,7 +268,7 @@ struct UploadView: View {
             TextField("作者（选填）", text: $trollAuthor).softGroupedRow()
             DisclosureGroup("分支") { TextField("留空使用默认分支", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled() }.softGroupedRow()
             Text("单次 Git 提交更新 downloads/ 与 trollpackages.json；保留既有条目及外链。section：插件（已有值保留）。") .font(.caption).softGroupedRow()
-            Button("预览并发布插件") { trollPreview = true }.disabled(busy || local == nil || repo.isEmpty || trollName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || trollVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: true)
+            Button("预览并发布插件") { trollPreview = true }.disabled(busy || !canWrite || local == nil || repo.isEmpty || trollName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || trollVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: true)
         }.disabled(busy)
     }
 
@@ -278,9 +290,9 @@ struct UploadView: View {
             TextField("版本标签，例如 v1.0", text: $tag).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
             TextField("发布标题（可留空）", text: $title).softGroupedRow()
             Text("附件 <2 GiB；上传成功后确认发布。").font(.caption).softGroupedRow()
-            Button("创建仓库 / 草稿并上传") { confirmRelease = true }.disabled(busy || local == nil || (makeNewRepo && newName.isEmpty)).softGroupedRow(bottom: release == nil)
+            Button("创建仓库 / 草稿并上传") { confirmRelease = true }.disabled(busy || local == nil || (!makeNewRepo && !canWrite) || (makeNewRepo && newName.isEmpty)).softGroupedRow(bottom: release == nil)
             if release != nil {
-                Button("上传到已选中的 Release / 重试") { Task { await uploadSelected() } }.disabled(busy || local == nil).softGroupedRow()
+                Button("上传到已选中的 Release / 重试") { Task { await uploadSelected() } }.disabled(busy || !canWrite || local == nil).softGroupedRow()
                 Text("同名附件不会自动覆盖。").font(.caption).softGroupedRow(bottom: true)
             }
         }.disabled(busy)

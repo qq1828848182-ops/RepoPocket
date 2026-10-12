@@ -112,6 +112,7 @@ struct BranchPickerView: View {
     @ObservedObject var api: GitHub
     let repo: String
     let current: String
+    var canWrite: Bool = false
     let select: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var branches: [DesktopBranch] = []
@@ -133,11 +134,12 @@ struct BranchPickerView: View {
                     }
                     if more { Button("加载更多分支") { Task { await load() } }.disabled(busy) }
                 }
-                Section("从当前分支创建") {
+                if canWrite && api.isCurrentSession { Section("从当前分支创建") {
                     TextField("新分支名，例如 feature/mobile", text: $name).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Text("来源：" + current + " @ " + String(head.prefix(7))).font(.caption)
                     Text("只创建新的远端引用，不覆盖已有分支；不切换本地工作区或上传队列的目标。").font(.caption)
                     Button("创建并切换") { confirm = true }.disabled(busy || head.isEmpty || !DesktopRules.validBranch(name))
+                }
                 }
                 if busy { ProgressView() }
             }

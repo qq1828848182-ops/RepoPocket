@@ -24,11 +24,11 @@ import ZIPFoundation
     private func clearNotice() {
         noticeTask?.cancel(); noticeTask = nil; message = ""
     }
-    private func showTransient(_ text: String) {
+    private func showTransient(_ text: String, duration: UInt64 = UpdateNoticeRules.failureNanoseconds) {
         clearNotice(); message = text
         let token = generation
         noticeTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(nanoseconds: 6_000_000_000) } catch { return }
+            do { try await Task.sleep(nanoseconds: duration) } catch { return }
             guard !Task.isCancelled, let self, self.generation == token, !self.downloading else { return }
             self.message = ""; self.noticeTask = nil
         }
@@ -57,7 +57,7 @@ import ZIPFoundation
             if try AppUpdateRules.isNewer(value, local: local, localBuild: build) {
                 release = value
                 message = ""
-            } else { showTransient("已是最新版本") }
+            } else { showTransient("已是最新版本", duration: UpdateNoticeRules.latestNanoseconds) }
         } catch { if generation == token { showTransient(AppUpdateRules.conciseCheckError(error)) } }
     }
     func ignore() { generation = UUID(); release = nil; showTransient("本次不更新。") }

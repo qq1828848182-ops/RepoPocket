@@ -19,7 +19,7 @@ assert '.appearance()' not in style and '.blur(' not in style
 for text in [ui, workspace, upload, detail]:
     assert '.softGroupedRow(top: true)' in text
     assert '.softGroupedRow(bottom: true)' in text
-section = ui.split('RepositorySectionContainer(section: .owned', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
+section = ui.split('RepositoryInlineSection(api: api, section: .owned', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
 assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
 assert 'softGroupedRow' not in section
 assert 'refresh()' not in section and 'repos = []' not in section
@@ -33,9 +33,9 @@ assert '.swipeActions' in ui and 'confirmDelete' in ui
 assert 'verticalSizeClass == .compact ? 3 : 7' in card
 assert 'ViewThatFits(in: .horizontal)' in card
 # Divider regression: screenshot paths must decorate all intermediate rows.
-direct_open = ui.split('Section("直接打开仓库") {', 1)[1].split('RepositorySectionContainer(section: .owned', 1)[0]
-browse_row = next(line for line in direct_open.splitlines() if 'NavigationLink("浏览")' in line)
-assert browse_row.strip().endswith('.disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()'), browse_row
+assert 'Section("直接打开仓库")' not in ui
+assert '.sheet(isPresented: $showOpen)' in ui
+assert 'NavigationLink("浏览")' in ui
 assert '.softGroupedRow().softGroupedRow' not in ui + workspace + upload
 assert ui.count('top: e.id == entries.first?.id, bottom: e.id == entries.last?.id') == 3
 assert 'if busy { ProgressView() }' in ui

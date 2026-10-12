@@ -89,7 +89,7 @@ struct Repository: Decodable, Identifiable {
     let stargazers_count: Int?
     let forks_count: Int?
     let language: String?
-    struct Permissions: Decodable { let admin: Bool? }
+    struct Permissions: Decodable { let admin: Bool?; let push: Bool? }
     let permissions: Permissions?
 }
 struct Entry: Decodable, Identifiable {
@@ -244,6 +244,17 @@ final class GitHub: ObservableObject {
                 }
             })
     }
+    var isCurrentSession: Bool {
+        AccountStore.activeID == accountID && AccountStore.generation == accountGeneration
+    }
+    func requireWriteAccess(_ repo: String) async throws {
+        try ensureActiveAccount()
+        let info = try await decoded(RepoAccess.self, Self.repoPath(repo))
+        try ensureActiveAccount()
+        guard RepositoryWriteRules.canWrite(push: info.permissions?.push) else {
+            throw AppError(text: "此账号没有已确认的仓库推送权限，不能上传、编辑或删除文件。")
+        }
+    }
     private func ensureActiveAccount() throws {
         guard AccountStore.activeID == accountID, AccountStore.generation == accountGeneration else {
             throw AppError(text: "账号已切换，请重新打开此页面。")
@@ -271,6 +282,13 @@ final class GitHub: ObservableObject {
     }
     private func data(_ path: String, method: String = "GET", object: [String: Any]? = nil,
                       query: [URLQueryItem] = []) async throws -> Data {
+        if method != "GET", path.hasPrefix("/repos/"), !path.hasSuffix("/forks") {
+            let parts = path.split(separator: "/")
+            guard parts.count >= 3,
+                  let owner = String(parts[1]).removingPercentEncoding,
+                  let name = String(parts[2]).removingPercentEncoding else { throw AppError(text: "无效写入目标") }
+            try await requireWriteAccess(owner + "/" + name)
+        }
         let body = try object.map { try JSONSerialization.data(withJSONObject: $0) }
         let r = try request(url(path, query: query), method: method, body: body)
         let (d, response) = try await session.data(for: r)
@@ -515,6 +533,20 @@ final class GitHub: ObservableObject {
         }
         return result
     }
+    func searchRepositories(_ query: String, page: Int) async throws -> RepositorySearchResponse {
+        let endpoint = RepositorySearchRules.endpoint(kind: .repositories, query: query, page: page)
+        let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+        return try await decoded(RepositorySearchResponse.self, endpoint.path, query: parts.queryItems ?? [])
+    }
+    func searchUsers(_ query: String, page: Int) async throws -> UserSearchResponse {
+        let endpoint = RepositorySearchRules.endpoint(kind: .users, query: query, page: page)
+        let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
+        return try await decoded(UserSearchResponse.self, endpoint.path, query: parts.queryItems ?? [])
+    }
+    func userRepositories(_ login: String, page: Int) async throws -> [Repository] {
+        try await decoded([Repository].self, "/users/" + Self.component(login) + "/repos", query: [
+            .init(name: "per_page", value: "100"), .init(name: "page", value: String(page)), .init(name: "sort", value: "updated")])
+    }
     func repository(_ repo: String) async throws -> Repository {
         try await decoded(Repository.self, Self.repoPath(repo))
     }
@@ -522,6 +554,9 @@ final class GitHub: ObservableObject {
         try await identify()
         let info = try await decoded(RepoAccess.self, Self.repoPath(repo))
         _ = try await contents(repo, path: "")
+        if info.permissions?.push == nil {
+            return "权限未知：无法确认推送权限；上传、编辑及删除入口保持关闭。"
+        }
         if info.permissions?.push == false {
             return "账号：\(login)\n仓库：\(info.full_name)\n可读取，但账号没有推送权限。"
         }
@@ -587,6 +622,12 @@ final class GitHub: ObservableObject {
         guard var c = URLComponents(string: endpoint) else { throw AppError(text: "无效上传地址") }
         c.queryItems = [.init(name: "name", value: file.lastPathComponent)]
         guard let u = c.url else { throw AppError(text: "无效附件名") }
+        let parts = u.path.split(separator: "/")
+        guard u.scheme == "https", u.host == "uploads.github.com", parts.count == 6,
+              parts[0] == "repos", parts[3] == "releases", parts[5] == "assets",
+              let owner = String(parts[1]).removingPercentEncoding,
+              let name = String(parts[2]).removingPercentEncoding else { throw AppError(text: "无效 Release 上传目标") }
+        try await requireWriteAccess(owner + "/" + name)
         let r = try request(u, method: "POST", binary: true)
         let delegate = TransferProgress(update: progress)
         let (d, response) = try await session.upload(for: r, fromFile: file, delegate: delegate)

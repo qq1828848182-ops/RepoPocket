@@ -5,7 +5,7 @@ feature = Path('RepoPocket/UpdateFeature.swift').read_text()
 
 class NoticeTests(unittest.TestCase):
     def test_source_contracts(self):
-        self.assertIn('6_000_000_000', feature)
+        self.assertIn('UpdateNoticeRules.failureNanoseconds', feature)
         self.assertIn('noticeTask?.cancel()', feature)
         self.assertIn('!Task.isCancelled', feature)
         self.assertIn('.onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }', Path('RepoPocket/RepoPocketApp.swift').read_text())
@@ -37,7 +37,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
         throw AppError(text: failure)
     }
 }
-''' + rules + checker + '''
+''' + rules + Path('RepoPocket/RepositorySafetyRules.swift').read_text() + checker + '''
 @main struct Tests {
  @MainActor static func main() async throws {
     let checker = UpdateChecker()

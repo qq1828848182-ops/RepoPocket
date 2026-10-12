@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct DebEditorView: View {
     @ObservedObject var api: GitHub
     var remote: (repo: String, entry: Entry, branch: String)? = nil
+    var canWrite: Bool = false
     var initialFile: URL? = nil
     var onUseForUpload: ((URL) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
@@ -120,7 +121,7 @@ struct DebEditorView: View {
         Section("已生成 · 未替换原文件") {
             Text(output.lastPathComponent)
             ShareLink(item: output, preview: SharePreview(output.lastPathComponent)) { Label("分享 / 存储到“文件”", systemImage: "square.and.arrow.up") }
-            if remote != nil {
+            if remote != nil && canWrite && api.isCurrentSession {
                 TextField("提交说明（可选）", text: $commitNote)
                 if confirmRemote {
                     Text("确认只更新原仓库文件：" + (remoteEntry?.path ?? ""))
@@ -130,6 +131,8 @@ struct DebEditorView: View {
                     Button("提交回原文件") { confirmRemote = true }.disabled(busy || submitted)
                 }
                 if !resultMessage.isEmpty { Text(resultMessage) }
+            } else if remote != nil {
+                Text("此仓库为只读，生成文件仅可保存到本地。")
             } else if let onUseForUpload {
                 Button("使用新 deb 提交 / 发布") { onUseForUpload(output) }.disabled(busy)
             } else {
