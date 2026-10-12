@@ -16,7 +16,7 @@ struct RepositoryReleaseLabel: View {
             Text(release.name?.isEmpty == false ? release.name! : release.tag_name).lineLimit(2)
             HStack {
                 RepositoryReleaseBadge(release: release, latestID: latestID)
-                if let text = release.published_at, let date = ISO8601DateFormatter().date(from: text) {
+                if let date = release.displayDate {
                     Text(date, style: .relative).font(.caption).foregroundColor(.secondary)
                 }
             }
@@ -28,14 +28,19 @@ struct RepositoryReleaseSection: View {
     let repo: String
     @ObservedObject var state: RepositoryReleaseState
     var body: some View {
-        if let count = state.count, count > 0, let recent = state.recent {
+        if let recent = state.recent {
             Section {
                 NavigationLink { RepositoryReleaseHistory(api: api, repo: repo, state: state) } label: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("发行版 · \(count)", systemImage: "shippingbox")
+                        Label(state.count.map { "发行版 · \($0)" } ?? "发行版", systemImage: "shippingbox")
                         RepositoryReleaseLabel(release: recent, latestID: state.latestID)
                     }.padding(.vertical, 5)
                 }.softGroupedRow(top: true, bottom: true)
+            }
+        } else if !state.loading && state.hasNext && state.error == nil {
+            Section {
+                NavigationLink("发行版") { RepositoryReleaseHistory(api: api, repo: repo, state: state) }
+                    .softGroupedRow(top: true, bottom: true)
             }
         } else if let error = state.error {
             Section {
@@ -61,10 +66,10 @@ struct RepositoryReleaseHistory: View {
             }
             if state.paging { ProgressView("载入历史版本…") }
             if let error = state.historyError { Text(error).font(.caption).foregroundColor(.secondary) }
-            if state.hasNext { Button(state.historyError == nil ? "载入更多版本" : "重试") { state.more(api: api, repo: repo) }.disabled(state.paging) }
+            if state.hasNext { Button(state.historyError == nil ? "载入更多版本" : "重试") { state.more(api: api, repo: repo, retry: state.historyError != nil) }.disabled(state.paging) }
         }
         .navigationTitle("历史发行版")
-        .task { if state.history.isEmpty { state.more(api: api, repo: repo) } }
+        .onDisappear { state.cancelPage() }
     }
 }
 struct RepositoryReleaseDetail: View {
@@ -74,6 +79,8 @@ struct RepositoryReleaseDetail: View {
     let latestID: Int?
     @StateObject private var download = RepositoryAssetDownload()
     @State private var share: SharedFile?
+    @State private var noteChunks: [String] = []
+    @State private var visibleChunks = 4
     var body: some View {
         List {
             Section {
@@ -82,8 +89,14 @@ struct RepositoryReleaseDetail: View {
             }
             Section("更新说明") {
                 // Verbatim selectable body preserves the complete notes without executing embedded URLs/HTML.
-                Text(release.body?.isEmpty == false ? release.body! : "未提供更新说明。")
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                if noteChunks.isEmpty { ProgressView("载入更新说明…") }
+                ForEach(0..<min(visibleChunks, noteChunks.count), id: \.self) { index in
+                    Text(verbatim: noteChunks[index])
+                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if visibleChunks < noteChunks.count {
+                    Button("显示更多说明") { visibleChunks += 4 }
+                }
             }
             Section("附件 · \(release.assets.count)") {
                 if release.assets.isEmpty { Text("此发行版没有附件。").foregroundColor(.secondary) }
@@ -106,6 +119,15 @@ struct RepositoryReleaseDetail: View {
             if let file = download.saved { Section { Button("系统分享 / 选择应用") { share = SharedFile(url: file) } } }
         }
         .navigationTitle("发行版详情")
+        .task(id: release.id) {
+            noteChunks = []; visibleChunks = 4
+            let text = release.body?.isEmpty == false ? release.body! : "未提供更新说明。"
+            do {
+                let chunks = try await RepositoryReleaseProcessing.shared.notes(text)
+                try Task.checkCancellation()
+                noteChunks = chunks
+            } catch { /* Disappearing details do not publish cancelled processing. */ }
+        }
         .sheet(item: $share) { ShareSheet(url: $0.url) }
         .onDisappear { download.cancel() }
         .onReceive(NotificationCenter.default.publisher(for: .githubAccountChanged)) { _ in download.reset(); share = nil }
