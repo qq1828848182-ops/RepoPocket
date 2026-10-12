@@ -12,7 +12,8 @@ f=g.split('    func fetchWorkspace(',1)[1].split('    func downloadWorkspace(',1
 assert 'session.bytes' not in f and '/contents/' not in f
 assert '/git/blobs/' in f and 'application/vnd.github.raw+json' in f
 assert 'finish(expectedGit: item.sha)' in f and 'snapshotFileSHA256(target)' in f
-assert 'session.download(for: request, delegate: ArchiveRedirectPolicy())' in g
+assert 'redirect: URLSessionTaskDelegate = ArchiveRedirectPolicy()' in g
+assert 'session.download(for: request, delegate: redirect)' in g
 assert 'for attempt in 0..<3' in a
 assert 'top: change.id == changes.first?.id && binding != nil && !busy' in w
 assert 'softGroupedRow(top: !changes.isEmpty && !busy)' in w

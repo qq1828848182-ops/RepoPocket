@@ -14,13 +14,14 @@ struct WorkspaceImportRequest: Identifiable {
 struct WorkspaceDocumentPicker: UIViewControllerRepresentable {
     let request: WorkspaceImportRequest
     var allowsMultipleSelection = true
+    var cancelTitle = "取消导入"
     let completion: ([URL]?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(completion) }
     func makeUIViewController(context: Context) -> WorkspacePickerContainer {
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: request.isZIP ? [.zip] : [.folder], asCopy: false)
         picker.allowsMultipleSelection = allowsMultipleSelection
         picker.delegate = context.coordinator
-        return WorkspacePickerContainer(picker: picker, title: request.isZIP ? "导入 ZIP" : "导入文件夹", cancel: { context.coordinator.finish(nil) })
+        return WorkspacePickerContainer(picker: picker, title: request.isZIP ? "导入 ZIP" : "选择文件夹", cancelTitle: cancelTitle, cancel: { context.coordinator.finish(nil) })
     }
     func updateUIViewController(_ controller: WorkspacePickerContainer, context: Context) {
         context.coordinator.completion = completion
@@ -44,9 +45,10 @@ struct WorkspaceDocumentPicker: UIViewControllerRepresentable {
 final class WorkspacePickerContainer: UIViewController {
     private let picker: UIDocumentPickerViewController
     private let heading: String
+    private let cancelTitle: String
     private let cancel: () -> Void
-    init(picker: UIDocumentPickerViewController, title: String, cancel: @escaping () -> Void) {
-        self.picker = picker; self.heading = title; self.cancel = cancel
+    init(picker: UIDocumentPickerViewController, title: String, cancelTitle: String = "取消导入", cancel: @escaping () -> Void) {
+        self.picker = picker; self.heading = title; self.cancelTitle = cancelTitle; self.cancel = cancel
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -65,7 +67,7 @@ final class WorkspacePickerContainer: UIViewController {
         label.adjustsFontForContentSizeCategory = true
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let button = UIButton(type: .system)
-        button.setTitle("取消导入", for: .normal)
+        button.setTitle(cancelTitle, for: .normal)
         button.titleLabel?.font = .preferredFont(forTextStyle: .body)
         button.titleLabel?.adjustsFontForContentSizeCategory = true
         button.accessibilityIdentifier = "workspace.import.cancel"

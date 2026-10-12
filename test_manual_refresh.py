@@ -27,6 +27,8 @@ for signature in ['importItems(_ urls: [URL], zip: Bool)', 'downloadRemote()', '
     body=w.split('@MainActor private func '+signature,1)[1].split('@MainActor private func',1)[0]
     assert '!busy' in body.split('busy = true',1)[0], signature
 assert 'hasScanned = true' in scan  # no foreground reset/recreation identity
-assert 'CURRENT_PROJECT_VERSION: "12"' in Path('project.yml').read_text()
-assert 'CFBundleVersion\' "$APP/Info.plist")" = "12"' in Path('.github/workflows/build.yml').read_text()
+import re
+build = re.search(r'CURRENT_PROJECT_VERSION: "(\d+)"', Path("project.yml").read_text()).group(1)
+assert int(build) >= 15
+assert f'CFBundleVersion\' "$APP/Info.plist")" = "{build}"' in Path(".github/workflows/build.yml").read_text()
 print('PASS manual-only foreground contract, stable Text, explicit safety reason, no blocking overlay, atomic scan/reconciliation, operation busy gates and internal build12')

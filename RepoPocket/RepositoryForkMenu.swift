@@ -31,7 +31,7 @@ final class RepositoryForkMenuState: ObservableObject {
         do {
             let result = try await api.fork(fixed.fullName)
             guard api.isCurrentSession, fixed.generation == AccountStore.generation else { return }
-            api.message = "已复刻：\(result.full_name)。GitHub 可能需要片刻准备内容。"
+            api.message = "复刻请求已接受：\(result.full_name)，正在准备，请稍后刷新。"
         } catch {
             guard api.isCurrentSession, fixed.generation == AccountStore.generation,
                   !RefreshFailure.isCancellation(error) else { return }

@@ -26,7 +26,7 @@ class RepositoryUIPerformanceTests(unittest.TestCase):
         self.assertIn('.accessibilityElement(children: .combine)', summary)
 
     def test_avatar_work_is_shared_bounded_and_off_main(self):
-        for required in ('private actor AvatarPipeline', 'pending: [URL: Task<UIImage?, Never>]',
+        for required in ('actor AvatarPipeline', 'pending: [URL: Task<UIImage?, Never>]',
                          'if let task = pending[url]', 'if active < 4', 'cache.countLimit = 192',
                          'Task.detached(priority: .utility)', 'CGImageSourceCreateThumbnailAtIndex',
                          'kCGImageSourceShouldCacheImmediately: true', '@StateObject private var loader',

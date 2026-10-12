@@ -11,7 +11,7 @@ class UpdateTests(unittest.TestCase):
         self.assertNotIn('check(api:', entry)
         self.assertNotIn('officialAppUpdateData', entry)
         self.assertEqual(feature.count('await checker.check(api: api)'), 1)
-        self.assertNotIn('Authorization', feature)
+        self.assertNotIn('forHTTPHeaderField: "Authorization"', feature)
         for forbidden in ['TrollStore', 'apple-magnifier', 'openTrollStore', 'URLQueryItem(name: "url"']:
             self.assertNotIn(forbidden, feature)
         for value in ['downloadTask?.cancel()', 'snapshotFileSHA256', 'archive.extract', 'HTTPURLResponse', 'https://github.com/wm0104/RepoPocket/releases']:
@@ -20,11 +20,14 @@ class UpdateTests(unittest.TestCase):
         api = Path('RepoPocket/GitHub.swift').read_text()
         update = api.split('func officialAppUpdateData()', 1)[1].split('func deletionContext', 1)[0]
         self.assertEqual(update.count('try ensureActiveAccount()'), 2)
-        self.assertIn('CredentialStore.read(account: accountID)', update)
-        self.assertIn('authenticated ? try request(endpoint) : URLRequest(url: endpoint)', update)
+        self.assertIn('CredentialStore.read(account: accountID)', api)
+        self.assertIn('guard canCheckAppUpdate else', update)
+        self.assertIn('var r = try request(endpoint)', update)
+        self.assertNotIn('URLRequest(url: endpoint)', update)
+        self.assertIn('guard api.canCheckAppUpdate else', feature)
         self.assertIn('session.data(for: r, delegate: OfficialUpdateRedirectPolicy())', update)
         self.assertIn('https://api.github.com/repos/wm0104/RepoPocket/releases/latest', update)
-        self.assertNotIn('Authorization', feature.split('func download()', 1)[1])
+        self.assertNotIn('forHTTPHeaderField: "Authorization"', feature.split('func download()', 1)[1])
         redirect = Path('RepoPocket/OfficialUpdateRedirectPolicy.swift').read_text()
         self.assertIn('completionHandler(nil)', redirect)
         self.assertNotIn('completionHandler(request)', redirect)

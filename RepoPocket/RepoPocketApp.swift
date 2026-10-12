@@ -5,10 +5,17 @@ import UIKit
 struct RepoPocketApp: App {
     @State private var accountID = AccountStore.generation
     @StateObject private var selectionStore = WorkspaceSelectionStore()
+    @StateObject private var accountPresentation = AccountPresentation()
+    @StateObject private var downloads = DownloadStore.shared
     var body: some Scene {
         WindowGroup {
-            AccountRootView().id(accountID)
+            ZStack { AccountRootView().id(accountID) }
                 .environmentObject(selectionStore)
+                .environmentObject(accountPresentation)
+                .sheet(isPresented: $accountPresentation.showing) { AccountManagementView().environmentObject(accountPresentation) }
+                .sheet(item: $downloads.picker, onDismiss: { downloads.selected(nil) }) { request in
+                    WorkspaceDocumentPicker(request: request, allowsMultipleSelection: false, cancelTitle: "取消") { downloads.selected($0) }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .githubAccountChanged)) { _ in
                     accountID = AccountStore.generation
                 }
@@ -37,13 +44,24 @@ struct SharedFile: Identifiable { let id = UUID(); let url: URL }
 struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        context.coordinator.scope = DownloadStore.shared.shareScope(for: url)
+        controller.completionWithItemsHandler = { _, _, _, _ in context.coordinator.release() }
+        return controller
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    static func dismantleUIViewController(_ vc: UIActivityViewController, coordinator: Coordinator) { coordinator.release() }
+    final class Coordinator {
+        var scope: URL?
+        func release() { scope?.stopAccessingSecurityScopedResource(); scope = nil }
+        deinit { release() }
+    }
 }
 
 struct RepositoriesView: View {
     @ObservedObject var api: GitHub
+    @EnvironmentObject private var accountPresentation: AccountPresentation
     @State private var ownedExpanded = true
     @State private var starredExpanded = true
     @State private var repos: [Repository] = []
@@ -62,6 +80,7 @@ struct RepositoriesView: View {
     var body: some View {
         NavigationStack {
             List {
+                if CredentialStore.read().isEmpty { Button("添加账号") { accountPresentation.showing = true } }
                 RepositoryInlineSection(api: api, section: .owned, expanded: $ownedExpanded,
                     repositories: repos, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .owned })
                 RepositoryInlineSection(api: api, section: .starred, expanded: $starredExpanded,
@@ -134,17 +153,18 @@ struct RepositoriesView: View {
             guard generation == AccountStore.generation else { return }
             repos = result; starred = stars; loaded = true
             api.cacheCollection(result, section: .owned); api.cacheCollection(stars, section: .starred)
-        } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func fork() async {
+        guard !busy, api.isCurrentSession else { return }
         busy = true; defer { busy = false }
-        do { let repo = try await api.fork(input); api.message = "已创建或找到 Fork：\(repo.full_name)。GitHub 可能需要片刻准备内容。"; repos = try await api.repositories().filter { RepositoryGroupRules.isOwned($0.full_name, login: api.login) } }
-        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        do { let repo = try await api.fork(input); guard api.isCurrentSession else { return }; api.message = "复刻请求已接受：\(repo.full_name)，正在准备，请稍后刷新。" }
+        catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func create() async {
         busy = true; defer { busy = false }
         do { let r = try await api.createRepository(name: newName, isPrivate: isPrivate); input = r.full_name; showCreate = false; api.message = "已创建 \(r.full_name)"; repos = try await api.repositories().filter { RepositoryGroupRules.isOwned($0.full_name, login: api.login) } }
-        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
 }
 
@@ -287,7 +307,7 @@ struct BrowserView: View {
             try Task.checkCancellation()
             guard generation == AccountStore.generation, activeBranch == requestedBranch else { return }
             selectedBranch = resolved; entries = result; loaded = true
-        } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
         // Statistics are optional metadata: their failure must not block file browsing.
         // Clear stale values rather than displaying invented zeroes or old counts.
         repositoryInfo = nil
@@ -316,12 +336,23 @@ struct BrowserView: View {
             try await api.delete(repo, entry: entry, message: "Delete \(entry.name) via RepoPocket", branch: branch)
             entries.removeAll { $0.path == entry.path && $0.sha == entry.sha }
             api.message = "已删除并提交：\(entry.name)"
-        } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func zip() async {
         busy = true; defer { busy = false }
-        do { share = SharedFile(url: try await api.downloadZIP(repo, branch: activeBranch)) }
-        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        do {
+            let generation = AccountStore.generation
+            try await DownloadStore.shared.requireAuthorization()
+            guard api.isCurrentSession else { throw CancellationError() }
+            DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
+            let temporary = try await api.downloadZIP(repo, branch: activeBranch)
+            defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
+            let saved = try DownloadStore.shared.persist(temporary, session: generation)
+            guard api.isCurrentSession else { throw CancellationError() }
+            api.message = "已保存到 " + DownloadStore.shared.label
+            share = SharedFile(url: saved)
+        }
+        catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
 }
 
@@ -393,7 +424,7 @@ struct FileView: View {
                   let bytes = Data(base64Encoded: s, options: .ignoreUnknownCharacters), !bytes.contains(0),
                   let t = String(data: bytes, encoding: .utf8) else { throw AppError(text: "不是支持的 UTF-8 文本，不会强行编辑二进制文件。") }
             text = t; currentSHA = f.sha; editable = true
-        } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func save() async {
         busy = true; defer { busy = false }
@@ -401,7 +432,7 @@ struct FileView: View {
             try await api.commit(repo, path: entry.path, bytes: Data(text.utf8), sha: currentSHA, message: commitMessage, branch: branch)
             currentSHA = try await api.file(repo, path: entry.path, branch: branch).sha
             api.message = "修改已提交到 GitHub。"
-        } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func remove() async {
         busy = true; defer { busy = false }
@@ -409,12 +440,23 @@ struct FileView: View {
             let fresh = try await api.file(repo, path: entry.path, branch: branch)
             try await api.delete(repo, entry: fresh, message: "Delete \(entry.name) via RepoPocket", branch: branch)
             deleted = true; api.message = "删除已提交。"
-        } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func download() async {
         busy = true; defer { busy = false }
-        do { share = SharedFile(url: try await api.downloadFile(repo, entry: entry, branch: branch)) }
-        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        do {
+            let generation = AccountStore.generation
+            try await DownloadStore.shared.requireAuthorization()
+            guard api.isCurrentSession else { throw CancellationError() }
+            DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
+            let temporary = try await api.downloadFile(repo, entry: entry, branch: branch)
+            defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
+            let saved = try DownloadStore.shared.persist(temporary, session: generation)
+            guard api.isCurrentSession else { throw CancellationError() }
+            api.message = "已保存到 " + DownloadStore.shared.label
+            share = SharedFile(url: saved)
+        }
+        catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
 }
 
@@ -422,7 +464,7 @@ struct SettingsView: View {
     @ObservedObject var api: GitHub
     @StateObject private var updateChecker = UpdateChecker()
     @State private var pendingRemoval: GitHubAccount?
-    @State private var showAccountManagement = false
+    @EnvironmentObject private var accountPresentation: AccountPresentation
     @State private var token = ""
     @State private var busy = false
     var body: some View {
@@ -442,11 +484,11 @@ struct SettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) { socialCounts }
                             }.font(.caption).foregroundColor(.secondary)
                             if savedAccount == nil {
-                                Button("添加账号") { showAccountManagement = true }.frame(minHeight: 44)
+                                Button("添加账号") { accountPresentation.showing = true }.frame(minHeight: 44)
                             }
                         }
                         Spacer(minLength: 0)
-                        Button { showAccountManagement = true } label: {
+                        Button { accountPresentation.showing = true } label: {
                             Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
                         }.accessibilityLabel("账号管理：切换、添加或移除本机账号")
                     }.padding(.vertical, 8).softGroupedRow(top: true, bottom: true)
@@ -461,6 +503,8 @@ struct SettingsView: View {
                     } label: { Label("已加星标", systemImage: "star") }
                         .softGroupedRow(bottom: true)
                 }
+                DownloadLocationSection()
+                CacheSettingsSection(api: api, checker: updateChecker)
                 Section("安全") {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)
                 }
@@ -474,55 +518,7 @@ struct SettingsView: View {
             .task { updateChecker.enterPage() }
             .onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }
             .refreshable { await refreshProfile() }
-            .sheet(isPresented: $showAccountManagement, onDismiss: { token = "" }) {
-                NavigationStack {
-                    Form {
-                        Section("账号") {
-                            if AccountStore.accounts.isEmpty { Text("尚无已验证账号").foregroundColor(.secondary) }
-                            ForEach(AccountStore.accounts) { account in
-                                HStack {
-                                    GitHubAvatar(url: account.avatarURL, size: 32)
-                                    Text(account.login)
-                                    Spacer()
-                                    if account.id == api.accountID {
-                                        Image(systemName: "checkmark").accessibilityLabel("当前账号")
-                                    } else {
-                                        Button("切换") { AccountStore.activate(account.id) }.disabled(busy)
-                                    }
-                                    Button(role: .destructive) { pendingRemoval = account } label: {
-                                        Image(systemName: "trash").frame(width: 44, height: 44)
-                                    }.disabled(busy).accessibilityLabel("移除本机账号 " + account.login)
-                                }
-                            }
-                        }
-                        Section {
-                            NavigationLink("添加 / 更新 GitHub 账号") {
-                                Form {
-                                    Section("添加 / 更新 GitHub 账号") {
-                                        SecureField("粘贴你自己的 Token", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled()
-                                        Button("验证并安全保存") { Task { await verify() } }.disabled(busy || token.isEmpty)
-                                        if busy { ProgressView() }
-                                        Link("在 GitHub 创建 Token", destination: URL(string: "https://github.com/settings/tokens")!)
-                                    }
-                                }.navigationTitle("添加 / 更新账号")
-                                .onDisappear { token = "" }
-                            }
-                            Text("仅管理本机账号凭据；移除本机账号不会删除 GitHub 账号或远端仓库。").font(.caption)
-                        }
-                    }.navigationTitle("账号管理")
-                    .toolbar { Button("完成") { showAccountManagement = false }.disabled(busy) }
-                    .interactiveDismissDisabled(busy)
-                    .confirmationDialog("移除此账号及本机 Token？", isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }), titleVisibility: .visible) {
-                        Button("移除本机账号", role: .destructive) {
-                            if let account = pendingRemoval { AccountStore.remove(account.id) }
-                            pendingRemoval = nil
-                        }
-                        Button("取消", role: .cancel) { pendingRemoval = nil }
-                    } message: {
-                        Text("仅移除 " + (pendingRemoval?.login ?? "") + " 的本机凭据，不会删除 GitHub 账号、远端仓库或本地工作区。")
-                    }
-                }
-            }
+
         }
     }
     private var savedAccount: GitHubAccount? {
@@ -536,11 +532,11 @@ struct SettingsView: View {
         guard !busy, !CredentialStore.read().isEmpty else { return }
         busy = true; defer { busy = false }
         do { try await api.identify() }
-        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func verify() async {
         busy = true; defer { busy = false }
         do { let credential = token; token = ""; try await api.addAccount(token: credential) }
-        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
+        catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
 }

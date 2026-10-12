@@ -28,9 +28,10 @@ class DeletionTests(unittest.TestCase):
         self.assertNotIn('Section("已保存账号")', app)
         self.assertIn('账号管理：切换、添加或移除本机账号', app)
         self.assertIn('.refreshable { await refreshProfile() }', app)
-        self.assertIn('不会删除 GitHub 账号、远端仓库或本地工作区', app)
-        self.assertIn('AccountStore.activate(account.id)', app)
-        self.assertIn('AccountStore.remove(account.id)', app)
+        self.assertIn('不会删除 GitHub 账号、远端仓库或本地工作区', Path('RepoPocket/AccountManagement.swift').read_text())
+        management = Path('RepoPocket/AccountManagement.swift').read_text()
+        self.assertIn('AccountStore.activate(account.id)', management)
+        self.assertIn('AccountStore.remove(account.id)', management)
 
     def test_prefill_clear_and_final_confirmation_contract(self):
         self.assertIn('init(api: GitHub, repository: Repository, context: RepositoryDeletionContext,', ui)

@@ -50,11 +50,12 @@ import ZIPFoundation
         downloadTask?.cancel(); downloadSession?.invalidateAndCancel()
         downloadTask = nil; downloadSession = nil; delegate = nil
         downloading = false; progress = 0; release = nil
-        if let downloaded { try? FileManager.default.removeItem(at: downloaded) }
+        // Persisted user downloads survive leaving settings.
         downloaded = nil
     }
     func check(api: GitHub) async {
         guard !checking, !downloading else { return }
+        guard api.canCheckAppUpdate else { showTransient("请登录账号", duration: UpdateNoticeRules.latestNanoseconds); return }
         generation = UUID(); let token = generation
         clearNotice(); checking = true; release = nil; downloaded = nil
         defer { if generation == token { checking = false } }
@@ -79,12 +80,14 @@ import ZIPFoundation
     }
     func download() {
         guard !downloading, let release, let source = release.ipaURL else { showTransient("未找到唯一可信的 RepoPocket IPA 附件，请查看发布页。"); return }
-        generation = UUID(); let token = generation; clearNotice()
+        generation = UUID(); let token = generation; let accountSession = AccountStore.generation; clearNotice()
+        DownloadStore.shared.begin()
         downloading = true; progress = 0; downloaded = nil; message = "正在下载到本机，完成后校验 IPA。"
         let handler = UpdateDownloadDelegate(progress: { [weak self] value in Task { @MainActor in guard let self, self.generation == token, self.downloading else { return }; self.progress = value } }, completion: { [weak self] result in
             Task { @MainActor in
+                defer { DownloadStore.shared.end() }
                 guard let self, self.generation == token else {
-                    if case .success(let file) = result { try? FileManager.default.removeItem(at: file) }; return
+                    if case .success(let file) = result { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }; return
                 }
                 defer { if self.generation == token { self.downloading = false; self.downloadTask = nil; self.downloadSession?.finishTasksAndInvalidate(); self.downloadSession = nil; self.delegate = nil } }
                 do {
@@ -106,8 +109,12 @@ import ZIPFoundation
                             guard try LocalStore.snapshotFileSHA256(file) == expected.lowercased() else { throw AppError(text: "IPA SHA256 与官方附件不符，已阻止安装。") }
                             self.message = "下载完成，请选择应用安装"
                         } else { self.message = "下载完成，请选择应用安装" }
-                        self.downloaded = file
-                    } catch { try? FileManager.default.removeItem(at: file); throw error }
+                        guard self.generation == token, accountSession == AccountStore.generation else { throw CancellationError() }
+                        let saved = try DownloadStore.shared.persist(file, session: accountSession)
+                        try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+                        self.message = "已保存到 " + DownloadStore.shared.label + "，请选择应用安装"
+                        self.downloaded = saved
+                    } catch { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()); throw error }
                 } catch { if self.generation == token { self.message = (error as? URLError)?.code == .cancelled ? "已取消下载。" : "下载/校验失败：\(error.localizedDescription)" } }
             }
         })
@@ -139,6 +146,7 @@ struct AppUpdateSection: View {
     @ObservedObject var api: GitHub
     @ObservedObject var checker: UpdateChecker
     @State private var share: SharedFile?
+    @State private var authorizing = false
     var body: some View {
         Group {
             Button(checker.checking ? "检查中…" : "检查应用更新") { Task { await checker.check(api: api) } }.disabled(checker.checking || checker.downloading).softGroupedRow(top: true)
@@ -149,7 +157,7 @@ struct AppUpdateSection: View {
                 Link("查看正式发布 \(release.displayVersion)", destination: release.html_url).softGroupedRow()
                 if let ipa = release.ipaURL { Link("到官方仓库下载 IPA（可靠兜底）", destination: ipa).softGroupedRow() }
                 if checker.downloaded == nil {
-                    Button("更新：下载 IPA") { checker.download() }.disabled(checker.downloading || release.ipaURL == nil).softGroupedRow()
+                    Button("更新：下载 IPA") { authorizeDownload() }.disabled(authorizing || checker.downloading || release.ipaURL == nil).softGroupedRow()
                     Button("暂不更新") { checker.ignore() }.disabled(checker.downloading).softGroupedRow()
                 }
             }
@@ -162,4 +170,17 @@ struct AppUpdateSection: View {
             }
         }.sheet(item: $share, onDismiss: { checker.sharing = false }) { ShareSheet(url: $0.url) }
     }
+    private func authorizeDownload() {
+        guard !authorizing else { return }; authorizing = true
+        Task { @MainActor in
+            defer { authorizing = false }
+            do {
+                let session = AccountStore.generation
+                try await DownloadStore.shared.requireAuthorization()
+                guard session == AccountStore.generation, api.isCurrentSession else { return }
+                checker.download()
+            } catch { if !(error is CancellationError) { checker.message = error.localizedDescription } }
+        }
+    }
+
 }

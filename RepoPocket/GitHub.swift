@@ -157,6 +157,11 @@ final class GitHub: ObservableObject {
     private var parentActive = 0
     private var parentWaiters: [CheckedContinuation<Void, Never>] = []
     private var collectionCache: [RepositoryHomeSection: [Repository]] = [:]
+    func clearMemoryCaches() {
+        guard parentTasks.isEmpty else { return }
+        parentCache.removeAll(); collectionCache.removeAll()
+    }
+    var canCheckAppUpdate: Bool { isCurrentSession && !CredentialStore.read(account: accountID).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     func cachedCollection(_ section: RepositoryHomeSection) -> [Repository]? { collectionCache[section] }
     func cacheCollection(_ repositories: [Repository], section: RepositoryHomeSection) {
         collectionCache[section] = repositories
@@ -258,8 +263,9 @@ final class GitHub: ObservableObject {
     func officialAppUpdateData() async throws -> Data {
         try ensureActiveAccount()
         let endpoint = URL(string: "https://api.github.com/repos/wm0104/RepoPocket/releases/latest")!
-        let authenticated = !CredentialStore.read(account: accountID).isEmpty
-        var r = authenticated ? try request(endpoint) : URLRequest(url: endpoint)
+        guard canCheckAppUpdate else { throw AppError(text: "请登录账号") }
+        let authenticated = true
+        var r = try request(endpoint)
         r.timeoutInterval = 30
         r.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         r.setValue("RepoPocket", forHTTPHeaderField: "User-Agent")
@@ -563,6 +569,7 @@ final class GitHub: ObservableObject {
         try ensureActiveAccount()
         guard let id = user.id else { throw AppError(text: "GitHub 未返回账号标识") }
         let account = GitHubAccount(id: String(id), login: user.login, avatarURL: user.avatar_url)
+        try Task.checkCancellation()
         try CredentialStore.save(token, account: account.id)
         try AccountStore.record(account)
         AccountStore.activate(account.id)
@@ -573,7 +580,8 @@ final class GitHub: ObservableObject {
             let batch = try await decoded([Repository].self, "/user/repos", query: [
                 .init(name: "per_page", value: "100"), .init(name: "page", value: String(page)), .init(name: "sort", value: "pushed")])
             result += batch
-            if batch.count < 100 { break }
+            if batch.count < 100 { return result }
+            if page == 50 { throw AppError(text: "列表加载未完成：超过分页上限，请缩小范围或重试。") }
         }
         return result
     }
@@ -584,7 +592,8 @@ final class GitHub: ObservableObject {
                 .init(name: "per_page", value: "100"), .init(name: "page", value: String(page)),
                 .init(name: "sort", value: "updated")])
             result += batch
-            if batch.count < 100 { break }
+            if batch.count < 100 { return result }
+            if page == 50 { throw AppError(text: "列表加载未完成：超过分页上限，请缩小范围或重试。") }
         }
         return result
     }
@@ -792,13 +801,20 @@ final class GitHub: ObservableObject {
         r.setValue("application/vnd.github.raw+json", forHTTPHeaderField: "Accept")
         return try await download(r, name: entry.name)
     }
+    func downloadAsset(_ repo: String, asset: Asset) async throws -> URL {
+        let endpoint = try Self.repoPath(repo) + "/releases/assets/" + String(asset.id)
+        var r = try request(url(endpoint))
+        r.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+        return try await download(r, name: asset.name, redirect: ReleaseAssetRedirectPolicy())
+    }
     func downloadZIP(_ repo: String, branch: String) async throws -> URL {
         let repo = try RepositoryInput.parse(repo)
         let endpoint = try Self.repoPath(repo) + "/zipball" + (branch.isEmpty ? "" : "/" + Self.component(branch))
         return try await download(request(url(endpoint)), name: repo.replacingOccurrences(of: "/", with: "-") + ".zip")
     }
-    private func download(_ request: URLRequest, name: String) async throws -> URL {
-        let (tmp, response) = try await session.download(for: request, delegate: ArchiveRedirectPolicy())
+    private func download(_ request: URLRequest, name: String, redirect: URLSessionTaskDelegate = ArchiveRedirectPolicy()) async throws -> URL {
+        let (tmp, response) = try await session.download(for: request, delegate: redirect)
+        defer { try? FileManager.default.removeItem(at: tmp) }
         try ensureActiveAccount()
         do {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -807,7 +823,7 @@ final class GitHub: ObservableObject {
         } catch { try? FileManager.default.removeItem(at: tmp); throw error }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let safe = (name as NSString).lastPathComponent
+        let safe = DownloadRules.safeName(name)
         let target = dir.appendingPathComponent(safe)
         try FileManager.default.moveItem(at: tmp, to: target)
         return target

@@ -49,7 +49,7 @@ enum AppUpdateRules {
     static func conciseCheckError(_ error: Error) -> String {
         let reason = error.localizedDescription
         if reason.contains("速率") || reason.contains("过于频繁") { return "请求过于频繁，请稍后再试" }
-        if reason.contains("凭据") || reason.contains("HTTP 401") { return "登录已失效，请更新凭据" }
+        if reason.contains("凭据") || reason.contains("HTTP 401") { return "请重新登录" }
         return "检查失败，请稍后重试"
     }
     static func statusError(_ status: Int, headers: [AnyHashable: Any] = [:], body: Data = Data(), authenticated: Bool = false) -> String {

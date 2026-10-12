@@ -14,7 +14,7 @@ private final class AvatarRedirectPolicy: NSObject, URLSessionTaskDelegate {
 }
 
 /// Actor-isolated shared work survives row recycling; at most four downloads/decode jobs.
-private actor AvatarPipeline {
+actor AvatarPipeline {
     static let shared = AvatarPipeline()
     private let cache: NSCache<NSURL, UIImage> = {
         let cache = NSCache<NSURL, UIImage>()
@@ -35,6 +35,11 @@ private actor AvatarPipeline {
         configuration.urlCredentialStorage = nil
         return URLSession(configuration: configuration, delegate: AvatarRedirectPolicy(), delegateQueue: nil)
     }()
+    func clearIfIdle() -> Bool {
+        guard pending.isEmpty, active == 0, waiters.isEmpty else { return false }
+        cache.removeAllObjects(); session.configuration.urlCache?.removeAllCachedResponses()
+        return true
+    }
     func image(for url: URL) async -> UIImage? {
         if let image = cache.object(forKey: url as NSURL) { return image }
         if let task = pending[url] { return await task.value }
@@ -112,9 +117,10 @@ struct GitHubAvatar: View {
 struct RepositoryStatistics: View {
     let repository: Repository
     var body: some View {
-        HStack(spacing: 12) { counts }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) { counts }.fixedSize(horizontal: true, vertical: false)
+        }
         .lineLimit(1)
-        .minimumScaleFactor(0.75)
         .font(.caption)
         .monospacedDigit()
         .foregroundColor(.secondary)

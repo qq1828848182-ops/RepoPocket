@@ -32,6 +32,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     let delay: UInt64
     let failure: String
     init(_ failure: String, delay: UInt64 = 0) { self.failure = failure; self.delay = delay }
+    var canCheckAppUpdate = true
     var calls = 0
     func officialAppUpdateData() async throws -> Data {
         calls += 1
@@ -55,6 +56,11 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
 }
 @main struct Tests {
  @MainActor static func main() async throws {
+    let anonymous = GitHub("latest")
+    anonymous.canCheckAppUpdate = false
+    let gated = UpdateChecker()
+    await gated.check(api: anonymous)
+    precondition(anonymous.calls == 0 && gated.message == "请登录账号")
     let manual = UpdateChecker()
     let counted = GitHub("latest", delay: 100_000_000)
     for _ in 0..<3 { manual.enterPage(); manual.leavePage() }

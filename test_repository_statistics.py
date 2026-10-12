@@ -34,7 +34,7 @@ class RepositoryStatisticsTests(unittest.TestCase):
             self.assertNotIn(f'api.profile?.{field} ?? 0', app)
         self.assertIn('GitHubAvatar(url: api.profile?.avatar_url ?? savedAccount?.avatarURL, size: 56)', app)
         self.assertIn('try ensureActiveAccount()\n        login = user.login; avatarURL = user.avatar_url; profile = user', github)
-        self.assertIn('SecureField("粘贴你自己的 Token"', app)
+        self.assertIn('SecureField("粘贴你自己的 Token"', Path('RepoPocket/AccountManagement.swift').read_text())
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift compiler unavailable; run on macOS Actions')
     def test_production_decoding(self):

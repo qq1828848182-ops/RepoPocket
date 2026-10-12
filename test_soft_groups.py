@@ -23,9 +23,9 @@ section = ui.split('RepositoryInlineSection(api: api, section: .owned', 1)[1].sp
 assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
 assert 'softGroupedRow' not in section
 assert 'refresh()' not in section and 'repos = []' not in section
-assert 'NavigationLink("添加 / 更新 GitHub 账号")' in ui
+assert 'NavigationLink("添加 / 更新 GitHub 账号")' in Path('RepoPocket/AccountManagement.swift').read_text()
 assert 'Section("已保存账号")' not in ui
-assert '.sheet(isPresented: $showAccountManagement' in ui
+assert '.sheet(isPresented: $accountPresentation.showing' in ui
 assert '.listStyle(.insetGrouped)' in workspace and '.listStyle(.insetGrouped)' in ui
 assert '.formStyle(.grouped)' in upload
 assert '.swipeActions {' in workspace and 'pendingDelete = root; confirmDelete = true' in workspace

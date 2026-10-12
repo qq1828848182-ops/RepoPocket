@@ -60,6 +60,7 @@ struct UploadView: View {
     @State private var trollPreview = false
     @State private var trollBranch = ""
     @State private var releases: [Release] = []
+    @State private var savedAsset: SharedFile?
     var body: some View {
         NavigationStack {
             Form {
@@ -83,6 +84,7 @@ struct UploadView: View {
                         Text(r.draft ? "草稿（尚未公开）" : "已发布").softGroupedRow()
                         if let a = asset {
                             Text("附件：" + a.name).softGroupedRow()
+                            Button("保存附件") { Task { await saveAsset(a, repo: releaseRepo) } }.disabled(busy).softGroupedRow()
                             if r.draft {
                                 Button("公开此 Release") { Task { await publish() } }.disabled(busy).softGroupedRow()
                             } else if let url = URL(string: a.browser_download_url) {
@@ -103,6 +105,7 @@ struct UploadView: View {
                 if openedFromFolder { Button("关闭") { dismiss() }.disabled(busy) }
 
             }
+            .sheet(item: $savedAsset) { ShareSheet(url: $0.url) }
             .interactiveDismissDisabled(busy)
             .alert("提示", isPresented: Binding(get: { !alertText.isEmpty }, set: { if !$0 { alertText = "" } })) {
                 Button("好", role: .cancel) { alertText = "" }
@@ -480,6 +483,23 @@ struct UploadView: View {
             asset = try await api.upload(r, file: file) { value in Task { @MainActor in progress = value } }
             progress = 1; alertText = r.draft ? "上传成功，草稿可公开发布。" : "上传成功，附件已加入公开 Release。"
         } catch { alertText = error.localizedDescription }
+    }
+    private func saveAsset(_ asset: Asset, repo: String) async {
+        guard !busy, api.isCurrentSession else { return }
+        let generation = AccountStore.generation
+        busy = true; defer { busy = false }
+        do {
+            try await DownloadStore.shared.requireAuthorization()
+            guard api.isCurrentSession else { throw CancellationError() }
+            DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
+            let temporary = try await api.downloadAsset(repo, asset: asset)
+            defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
+            guard (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.intValue == asset.size else { throw AppError(text: "附件大小不符，请重试。") }
+            let saved = try DownloadStore.shared.persist(temporary, session: generation)
+            guard api.isCurrentSession else { throw CancellationError() }
+            alertText = "已保存到 " + DownloadStore.shared.label
+            savedAsset = SharedFile(url: saved)
+        } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { alertText = error.localizedDescription } }
     }
     private func publish() async {
         guard let r = release else { return }
