@@ -51,7 +51,10 @@ import ZIPFoundation
                         let archive = try Archive(url: file, accessMode: .read)
                         guard archive.contains(where: { $0.path.hasPrefix("Payload/") && $0.path.hasSuffix(".app/Info.plist") }) else { throw AppError(text: "下载内容不是有效的 IPA（缺少 Payload App）。") }
                         // Exercise CRC validation without extracting untrusted paths to disk.
-                        for entry in archive { _ = try archive.extract(entry, consumer: { _ in }) }
+                        for entry in archive {
+                            let crc = try archive.extract(entry, consumer: { _ in })
+                            guard crc == entry.checksum else { throw AppError(text: "IPA ZIP CRC 校验失败。") }
+                        }
                         let checksumName = source.lastPathComponent + ".sha256"
                         if let checksum = release.assets.first(where: { $0.name == checksumName }) {
                             guard checksum.browser_download_url.scheme == "https", checksum.browser_download_url.host == "github.com", checksum.browser_download_url.path.hasPrefix("/wm0104/RepoPocket/releases/download/") else { throw AppError(text: "SHA256 附件地址不可信。") }
@@ -77,7 +80,13 @@ import ZIPFoundation
         components.queryItems = [URLQueryItem(name: "url", value: url.absoluteString)]
         guard let install = components.url else { return }
         UIApplication.shared.open(install, options: [:]) { [weak self] opened in
-            Task { @MainActor in self?.message = opened ? "已请求打开官方安装接口；TrollStore 将重新下载远端 IPA 并显示安装确认。若打开的是放大镜，请使用分享已下载 IPA。" : "无法打开安装接口，请分享已下载 IPA 给 TrollStore。" }
+            Task { @MainActor in
+                if opened { self?.message = "已请求打开官方安装接口；TrollStore 将重新下载远端 IPA。若打开的是放大镜，请使用官方仓库下载入口；设备转交尚未验证。" }
+                else {
+                    self?.message = "无法打开安装接口，已转到 RepoPocket 官方仓库下载页。"
+                    UIApplication.shared.open(URL(string: "https://github.com/wm0104/RepoPocket/releases")!)
+                }
+            }
         }
     }
 }
