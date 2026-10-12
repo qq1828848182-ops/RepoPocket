@@ -31,7 +31,11 @@ enum DownloadRules {
         try rejectSymlinks(parent)
         let folder = parent.appendingPathComponent("RepoPocket", isDirectory: true)
         try rejectSymlinks(folder)
-        try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+        if fm.fileExists(atPath: folder.path) {
+            guard (try fm.attributesOfItem(atPath: folder.path)[.type] as? FileAttributeType) == .typeDirectory else { throw NSError(domain: "DownloadStore", code: 3, userInfo: [NSLocalizedDescriptionKey: "保存位置不是文件夹，请重新选择。"]) }
+        } else {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+        }
         let name = safeName(source.lastPathComponent)
         let ext = (name as NSString).pathExtension
         let stem = (name as NSString).deletingPathExtension
