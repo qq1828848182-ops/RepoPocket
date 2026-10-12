@@ -77,7 +77,7 @@ enum AccountStore { static var generation = UUID() }
  }
  func downloadReleaseAsset(_ repo: String, asset: Asset, progress: @escaping (Double)->Void) async throws -> URL {
   downloadTargets.append(repo + ":" + String(asset.id)); progress(0.5)
-  if slowDownload { try await Task.sleep(nanoseconds: 50_000_000) }
+  while slowDownload { try await Task.sleep(nanoseconds: 1_000_000) }
   let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
   try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
   let file=folder.appendingPathComponent(asset.name)
@@ -87,6 +87,13 @@ enum AccountStore { static var generation = UUID() }
 func release(_ id: Int, draft: Bool = false, pre: Bool = false, date: String? = "2026-10-12T10:00:00Z") throws -> Release {
  let object: [String:Any] = ["id":id,"tag_name":"v\(id)","name":"Version \(id)","draft":draft,"prerelease":pre,"published_at":date as Any? ?? NSNull(),"body":"Full\nnotes **raw**", "upload_url":"https://uploads.github.com/repos/o/r/releases/\(id)/assets{?name}","html_url":"https://github.com/o/r/releases/tag/v\(id)","assets":[["id":id,"name":"file\(id).ipa","size":4,"browser_download_url":"https://evil.invalid/steal"]]]
  return try JSONDecoder().decode(Release.self, from: JSONSerialization.data(withJSONObject: object))
+}
+@MainActor func waitUntil(_ condition: @MainActor () -> Bool) async throws {
+ for _ in 0..<2000 {
+  if condition() { return }
+  try await Task.sleep(nanoseconds:1_000_000)
+ }
+ preconditionFailure("Mock state did not complete within bounded wait")
 }
 @main struct Tests {
  @MainActor static func main() async throws {
@@ -127,16 +134,16 @@ func release(_ id: Int, draft: Bool = false, pre: Bool = false, date: String? = 
   let downloader=RepositoryAssetDownload(), store=DownloadStore.shared
   api.slowDownload=true
   downloader.start(api:api,repo:"o/old",asset:official.assets[0])
-  try await Task.sleep(nanoseconds:5_000_000); downloader.cancel()
-  try await Task.sleep(nanoseconds:60_000_000)
+  try await waitUntil { api.downloadTargets.count == 1 }; downloader.cancel()
+  try await waitUntil { store.operations == 0 }
   precondition(store.persisted == 0 && store.operations == 0 && downloader.saved == nil)
   downloader.start(api:api,repo:"o/stale",asset:preview.assets[0])
-  try await Task.sleep(nanoseconds:5_000_000); AccountStore.generation=UUID()
-  try await Task.sleep(nanoseconds:60_000_000)
-  precondition(store.persisted == 0 && downloader.saved == nil && store.operations == 0)
+  try await waitUntil { api.downloadTargets.count == 2 }; AccountStore.generation=UUID()
   api.slowDownload=false
+  try await waitUntil { downloader.activeID == nil && store.operations == 0 }
+  precondition(store.persisted == 0 && downloader.saved == nil && store.operations == 0)
   downloader.start(api:api,repo:"o/new",asset:preview.assets[0])
-  try await Task.sleep(nanoseconds:20_000_000)
+  try await waitUntil { downloader.activeID == nil }
   precondition(store.persisted == 1 && downloader.saved != nil && store.operations == 0)
   precondition(api.downloadTargets.last == "o/new:2")
   store.allowed=false; downloader.start(api:api,repo:"o/new",asset:official.assets[0])
