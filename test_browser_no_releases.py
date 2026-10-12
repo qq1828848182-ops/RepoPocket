@@ -9,6 +9,8 @@ LOAD = BROWSER[BROWSER.index('    private func load() async {'):BROWSER.index(' 
 
 class BrowserRollbackTests(unittest.TestCase):
     def test_exact_stable_navigation_and_api(self):
+        if subprocess.run(['git', 'cat-file', '-e', BASE+'^{commit}'], cwd=ROOT, capture_output=True).returncode:
+            subprocess.run(['git', 'fetch', '--depth=1', 'origin', BASE], cwd=ROOT, check=True)
         for file in ('RepoPocket/RepoPocketApp.swift','RepoPocket/GitHub.swift','RepoPocket/ReleaseAssetRedirectPolicy.swift','RepoPocket/RepositoryStar.swift','RepoPocket/RepositoryStarUI.swift','RepoPocket/RepositoryUI.swift'):
             self.assertEqual((ROOT/file).read_text(), subprocess.check_output(['git','show',f'{BASE}:{file}'],cwd=ROOT,text=True))
         for token in ('RepositoryRelease', 'repositoryReleasePage', 'repositoryLatestRelease', 'releases.load', 'releases.reset'):
