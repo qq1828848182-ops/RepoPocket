@@ -44,13 +44,16 @@ struct Repository { let full_name: String; let stargazers_count: Int? }
  var accountID = "A", authenticated = true, current = true
  var code = 404, failMetadata = false, switchDuring = false, slow = false
  var reads = 0, writes: [String] = [], active = 0, peak = 0
- var list: [Repository] = [], own: [Repository] = []
+ var collectionCache: [RepositoryHomeSection: [Repository]] = [.starred: [], .owned: []]
+ var starRevision = 0
+ var isCurrentSession: Bool { current }
+ var list: [Repository] { collectionCache[.starred] ?? [] }
  var count: Int? = 7
  func requireStarSession() throws {
   if !authenticated { throw AppError(text: "请登录账号") }
   if !current { throw AppError(text: "旧会话") }
  }
- func cachedCollection(_ section: RepositoryHomeSection) -> [Repository]? { section == .starred ? list : own }
+ func cachedCollection(_ section: RepositoryHomeSection) -> [Repository]? { collectionCache[section] }
  func starRequest(_ name: String, method: String) async throws -> Bool {
   try requireStarSession()
   active += 1; peak = max(peak, active); defer { active -= 1 }
@@ -71,6 +74,13 @@ struct Repository { let full_name: String; let stargazers_count: Int? }
  }
 }
 '''
+        production_cache = (ROOT/'RepoPocket/GitHub.swift').read_text().split('    func applyStarChange(',1)[1].split('    func clearMemoryCaches()',1)[0]
+        mock_cache = ''' func applyStarChange(name: String, starred: Bool, repository: Repository?) {
+  list.removeAll { $0.full_name.lowercased() == name.lowercased() }
+  if starred, let repository { list.insert(repository, at: 0) }
+ }
+'''
+        harness = harness.replace(mock_cache, '    func applyStarChange(' + production_cache)
         harness += (ROOT/'RepoPocket/RepositoryInput.swift').read_text() + store
         harness += r'''
 @main struct Harness {
@@ -123,6 +133,24 @@ struct Repository { let full_name: String; let stargazers_count: Int? }
   do { try await s.perform(live, repository: nil); fatalError() } catch {}
   precondition(s.known("a/b") == false && api.list.isEmpty)
   api.switchDuring = false; api.current = true; api.code = 404
+  s.invalidate()
+  _ = try await s.status("a/b")
+  let metaTarget = try s.target("a/b", desired: true)
+  api.code = 204; api.failMetadata = true
+  try await s.perform(metaTarget, repository: nil)
+  precondition(s.known("a/b") == true && api.collectionCache[.starred] == nil)
+  api.collectionCache[.starred] = []
+  s.invalidate(); api.code = 404
+  _ = try await s.status("a/b")
+  let suppliedTarget = try s.target("a/b", desired: true)
+  api.code = 204
+  try await s.perform(suppliedTarget, repository: Repository(full_name: "a/b", stargazers_count: nil))
+  precondition(api.list.count == 1 && api.list[0].stargazers_count == nil)
+  api.applyStarChange(name: "A/B", starred: true, repository: Repository(full_name: "a/b", stargazers_count: nil))
+  precondition(api.list.count == 1)
+  api.applyStarChange(name: "a/b", starred: false, repository: nil)
+  precondition(api.list.isEmpty)
+  api.code = 404
   s.invalidate()
   await withTaskGroup(of: Void.self) { group in
    for n in 0..<12 { group.addTask { _ = try? await s.status("a/r\(n)") } }
