@@ -23,7 +23,9 @@ section = ui.split('Section("我的仓库") {', 1)[1].split('.listStyle(.insetGr
 assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
 assert 'top: repo.id == repos.first?.id, bottom: repo.id == repos.last?.id' in section
 assert 'refresh()' not in section and 'repos = []' not in section
-assert 'top: account.id == AccountStore.accounts.first?.id, bottom: account.id == AccountStore.accounts.last?.id' in ui
+assert 'NavigationLink("添加 / 更新 GitHub 账号")' in ui
+assert 'Section("已保存账号")' not in ui
+assert '.sheet(isPresented: $showAccountManagement' in ui
 assert '.listStyle(.insetGrouped)' in workspace and '.listStyle(.insetGrouped)' in ui
 assert '.formStyle(.grouped)' in upload
 assert '.swipeActions {' in workspace and 'pendingDelete = root; confirmDelete = true' in workspace
@@ -36,7 +38,7 @@ browse_row = next(line for line in direct_open.splitlines() if 'NavigationLink("
 assert browse_row.strip().endswith('.disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()'), browse_row
 assert '.softGroupedRow().softGroupedRow' not in ui + workspace + upload
 assert ui.count('top: e.id == entries.first?.id, bottom: e.id == entries.last?.id') == 3
-assert 'if busy { ProgressView().softGroupedRow() }' in ui
+assert 'if busy { ProgressView() }' in ui
 for marker in ['Button("导入一个或多个文件夹")', 'Button("导入一个或多个 ZIP")',
                'Text(binding.repo + " · " + binding.branch)', 'TextField("提交说明", text: $commitMessage)']:
     row = next(line for line in workspace.splitlines() if marker in line)

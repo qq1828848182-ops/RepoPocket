@@ -89,6 +89,8 @@ struct Repository: Decodable, Identifiable {
     let stargazers_count: Int?
     let forks_count: Int?
     let language: String?
+    struct Permissions: Decodable { let admin: Bool? }
+    let permissions: Permissions?
 }
 struct Entry: Decodable, Identifiable {
     var id: String { path }
@@ -198,6 +200,34 @@ final class GitHub: ObservableObject {
             r.setValue(binary ? "application/octet-stream" : "application/json", forHTTPHeaderField: "Content-Type")
         }
         return r
+    }
+    func deletionContext(_ repository: Repository) -> RepositoryDeletionContext {
+        RepositoryDeletionContext(accountID: accountID, generation: accountGeneration,
+                                  repositoryID: repository.id, fullName: repository.full_name)
+    }
+    func deleteRepository(_ repository: Repository, context: RepositoryDeletionContext,
+                          confirmation: String) async throws -> String {
+        try ensureActiveAccount()
+        return try await RepositoryDeletion.execute(context: context, confirmation: confirmation,
+            current: { RepositoryDeletionContext(accountID: AccountStore.activeID,
+                generation: AccountStore.generation, repositoryID: repository.id, fullName: repository.full_name) },
+            fetch: { try await self.repository(context.fullName) },
+            remove: {
+                try self.ensureActiveAccount()
+                let path = try Self.repoPath(context.fullName)
+                let r = try self.request(self.url(path), method: "DELETE")
+                let (d, response) = try await self.session.data(for: r)
+                do { try self.check(d, response, operation: "永久删除远端仓库") }
+                catch let error as GitHubAPIError {
+                    if [403, 404].contains(error.status) {
+                        throw AppError(text: error.localizedDescription + "\n" + RepositoryDeletion.permissionHelp)
+                    }
+                    throw error
+                }
+                guard (response as? HTTPURLResponse)?.statusCode == 204 else {
+                    throw AppError(text: "未收到 GitHub 删除成功确认（204），请刷新核实，勿盲目重试。")
+                }
+            })
     }
     private func ensureActiveAccount() throws {
         guard AccountStore.activeID == accountID, AccountStore.generation == accountGeneration else {

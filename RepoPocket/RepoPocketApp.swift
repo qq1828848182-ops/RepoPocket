@@ -137,6 +137,8 @@ struct BrowserView: View {
     @State private var selectedBranch = ""
     @State private var repositoryInfo: Repository?
     @State private var showBranches = false
+    @State private var repositoryDeletionTarget: RepositoryDeletionTarget?
+    @Environment(\.dismiss) private var dismiss
     private var activeBranch: String { selectedBranch.isEmpty ? branch : selectedBranch }
     @State private var entries: [Entry] = []
     @State private var loaded = false
@@ -219,9 +221,19 @@ struct BrowserView: View {
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
                 Button("下载整个仓库 ZIP") { Task { await zip() } }
                 Button("刷新目录") { Task { await load() } }
+                Button("删除远端仓库…", role: .destructive) {
+                    if let repositoryInfo, repositoryInfo.permissions?.admin == true {
+                        repositoryDeletionTarget = RepositoryDeletionTarget(repository: repositoryInfo, context: api.deletionContext(repositoryInfo))
+                    }
+                }.disabled(repositoryInfo?.permissions?.admin != true || deleting)
             } label: { Image(systemName: "ellipsis.circle") }.disabled(busy)
         }
         .task { if !loaded { await load() } }
+        .sheet(item: $repositoryDeletionTarget) { target in
+            RepositoryDeletionView(api: api, repository: target.repository, context: target.context) {
+                entries = []; repositoryInfo = nil; dismiss()
+            }
+        }
         .sheet(isPresented: $showBranches) {
             BranchPickerView(api: api, repo: repo, current: activeBranch) { chosen in
                 selectedBranch = chosen; loaded = false; Task { await load() }
@@ -382,6 +394,7 @@ struct FileView: View {
 struct SettingsView: View {
     @ObservedObject var api: GitHub
     @State private var pendingRemoval: GitHubAccount?
+    @State private var showAccountManagement = false
     @State private var token = ""
     @State private var busy = false
     var body: some View {
@@ -400,33 +413,15 @@ struct SettingsView: View {
                                 HStack(spacing: 12) { socialCounts }
                                 VStack(alignment: .leading, spacing: 4) { socialCounts }
                             }.font(.caption).foregroundColor(.secondary)
+                            if savedAccount == nil {
+                                Button("添加账号") { showAccountManagement = true }.frame(minHeight: 44)
+                            }
                         }
                         Spacer(minLength: 0)
+                        Button { showAccountManagement = true } label: {
+                            Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
+                        }.accessibilityLabel("账号管理：切换、添加或移除本机账号")
                     }.padding(.vertical, 8).softGroupedRow(top: true, bottom: true)
-                }
-                Section("已保存账号") {
-                    if AccountStore.accounts.isEmpty { Text("尚无已验证账号").foregroundColor(.secondary).softGroupedRow(top: true, bottom: true) }
-                    ForEach(AccountStore.accounts) { account in
-                        HStack {
-                            GitHubAvatar(url: account.avatarURL, size: 32)
-                            VStack(alignment: .leading) {
-                                Text(account.login)
-                                if account.id == api.accountID { Text("当前账号").font(.caption).foregroundColor(.secondary) }
-                            }
-                            Spacer()
-                            if account.id != api.accountID {
-                                Button("切换") { AccountStore.activate(account.id) }.disabled(busy)
-                            }
-                            Button(role: .destructive) { pendingRemoval = account } label: { Image(systemName: "trash") }
-                                .disabled(busy).accessibilityLabel("移除 " + account.login)
-                        }.softGroupedRow(top: account.id == AccountStore.accounts.first?.id, bottom: account.id == AccountStore.accounts.last?.id)
-                    }
-                }
-                Section("添加 / 更新 GitHub 账号") {
-                    SecureField("粘贴你自己的 Token", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
-                    Button("验证并安全保存") { Task { await verify() } }.disabled(busy || token.isEmpty).softGroupedRow()
-                    if busy { ProgressView().softGroupedRow() }
-                    Link("在 GitHub 创建 Token", destination: URL(string: "https://github.com/settings/tokens")!).softGroupedRow(bottom: true)
                 }
                 Section("安全") {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)
@@ -436,10 +431,54 @@ struct SettingsView: View {
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }
-            .confirmationDialog("移除此账号及本机 Token？", isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }), titleVisibility: .visible) {
-                Button("移除", role: .destructive) {
-                    if let account = pendingRemoval { AccountStore.remove(account.id) }
-                    pendingRemoval = nil
+            .refreshable { await refreshProfile() }
+            .sheet(isPresented: $showAccountManagement, onDismiss: { token = "" }) {
+                NavigationStack {
+                    Form {
+                        Section("账号") {
+                            if AccountStore.accounts.isEmpty { Text("尚无已验证账号").foregroundColor(.secondary) }
+                            ForEach(AccountStore.accounts) { account in
+                                HStack {
+                                    GitHubAvatar(url: account.avatarURL, size: 32)
+                                    Text(account.login)
+                                    Spacer()
+                                    if account.id == api.accountID {
+                                        Image(systemName: "checkmark").accessibilityLabel("当前账号")
+                                    } else {
+                                        Button("切换") { AccountStore.activate(account.id) }.disabled(busy)
+                                    }
+                                    Button(role: .destructive) { pendingRemoval = account } label: {
+                                        Image(systemName: "trash").frame(width: 44, height: 44)
+                                    }.disabled(busy).accessibilityLabel("移除本机账号 " + account.login)
+                                }
+                            }
+                        }
+                        Section {
+                            NavigationLink("添加 / 更新 GitHub 账号") {
+                                Form {
+                                    Section("添加 / 更新 GitHub 账号") {
+                                        SecureField("粘贴你自己的 Token", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled()
+                                        Button("验证并安全保存") { Task { await verify() } }.disabled(busy || token.isEmpty)
+                                        if busy { ProgressView() }
+                                        Link("在 GitHub 创建 Token", destination: URL(string: "https://github.com/settings/tokens")!)
+                                    }
+                                }.navigationTitle("添加 / 更新账号")
+                                .onDisappear { token = "" }
+                            }
+                            Text("仅管理本机账号凭据；移除本机账号不会删除 GitHub 账号或远端仓库。").font(.caption)
+                        }
+                    }.navigationTitle("账号管理")
+                    .toolbar { Button("完成") { showAccountManagement = false }.disabled(busy) }
+                    .interactiveDismissDisabled(busy)
+                    .confirmationDialog("移除此账号及本机 Token？", isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }), titleVisibility: .visible) {
+                        Button("移除本机账号", role: .destructive) {
+                            if let account = pendingRemoval { AccountStore.remove(account.id) }
+                            pendingRemoval = nil
+                        }
+                        Button("取消", role: .cancel) { pendingRemoval = nil }
+                    } message: {
+                        Text("仅移除 " + (pendingRemoval?.login ?? "") + " 的本机凭据，不会删除 GitHub 账号、远端仓库或本地工作区。")
+                    }
                 }
             }
         }
@@ -450,6 +489,12 @@ struct SettingsView: View {
     @ViewBuilder private var socialCounts: some View {
         if let followers = api.profile?.followers { Text("关注者 \(followers.formatted())") }
         if let following = api.profile?.following { Text("正在关注 \(following.formatted())") }
+    }
+    private func refreshProfile() async {
+        guard !busy, !CredentialStore.read().isEmpty else { return }
+        busy = true; defer { busy = false }
+        do { try await api.identify() }
+        catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func verify() async {
         busy = true; defer { busy = false }
