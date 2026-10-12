@@ -8,7 +8,7 @@ class NoticeTests(unittest.TestCase):
         self.assertIn('6_000_000_000', feature)
         self.assertIn('noticeTask?.cancel()', feature)
         self.assertIn('!Task.isCancelled', feature)
-        self.assertIn('.onDisappear { if share == nil { checker.leavePage() } }', feature)
+        self.assertIn('.onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }', Path('RepoPocket/RepoPocketApp.swift').read_text())
         self.assertIn('self.generation == token', feature)
         self.assertNotIn('（build', feature)
         self.assertNotIn('CFBundleVersion', Path('RepoPocket/RepoPocketApp.swift').read_text())

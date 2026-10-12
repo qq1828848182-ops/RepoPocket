@@ -6,13 +6,13 @@ feature = Path('RepoPocket/UpdateFeature.swift').read_text()
 
 class UpdateTests(unittest.TestCase):
     def test_manual_safe_contract(self):
-        self.assertIn('.task { await checker.enterPage(api: api) }', feature)
+        self.assertIn('.task { await updateChecker.enterPage(api: api) }', Path('RepoPocket/RepoPocketApp.swift').read_text())
         self.assertNotIn('Authorization', feature)
         for forbidden in ['TrollStore', 'apple-magnifier', 'openTrollStore', 'URLQueryItem(name: "url"']:
             self.assertNotIn(forbidden, feature)
         for value in ['downloadTask?.cancel()', 'snapshotFileSHA256', 'archive.extract', 'HTTPURLResponse', 'https://github.com/wm0104/RepoPocket/releases']:
             self.assertIn(value, feature)
-        self.assertIn('AppUpdateSection(api: api)', Path('RepoPocket/RepoPocketApp.swift').read_text())
+        self.assertIn('AppUpdateSection(api: api, checker: updateChecker)', Path('RepoPocket/RepoPocketApp.swift').read_text())
         api = Path('RepoPocket/GitHub.swift').read_text()
         update = api.split('func officialAppUpdateData()', 1)[1].split('func deletionContext', 1)[0]
         self.assertEqual(update.count('try ensureActiveAccount()'), 2)

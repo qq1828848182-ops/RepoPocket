@@ -9,6 +9,7 @@ import ZIPFoundation
     @Published var downloaded: URL?
     @Published var downloading = false
     @Published var progress: Double = 0
+    var sharing = false
     private var downloadTask: URLSessionDownloadTask?
     private var downloadSession: URLSession?
     private var delegate: UpdateDownloadDelegate?
@@ -126,7 +127,7 @@ final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 }
 struct AppUpdateSection: View {
     @ObservedObject var api: GitHub
-    @StateObject private var checker = UpdateChecker()
+    @ObservedObject var checker: UpdateChecker
     @State private var share: SharedFile?
     var body: some View {
         Group {
@@ -147,10 +148,8 @@ struct AppUpdateSection: View {
                 Button("取消下载", role: .cancel) { checker.cancelDownload() }.softGroupedRow()
             }
             if let file = checker.downloaded {
-                Button("分享 IPA") { share = SharedFile(url: file) }.softGroupedRow()
+                Button("分享 IPA") { checker.sharing = true; share = SharedFile(url: file) }.softGroupedRow()
             }
-        }.sheet(item: $share) { ShareSheet(url: $0.url) }
-        .task { await checker.enterPage(api: api) }
-        .onDisappear { if share == nil { checker.leavePage() } }
+        }.sheet(item: $share, onDismiss: { checker.sharing = false }) { ShareSheet(url: $0.url) }
     }
 }

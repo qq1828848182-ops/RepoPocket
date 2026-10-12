@@ -25,8 +25,8 @@ class UpdateGroupTests(unittest.TestCase):
         self.assertNotRegex(body, r'(?m)^\s*\}\.softGroupedRow')
         self.assertNotIn('.listRowBackground', body)
         self.assertNotIn('.background(', body)
-        self.assertIn('}.sheet(item: $share)', body)
-        block = settings.split('AppUpdateSection(api: api)', 1)[1].split('}.formStyle', 1)[0]
+        self.assertIn('}.sheet(item: $share, onDismiss:', body)
+        block = settings.split('AppUpdateSection(api: api, checker: updateChecker)', 1)[1].split('}.formStyle', 1)[0]
         self.assertIn('.softGroupedRow(bottom: true)', block)
         self.assertNotIn('top: true', block)
         self.assertNotIn('Section', block)
