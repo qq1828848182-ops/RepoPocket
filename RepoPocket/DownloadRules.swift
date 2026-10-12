@@ -13,7 +13,13 @@ enum DownloadRules {
         // filesystem component, without URL resource-value caching/following.
         var current = url.path
         while current != "/" && !current.isEmpty {
-            if (try? FileManager.default.attributesOfItem(atPath: current)[.type] as? FileAttributeType) == .typeSymbolicLink { throw NSError(domain: "DownloadStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "目录含符号链接，请重新选择保存位置。"]) }
+            if (try? FileManager.default.attributesOfItem(atPath: current)[.type] as? FileAttributeType) == .typeSymbolicLink {
+                // Darwin's OS-owned /var alias is unavoidable in sandbox URLs.
+                // Permit only this exact alias and destination, never user links.
+                let systemAlias = current == "/var" && (try? FileManager.default.destinationOfSymbolicLink(atPath: current)) == "private/var"
+                let absoluteSystemAlias = current == "/var" && (try? FileManager.default.destinationOfSymbolicLink(atPath: current)) == "/private/var"
+                guard systemAlias || absoluteSystemAlias else { throw NSError(domain: "DownloadStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "目录含符号链接，请重新选择保存位置。", "rejectedPath": current]) }
+            }
             current = (current as NSString).deletingLastPathComponent
         }
     }
