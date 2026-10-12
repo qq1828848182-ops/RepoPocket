@@ -12,30 +12,70 @@ import ZIPFoundation
     private var downloadTask: URLSessionDownloadTask?
     private var downloadSession: URLSession?
     private var delegate: UpdateDownloadDelegate?
+    private var generation = UUID()
+    private var noticeTask: Task<Void, Never>?
+    private var entered = false
+    func enterPage(api: GitHub) async {
+        guard !entered else { return }
+        entered = true
+        await check(api: api)
+    }
+    private func clearNotice() {
+        noticeTask?.cancel(); noticeTask = nil; message = ""
+    }
+    private func showTransient(_ text: String) {
+        clearNotice(); message = text
+        let token = generation
+        noticeTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(nanoseconds: 6_000_000_000) } catch { return }
+            guard !Task.isCancelled, let self, self.generation == token, !self.downloading else { return }
+            self.message = ""; self.noticeTask = nil
+        }
+    }
+    func leavePage() {
+        generation = UUID(); clearNotice(); checking = false; entered = false
+        // Leaving settings cancels the transfer and invalidates any late check/validation result.
+        downloadTask?.cancel(); downloadSession?.invalidateAndCancel()
+        downloadTask = nil; downloadSession = nil; delegate = nil
+        downloading = false; progress = 0; release = nil
+        if let downloaded { try? FileManager.default.removeItem(at: downloaded) }
+        downloaded = nil
+    }
     func check(api: GitHub) async {
         guard !checking, !downloading else { return }
-        checking = true; release = nil; downloaded = nil; message = ""; defer { checking = false }
+        generation = UUID(); let token = generation
+        clearNotice(); checking = true; release = nil; downloaded = nil
+        defer { if generation == token { checking = false } }
         do {
             let data = try await api.officialAppUpdateData()
+            guard generation == token else { return }
             let value = try JSONDecoder().decode(AppUpdateRelease.self, from: data)
             guard value.html_url.scheme == "https", value.html_url.host == "github.com", value.html_url.path.hasPrefix("/wm0104/RepoPocket/releases/") else { throw AppError(text: "发布页地址不可信。") }
             let local = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
             let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
             if try AppUpdateRules.isNewer(value, local: local, localBuild: build) {
                 release = value
-                message = "发现正式版本 \(value.tag_name)。由你选择更新，不会自动安装。"
-            } else { message = "当前 \(local)（build \(build)）已无更新的正式版本。发布标签未提供 build 时不推断同版本构建更新。" }
-        } catch { message = "检查更新失败：\(error.localizedDescription)" }
+                message = ""
+            } else { showTransient("已是最新版本") }
+        } catch { if generation == token { showTransient(AppUpdateRules.conciseCheckError(error)) } }
     }
-    func ignore() { release = nil; message = "本次不更新。仅手动检查，不会在每次进入时弹出。" }
-    func cancelDownload() { downloadTask?.cancel() }
+    func ignore() { generation = UUID(); release = nil; showTransient("本次不更新。") }
+    func cancelDownload() {
+        generation = UUID(); clearNotice()
+        downloadTask?.cancel(); downloadSession?.invalidateAndCancel()
+        downloadTask = nil; downloadSession = nil; delegate = nil
+        downloading = false; progress = 0; message = "已取消下载。"
+    }
     func download() {
-        guard !downloading, let release, let source = release.ipaURL else { message = "未找到唯一可信的 RepoPocket IPA 附件，请查看发布页。"; return }
+        guard !downloading, let release, let source = release.ipaURL else { showTransient("未找到唯一可信的 RepoPocket IPA 附件，请查看发布页。"); return }
+        generation = UUID(); let token = generation; clearNotice()
         downloading = true; progress = 0; downloaded = nil; message = "正在下载到本机，完成后校验 IPA。"
-        let handler = UpdateDownloadDelegate(progress: { [weak self] value in Task { @MainActor in self?.progress = value } }, completion: { [weak self] result in
+        let handler = UpdateDownloadDelegate(progress: { [weak self] value in Task { @MainActor in guard let self, self.generation == token, self.downloading else { return }; self.progress = value } }, completion: { [weak self] result in
             Task { @MainActor in
-                guard let self else { return }
-                defer { self.downloading = false; self.downloadTask = nil; self.downloadSession?.finishTasksAndInvalidate(); self.downloadSession = nil; self.delegate = nil }
+                guard let self, self.generation == token else {
+                    if case .success(let file) = result { try? FileManager.default.removeItem(at: file) }; return
+                }
+                defer { if self.generation == token { self.downloading = false; self.downloadTask = nil; self.downloadSession?.finishTasksAndInvalidate(); self.downloadSession = nil; self.delegate = nil } }
                 do {
                     let file = try result.get()
                     do {
@@ -50,14 +90,14 @@ import ZIPFoundation
                         if let checksum = release.assets.first(where: { $0.name == checksumName }) {
                             guard checksum.browser_download_url.scheme == "https", checksum.browser_download_url.host == "github.com", checksum.browser_download_url.path.hasPrefix("/wm0104/RepoPocket/releases/download/") else { throw AppError(text: "SHA256 附件地址不可信。") }
                             let (data, response) = try await URLSession.shared.data(from: checksum.browser_download_url)
+                            guard self.generation == token else { throw CancellationError() }
                             guard (response as? HTTPURLResponse)?.statusCode == 200, let text = String(data: data, encoding: .utf8), let expected = text.split(whereSeparator: { $0.isWhitespace }).first, expected.count == 64, expected.allSatisfy({ $0.isHexDigit }) else { throw AppError(text: "官方 SHA256 附件无效或下载失败。") }
                             guard try LocalStore.snapshotFileSHA256(file) == expected.lowercased() else { throw AppError(text: "IPA SHA256 与官方附件不符，已阻止安装。") }
-                            self.message = "IPA ZIP/CRC 及官方 SHA256 已验证。"
-                        } else { self.message = "IPA ZIP/CRC 已验证；发布未提供 SHA256，无法验证官方摘要。" }
+                            self.message = "下载完成，请手动安装"
+                        } else { self.message = "下载完成，请手动安装" }
                         self.downloaded = file
-                        self.message += " 可分享已下载文件给 TrollStore，或使用官方远端 URL 接口（TrollStore 会再次下载）。安装确认由 TrollStore 处理。"
                     } catch { try? FileManager.default.removeItem(at: file); throw error }
-                } catch { self.message = (error as? URLError)?.code == .cancelled ? "已取消下载。" : "下载/校验失败：\(error.localizedDescription)" }
+                } catch { if self.generation == token { self.message = (error as? URLError)?.code == .cancelled ? "已取消下载。" : "下载/校验失败：\(error.localizedDescription)" } }
             }
         })
         delegate = handler
@@ -65,21 +105,7 @@ import ZIPFoundation
         let session = URLSession(configuration: config, delegate: handler, delegateQueue: nil)
         downloadSession = session; downloadTask = session.downloadTask(with: source); downloadTask?.resume()
     }
-    func openTrollStore() {
-        guard downloaded != nil, let url = release?.ipaURL else { return }
-        var components = URLComponents(); components.scheme = "apple-magnifier"; components.host = "install"
-        components.queryItems = [URLQueryItem(name: "url", value: url.absoluteString)]
-        guard let install = components.url else { return }
-        UIApplication.shared.open(install, options: [:]) { [weak self] opened in
-            Task { @MainActor in
-                if opened { self?.message = "已请求打开官方安装接口；TrollStore 将重新下载远端 IPA。若打开的是放大镜，请使用官方仓库下载入口；设备转交尚未验证。" }
-                else {
-                    self?.message = "无法打开安装接口，已转到 RepoPocket 官方仓库下载页。"
-                    UIApplication.shared.open(URL(string: "https://github.com/wm0104/RepoPocket/releases")!)
-                }
-            }
-        }
-    }
+
 }
 final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate {
     let progress: (Double) -> Void
@@ -108,12 +134,12 @@ struct AppUpdateSection: View {
             if !checker.message.isEmpty { Text(checker.message).font(.caption).textSelection(.enabled).softGroupedRow() }
             Link("打开 RepoPocket 官方仓库下载页", destination: URL(string: "https://github.com/wm0104/RepoPocket/releases")!).softGroupedRow()
             if let release = checker.release {
-                Link("查看正式发布 \(release.tag_name)", destination: release.html_url).softGroupedRow()
+                Text("发现新版本 \(release.displayVersion)，要更新吗？").font(.caption).softGroupedRow()
+                Link("查看正式发布 \(release.displayVersion)", destination: release.html_url).softGroupedRow()
                 if let ipa = release.ipaURL { Link("到官方仓库下载 IPA（可靠兜底）", destination: ipa).softGroupedRow() }
-                Text("适配官方 TrollStore（com.opa334.TrollStore），其他修改版未验证。OTA 接口按官方文档实现，设备安装转交尚未真机验证。") .font(.caption).softGroupedRow()
                 if checker.downloaded == nil {
                     Button("更新：下载 IPA") { checker.download() }.disabled(checker.downloading || release.ipaURL == nil).softGroupedRow()
-                    Button("不接受本次更新") { checker.ignore() }.disabled(checker.downloading).softGroupedRow()
+                    Button("暂不更新") { checker.ignore() }.disabled(checker.downloading).softGroupedRow()
                 }
             }
             if checker.downloading {
@@ -121,9 +147,10 @@ struct AppUpdateSection: View {
                 Button("取消下载", role: .cancel) { checker.cancelDownload() }.softGroupedRow()
             }
             if let file = checker.downloaded {
-                Button("分享已下载 IPA 给 TrollStore") { share = SharedFile(url: file) }.softGroupedRow()
-                Button("打开 TrollStore 安装（远端重新下载）") { checker.openTrollStore() }.softGroupedRow()
+                Button("分享 IPA") { share = SharedFile(url: file) }.softGroupedRow()
             }
         }.sheet(item: $share) { ShareSheet(url: $0.url) }
+        .task { await checker.enterPage(api: api) }
+        .onDisappear { if share == nil { checker.leavePage() } }
     }
 }

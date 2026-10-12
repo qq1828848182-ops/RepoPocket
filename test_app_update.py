@@ -6,10 +6,11 @@ feature = Path('RepoPocket/UpdateFeature.swift').read_text()
 
 class UpdateTests(unittest.TestCase):
     def test_manual_safe_contract(self):
-        self.assertNotIn('.task {', feature)
+        self.assertIn('.task { await checker.enterPage(api: api) }', feature)
         self.assertNotIn('Authorization', feature)
-        self.assertNotIn('com.opa334.TrollStore://', feature)
-        for value in ['apple-magnifier', 'URLQueryItem(name: "url"', 'downloadTask?.cancel()', 'snapshotFileSHA256', 'archive.extract', 'HTTPURLResponse', '其他修改版未验证', 'https://github.com/wm0104/RepoPocket/releases']:
+        for forbidden in ['TrollStore', 'apple-magnifier', 'openTrollStore', 'URLQueryItem(name: "url"']:
+            self.assertNotIn(forbidden, feature)
+        for value in ['downloadTask?.cancel()', 'snapshotFileSHA256', 'archive.extract', 'HTTPURLResponse', 'https://github.com/wm0104/RepoPocket/releases']:
             self.assertIn(value, feature)
         self.assertIn('AppUpdateSection(api: api)', Path('RepoPocket/RepoPocketApp.swift').read_text())
         api = Path('RepoPocket/GitHub.swift').read_text()
@@ -43,6 +44,7 @@ for bad in [try release("v1.1.0", true), try release("v1.1.0", false, true), try
     do { _ = try AppUpdateRules.isNewer(bad, local: "1.0.1", localBuild: "7"); fatalError("invalid release accepted") } catch {}
 }
 let asset = #"[{"name":"RepoPocket.ipa","browser_download_url":"https://github.com/wm0104/RepoPocket/releases/download/v1.1.0/RepoPocket.ipa"}]"#
+precondition(try release("v1.1.0+42").displayVersion == "v1.1.0")
 precondition(try release("v1.1.0", false, false, asset).ipaURL != nil)
 precondition(try release("v1.1.0", false, false, asset.replacingOccurrences(of: "github.com", with: "evil.invalid")).ipaURL == nil)
 precondition(AppUpdateRules.statusError(404).contains("尚无"))

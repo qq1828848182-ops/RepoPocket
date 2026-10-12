@@ -429,7 +429,7 @@ struct SettingsView: View {
                 Section {
                     AppUpdateSection(api: api)
                     // The version is the stable final row of the update group in every state.
-                    Text("RepoPocket \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")（build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—")）· iOS 16+").foregroundColor(.secondary).softGroupedRow(bottom: true)
+                    Text("RepoPocket \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") · iOS 16+").foregroundColor(.secondary).softGroupedRow(bottom: true)
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }

@@ -1,4 +1,4 @@
-name: Build TrollStore IPA
+name: Build Test IPA
 on:
   push:
     branches: [main, 'test/**']
@@ -34,8 +34,10 @@ jobs:
         run: python3 test_troll_metadata.py
       - name: Test repository deletion with network-free mocks and account management
         run: python3 test_repository_deletion.py
-      - name: Test manual update SemVer and official TrollStore contracts
+      - name: Test manual update SemVer and transient notice contracts
         run: python3 test_app_update.py
+      - name: Test production update notice lifecycle mocks
+        run: python3 test_update_notice.py
       - name: Test dynamic update group boundaries and production Swift corner geometry
         run: python3 test_update_groups.py
       - name: Test repository statistics and legacy decoding
@@ -69,11 +71,11 @@ jobs:
           set -euo pipefail
           APP=build/Build/Products/Release-iphoneos/RepoPocket.app
           test -d "$APP"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.2"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.3"
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "8"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "9"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
           codesign --display --entitlements :- "$APP"
@@ -89,7 +91,7 @@ jobs:
           shasum -a 256 -c RepoPocket.ipa.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: RepoPocket-iOS16-TrollStore
+          name: RepoPocket-iOS16-Test
           path: |
             dist/RepoPocket.ipa
             dist/RepoPocket.ipa.sha256

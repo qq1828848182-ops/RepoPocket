@@ -16,7 +16,7 @@ class UpdateGroupTests(unittest.TestCase):
     def test_each_concrete_row_is_decorated_once(self):
         rows = [line.strip() for line in body.splitlines()
                 if re.search(r'\b(Button|Text|Link|ProgressView)\(', line)]
-        self.assertEqual(len(rows), 12)
+        self.assertEqual(len(rows), 11)
         for row in rows:
             self.assertEqual(row.count('.softGroupedRow('), 1, row)
         self.assertEqual(body.count('top: true'), 1)

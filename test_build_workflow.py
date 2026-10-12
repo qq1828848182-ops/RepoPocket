@@ -27,7 +27,7 @@ class BuildWorkflowTests(unittest.TestCase):
                          'shasum -a 256 -c RepoPocket.ipa.sha256'):
             self.assertIn(required, commands)
         self.assertIn('uses: actions/upload-artifact@v4', commands)
-        self.assertIn('name: RepoPocket-iOS16-TrollStore', commands)
+        self.assertIn('name: RepoPocket-iOS16-Test', commands)
 
 
 if __name__ == '__main__':
