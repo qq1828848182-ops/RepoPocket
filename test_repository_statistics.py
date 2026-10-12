@@ -18,7 +18,7 @@ class RepositoryStatisticsTests(unittest.TestCase):
             self.assertIn(f'= repository.{field}', ui)
             self.assertNotIn(f'repository.{field} ?? 0', ui)
         self.assertIn('RepositoryStatistics(repository: repository)', ui)
-        self.assertIn('RepositoryStatistics(repository: repositoryInfo)', app)
+        self.assertIn('RepositoryCard(repository: repositoryInfo, account: api.login, api: api, descriptionLineLimit: nil)', app)
         self.assertIn('let info = try await api.repository(repo)', app)
         self.assertIn('repositoryInfo = nil', app)
         self.assertIn('try await decoded(Repository.self, Self.repoPath(repo))', github)
@@ -26,7 +26,8 @@ class RepositoryStatisticsTests(unittest.TestCase):
     def test_language_date_and_profile_contracts(self):
         self.assertIn('let language: String?', github)
         self.assertIn('repository.language', ui)
-        self.assertIn('Locale(identifier: "zh_CN")', ui)
+        self.assertNotIn('ISO8601DateFormatter', ui)
+        self.assertNotIn('updated_at', ui)
         for field in ('followers', 'following'):
             self.assertIn(f'let {field}: Int?', github)
             self.assertIn(f'if let {field} = api.profile?.{field}', app)
@@ -46,6 +47,9 @@ func decode(_ fields: String) throws -> Repository {
 }
 let legacy = try decode("")
 precondition(legacy.stargazers_count == nil && legacy.forks_count == nil)
+precondition(legacy.fork == nil && legacy.parent == nil)
+let forked = try decode(",\"fork\":true,\"parent\":{\"full_name\":\"middle/tool\"},\"source\":{\"full_name\":\"root/tool\"}")
+precondition(forked.parent?.full_name == "middle/tool" && forked.fork == true)
 let nulls = try decode(",\"stargazers_count\":null,\"forks_count\":null")
 precondition(nulls.stargazers_count == nil && nulls.forks_count == nil)
 let populated = try decode(",\"stargazers_count\":1234,\"forks_count\":56")

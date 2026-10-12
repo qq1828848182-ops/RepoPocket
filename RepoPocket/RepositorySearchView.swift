@@ -11,6 +11,7 @@ struct RepositorySearchView: View {
     @State private var users: [User] = []
     @State private var history: [RepositoryRecentSearch] = []
     @State private var generation = UUID()
+    @State private var requestTask: Task<Void, Never>?
     @State private var page = 1
     @State private var more = false
     @State private var busy = false
@@ -46,7 +47,7 @@ struct RepositorySearchView: View {
                     Section(kind == .repositories ? "仓库结果" : "用户结果") {
                         ForEach(repositories) { repository in
                             NavigationLink { BrowserView(api: api, repo: repository.full_name, path: "", branch: repository.default_branch ?? "") }
-                            label: { RepositoryCard(repository: repository, account: api.login) }
+                            label: { RepositoryCard(repository: repository, account: api.login, api: api) }
                         }
                         ForEach(users, id: \.login) { user in
                             NavigationLink { UserRepositoriesView(api: api, user: user) } label: {
@@ -54,14 +55,14 @@ struct RepositorySearchView: View {
                             }
                         }
                         if !busy && repositories.isEmpty && users.isEmpty && error.isEmpty { Text("没有搜索结果").foregroundStyle(.secondary) }
-                        if more { Button("加载更多") { Task { await load() } }.disabled(busy) }
+                        if more { Button("加载更多") { startLoad() }.disabled(busy) }
                     }
                 }
                 if busy { ProgressView("搜索中…") }
-                if !error.isEmpty { Text(error).foregroundStyle(.secondary); Button("重试") { Task { await load() } }.disabled(busy) }
+                if !error.isEmpty { Text(error).foregroundStyle(.secondary); Button("重试") { startLoad() }.disabled(busy) }
             }
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: clean.isEmpty)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: submitted.isEmpty)
+            // Do not animate structural List mutations during keyboard/sheet transitions.
+            // Native sheet and navigation animations remain enabled.
             .navigationTitle("搜索").navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索仓库或用户")
             .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -70,22 +71,39 @@ struct RepositorySearchView: View {
                 // A history tap sets query and submits in the same transaction;
                 // do not invalidate that newly submitted request afterwards.
                 guard clean != submitted else { return }
-                generation = UUID(); submitted = ""; busy = false; error = ""
+                invalidate(); submitted = ""; error = ""
             }
-            .toolbar { Button("关闭") { dismiss() } }
-            .task { history = store.read() }
-            .onDisappear { generation = UUID(); busy = false }
+            .toolbar { SearchDismissButton { invalidate(); dismiss() } }
+            .task {
+                // Present the native sheet before decoding bounded local history off-main.
+                await Task.yield()
+                let accountID = api.accountID
+                let records = await Task.detached(priority: .utility) {
+                    RepositorySearchHistory(accountID: accountID).read()
+                }.value
+                guard !Task.isCancelled, accountID == api.accountID else { return }
+                history = records
+            }
+            .onDisappear { invalidate() }
         }
     }
     private func begin(_ selected: RepositorySearchKind) {
         guard !clean.isEmpty else { return }
-        generation = UUID(); kind = selected; submitted = clean
+        invalidate(); kind = selected; submitted = clean
         repositories = []; users = []; page = 1; more = false; busy = false; error = ""
         store.record(submitted, kind: selected); history = store.read()
-        Task { await load() }
+        startLoad()
+    }
+    private func invalidate() {
+        requestTask?.cancel(); requestTask = nil
+        generation = UUID(); busy = false
+    }
+    private func startLoad() {
+        guard !busy else { return }
+        requestTask = Task { await load() }
     }
     private func load() async {
-        guard !busy, !submitted.isEmpty else { return }
+        guard !Task.isCancelled, !busy, !submitted.isEmpty else { return }
         let token = generation, account = AccountStore.generation
         let requested = submitted, requestedKind = kind, requestedPage = page
         busy = true; error = ""
@@ -123,7 +141,7 @@ struct UserRepositoriesView: View {
         List {
             ForEach(repositories) { repository in
                 NavigationLink { BrowserView(api: api, repo: repository.full_name, path: "", branch: repository.default_branch ?? "") }
-                label: { RepositoryCard(repository: repository, account: api.login) }
+                label: { RepositoryCard(repository: repository, account: api.login, api: api) }
             }
             if busy { ProgressView() }
             if !error.isEmpty { Text(error) }
@@ -139,5 +157,17 @@ struct UserRepositoriesView: View {
             let ids = Set(repositories.map { $0.id }); repositories += batch.filter { !ids.contains($0.id) }
             more = batch.count == 100; page += 1; error = ""
         } catch { if !RefreshFailure.isCancellation(error) { self.error = "仓库加载失败，请稍后重试。" } }
+    }
+}
+
+/// Resolves dismissSearch below the searchable modifier, not on the parent sheet.
+private struct SearchDismissButton: View {
+    @Environment(\.dismissSearch) private var dismissSearch
+    let action: () -> Void
+    var body: some View {
+        Button("关闭") {
+            dismissSearch()
+            action()
+        }
     }
 }

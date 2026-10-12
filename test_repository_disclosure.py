@@ -13,9 +13,9 @@ assert 'RepositoryCollectionView(api: api, section: .starred)' in settings
 assert 'Transaction(animation: nil)' in sections
 assert 'transaction.disablesAnimations = true' in sections
 assert 'withTransaction(transaction) { expanded.toggle() }' in sections
-assert '.softGroupedRow(top: true, animateBackground: false)' in sections
+assert '.softGroupedRow(top: true, bottom: !expanded, animateBackground: false)' in sections
 assert '.softGroupedRow(bottom: true, animateBackground: false)' in sections
-assert 'Color.clear.frame(height: 8)' in sections
+assert 'Color.clear.frame(height: 8)' not in sections
 assert 'ForEach(repositories)' in sections
 assert 'BrowserView(api: api' in sections
 assert '.swipeActions(edge: .trailing, allowsFullSwipe: false)' in sections
@@ -29,4 +29,4 @@ assert 'Section("直接打开仓库")' not in home
 assert 'Image(systemName: "plus")' in home
 assert 'Image(systemName: "magnifyingglass")' in home
 assert 'Button("打开仓库")' in home
-print('PASS inline sibling rows, native swipe, fixed persistent 22pt end caps, no morph animations, settings navigation; device appearance unverified')
+print('PASS inline sibling rows, native swipe, real terminal-row 22pt corners, no synthetic footer, no morph animations, settings navigation; device appearance unverified')

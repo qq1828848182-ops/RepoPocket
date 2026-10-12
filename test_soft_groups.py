@@ -10,7 +10,7 @@ assert '.frame(maxWidth: .infinity, alignment: .leading)' in card
 assert 'listRowSeparator(.hidden)' in style
 assert '.overlay(alignment: .bottom)' in style
 assert '.fill(Color(uiColor: .separator))' in style
-assert 'GitHubAvatar(url: repository.owner?.avatar_url)' in card
+assert 'GitHubAvatar(url: avatarURL, size: 24)' in card
 assert 'cornerRadius: radius, style: .continuous' in style and 'let radius: CGFloat = 22' in style
 assert 'listRowBackground(' in style and 'SoftGroupShape' in style and '.secondarySystemGroupedBackground' in style
 # Only the decoration is clipped; never clip the interactive List or its content.
@@ -31,7 +31,7 @@ assert '.formStyle(.grouped)' in upload
 assert '.swipeActions {' in workspace and 'pendingDelete = root; confirmDelete = true' in workspace
 assert '.swipeActions' in ui and 'confirmDelete' in ui
 assert 'verticalSizeClass == .compact ? 3 : 7' in card
-assert 'ViewThatFits(in: .horizontal)' in card
+assert '.lineLimit(descriptionLineLimit)' in card
 # Divider regression: screenshot paths must decorate all intermediate rows.
 assert 'Section("直接打开仓库")' not in ui
 assert '.sheet(isPresented: $showOpen)' in ui

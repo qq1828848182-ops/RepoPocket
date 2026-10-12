@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 // Avatar requests are deliberately unauthenticated and restricted to GitHub's image host.
 // Never follow redirects: even an allowed avatar host must not redirect to another host.
@@ -12,32 +13,81 @@ private final class AvatarRedirectPolicy: NSObject, URLSessionTaskDelegate {
     }
 }
 
-@MainActor
-final class AvatarLoader: ObservableObject {
-    @Published var image: UIImage?
-    private static let cache = NSCache<NSURL, UIImage>()
-    private static let session: URLSession = {
+/// Actor-isolated shared work survives row recycling; at most four downloads/decode jobs.
+private actor AvatarPipeline {
+    static let shared = AvatarPipeline()
+    private let cache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 192
+        cache.totalCostLimit = 12 * 1024 * 1024
+        return cache
+    }()
+    private var pending: [URL: Task<UIImage?, Never>] = [:]
+    private var active = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private let session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpShouldSetCookies = false
+        configuration.httpMaximumConnectionsPerHost = 4
+        configuration.timeoutIntervalForRequest = 20
         configuration.urlCache = URLCache(memoryCapacity: 8 * 1024 * 1024, diskCapacity: 24 * 1024 * 1024, diskPath: "RepoPocketAvatars")
         configuration.httpCookieStorage = nil
         configuration.urlCredentialStorage = nil
         return URLSession(configuration: configuration, delegate: AvatarRedirectPolicy(), delegateQueue: nil)
     }()
-    func load(_ raw: String?) async {
-        image = nil
-        guard let raw, let url = URL(string: raw), url.scheme == "https",
-              url.host == "avatars.githubusercontent.com", url.user == nil, url.password == nil,
-              url.port == nil || url.port == 443 else { return }
-        if let cached = Self.cache.object(forKey: url as NSURL) { image = cached; return }
+    func image(for url: URL) async -> UIImage? {
+        if let image = cache.object(forKey: url as NSURL) { return image }
+        if let task = pending[url] { return await task.value }
+        let task = Task { await self.fetch(url) }
+        pending[url] = task
+        let image = await task.value
+        pending[url] = nil
+        if let image { cache.setObject(image, forKey: url as NSURL, cost: 120 * 120 * 4) }
+        return image
+    }
+    private func acquire() async {
+        if active < 4 { active += 1; return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    private func release() {
+        if waiters.isEmpty { active -= 1 }
+        else { waiters.removeFirst().resume() }
+    }
+    private func fetch(_ url: URL) async -> UIImage? {
+        await acquire()
+        defer { release() }
         do {
-            let (data, response) = try await Self.session.data(from: url)
-            guard !Task.isCancelled, let response = response as? HTTPURLResponse,
-                  response.statusCode == 200, data.count <= 4 * 1024 * 1024,
-                  let decoded = UIImage(data: data) else { return }
-            Self.cache.setObject(decoded, forKey: url as NSURL, cost: data.count)
-            image = decoded
-        } catch { /* Missing or offline avatars retain their placeholder. */ }
+            let (data, response) = try await session.data(from: url)
+            guard let response = response as? HTTPURLResponse, response.statusCode == 200,
+                  data.count <= 4 * 1024 * 1024 else { return nil }
+            // Force thumbnail decoding off the main actor instead of lazy UIImage(data:).
+            return await Task.detached(priority: .utility) {
+                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 120,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceShouldCacheImmediately: true
+                      ] as CFDictionary) else { return nil as UIImage? }
+                return UIImage(cgImage: image)
+            }.value
+        } catch { return nil }
+    }
+}
+
+@MainActor
+final class AvatarLoader: ObservableObject {
+    @Published private(set) var image: UIImage?
+    private var currentURL: URL?
+    func load(_ raw: String?) async {
+        let url = RepositoryPresentationRules.avatarURL(raw)
+        if url == currentURL, image != nil { return }
+        currentURL = url
+        if image != nil { image = nil }
+        guard let url else { return }
+        let decoded = await AvatarPipeline.shared.image(for: url)
+        guard !Task.isCancelled, currentURL == url else { return }
+        image = decoded
     }
 }
 
@@ -62,60 +112,95 @@ struct GitHubAvatar: View {
 struct RepositoryStatistics: View {
     let repository: Repository
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { counts }
-            VStack(alignment: .leading, spacing: 4) { counts }
-        }
+        HStack(spacing: 12) { counts }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
         .font(.caption)
         .monospacedDigit()
         .foregroundColor(.secondary)
     }
     @ViewBuilder private var counts: some View {
-        if let language = repository.language, !language.isEmpty {
-            Label(language, systemImage: "chevron.left.forwardslash.chevron.right")
-        }
-        if let date = repository.updated_at.flatMap({ ISO8601DateFormatter().date(from: $0) }) {
-            Text("更新：" + date.formatted(.dateTime.locale(Locale(identifier: "zh_CN")).year().month(.twoDigits).day(.twoDigits)))
-        }
         if let stars = repository.stargazers_count {
-            Label("\(stars.formatted()) Stars", systemImage: "star")
+            Label("\(stars.formatted())", systemImage: "star")
                 .accessibilityLabel("\(stars) 个星标")
         }
         if let forks = repository.forks_count {
-            Label("\(forks.formatted()) Forks", systemImage: "tuningfork")
+            Label("\(forks.formatted())", systemImage: "tuningfork")
                 .accessibilityLabel("\(forks) 个派生仓库")
+        }
+        if let language = RepositoryPresentationRules.language(repository.language) {
+            Text(language).accessibilityLabel("语言：" + language)
         }
     }
 }
 
+/// The same compact summary is used by home, collections, search, user and browser.
 struct RepositoryCard: View {
     let repository: Repository
     let account: String
+    let api: GitHub
+    var descriptionLineLimit: Int? = 2
+    @State private var parent: RepositoryReference?
+    @State private var showParent = false
+    var body: some View {
+        CompactRepositorySummary(fullName: repository.full_name, name: repository.name,
+            owner: repository.owner?.login, avatarURL: repository.owner?.avatar_url,
+            description: repository.description, repository: repository,
+            descriptionLineLimit: descriptionLineLimit, parent: repository.fork == true ? (repository.parent ?? parent) : nil,
+            openParent: { showParent = true })
+        .task(id: repository.id) {
+            let resolved = await api.forkParent(for: repository)
+            guard !Task.isCancelled else { return }
+            parent = resolved
+        }
+        .sheet(isPresented: $showParent) {
+            if let source = repository.parent ?? parent {
+                NavigationStack {
+                    BrowserView(api: api, repo: source.full_name, path: "", branch: source.default_branch ?? "")
+                        .toolbar { Button("关闭") { showParent = false } }
+                }
+            }
+        }
+    }
+}
+
+struct CompactRepositorySummary: View {
+    let fullName: String
+    let name: String
+    var owner: String? = nil
+    var avatarURL: String? = nil
+    var description: String? = nil
+    var repository: Repository? = nil
+    var descriptionLineLimit: Int? = 2
+    var parent: RepositoryReference? = nil
+    var openParent: (() -> Void)? = nil
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     var body: some View {
-        HStack(alignment: .top, spacing: verticalSizeClass == .compact ? 8 : 12) {
-            GitHubAvatar(url: repository.owner?.avatar_url)
-            VStack(alignment: .leading, spacing: verticalSizeClass == .compact ? 3 : 6) {
-                Text(repository.full_name).font(.headline).lineLimit(2)
-                if let description = repository.description, !description.isEmpty {
-                    Text(description).font(.subheadline).foregroundColor(.secondary).lineLimit(2)
-                }
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) {
-                    Label(repository.private == true ? "私有" : "公开", systemImage: repository.private == true ? "lock" : "globe")
-                    Label(repository.default_branch ?? "未设置", systemImage: "arrow.triangle.branch")
-                }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Label(repository.private == true ? "私有" : "公开", systemImage: repository.private == true ? "lock" : "globe")
-                        Label(repository.default_branch ?? "未设置", systemImage: "arrow.triangle.branch")
-                    }
-                }.font(.caption).foregroundColor(.secondary)
-                RepositoryStatistics(repository: repository)
-                Text("访问账号：" + (account.isEmpty ? "待验证" : account)).font(.caption2).foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: verticalSizeClass == .compact ? 4 : 6) {
+            HStack(spacing: 8) {
+                GitHubAvatar(url: avatarURL, size: 24)
+                Text(RepositoryPresentationRules.owner(login: owner, fullName: fullName))
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
-        }.padding(.vertical, verticalSizeClass == .compact ? 3 : 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            Text(RepositoryPresentationRules.name(name, fullName: fullName))
+                .font(.headline).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            if let description, !description.isEmpty {
+                Text(description).font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(descriptionLineLimit).fixedSize(horizontal: false, vertical: true)
+            }
+            if let parent {
+                Button { openParent?() } label: {
+                    Text("复刻自 " + parent.full_name).font(.caption).lineLimit(1)
+                }.buttonStyle(.borderless)
+                .accessibilityLabel("浏览复刻来源 " + parent.full_name)
+            }
+            if let repository { RepositoryStatistics(repository: repository) }
+        }
+        .padding(.vertical, verticalSizeClass == .compact ? 3 : 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 

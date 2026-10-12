@@ -50,6 +50,7 @@ struct RepositoriesView: View {
     @State private var starred: [Repository] = []
     @State private var showOpen = false
     @State private var showSearch = false
+    @State private var collectionSearch: RepositoryHomeSection?
     @State private var pendingFork: Repository?
     @State private var loaded = false
     @State private var refreshing = false
@@ -62,9 +63,9 @@ struct RepositoriesView: View {
         NavigationStack {
             List {
                 RepositoryInlineSection(api: api, section: .owned, expanded: $ownedExpanded,
-                    repositories: repos, loaded: loaded, busy: busy) { pendingFork = $0 }
+                    repositories: repos, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .owned })
                 RepositoryInlineSection(api: api, section: .starred, expanded: $starredExpanded,
-                    repositories: starred, loaded: loaded, busy: busy) { pendingFork = $0 }
+                    repositories: starred, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .starred })
             }
             .listStyle(.insetGrouped)
             .navigationTitle("RepoPocket")
@@ -79,6 +80,12 @@ struct RepositoriesView: View {
             }
             .refreshable { refreshing = true; await refresh(); refreshing = false }
             .task { if !loaded && !CredentialStore.read().isEmpty { await refresh() } }
+            .sheet(item: $collectionSearch) { section in
+                NavigationStack {
+                    RepositoryCollectionView(api: api, section: section, initialRepositories: loaded ? (section == .owned ? repos : starred) : nil)
+                        .toolbar { Button("关闭") { collectionSearch = nil } }
+                }
+            }
             .sheet(isPresented: $showSearch) { RepositorySearchView(api: api) }
             .sheet(isPresented: $showOpen) {
                 NavigationStack {
@@ -126,6 +133,7 @@ struct RepositoriesView: View {
             try Task.checkCancellation()
             guard generation == AccountStore.generation else { return }
             repos = result; starred = stars; loaded = true
+            api.cacheCollection(result, section: .owned); api.cacheCollection(stars, section: .starred)
         } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func fork() async {
@@ -168,18 +176,13 @@ struct BrowserView: View {
     var body: some View {
         List {
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(repo).font(.headline).textSelection(.enabled)
+                Group {
                     if let repositoryInfo {
-                        RepositoryStatistics(repository: repositoryInfo)
+                        RepositoryCard(repository: repositoryInfo, account: api.login, api: api, descriptionLineLimit: nil)
+                    } else {
+                        CompactRepositorySummary(fullName: repo, name: "")
                     }
-                    Label("访问账号：" + (api.login.isEmpty ? (AccountStore.accounts.first { $0.id == api.accountID }?.login ?? "待验证") : api.login), systemImage: "person.crop.circle")
-                        .font(.caption).foregroundColor(.secondary)
-                    if !activeBranch.isEmpty {
-                        Label(activeBranch, systemImage: "arrow.triangle.branch")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                }.padding(.vertical, 4).softGroupedRow(top: true, bottom: true)
+                }.textSelection(.enabled).softGroupedRow(top: true, bottom: true)
             }
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {

@@ -53,7 +53,7 @@ assert 'AccountStore.activeID == accountID' in g
 add = g[g.index('    func addAccount'):g.index('    func repositories')]
 assert add.index('try check(') < add.index('try CredentialStore.save(')
 assert '.id(accountID)' in ui and '.githubAccountChanged' in ui
-assert 'avatars.githubusercontent.com' in avatar and 'NSCache<NSURL, UIImage>' in avatar
+assert 'avatars.githubusercontent.com' in Path('RepoPocket/RepositoryPresentationRules.swift').read_text() and 'NSCache<NSURL, UIImage>' in avatar
 assert 'Authorization' not in avatar and 'URLCache' in avatar
 for line in (g + accounts + avatar).splitlines():
     assert not ('print(' in line or 'NSLog(' in line)

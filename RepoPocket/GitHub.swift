@@ -75,6 +75,11 @@ struct RepoAccess: Decodable {
     let full_name: String
     let permissions: Permissions?
 }
+struct RepositoryReference: Decodable {
+    let full_name: String
+    let html_url: String?
+    let default_branch: String?
+}
 struct Repository: Decodable, Identifiable {
     let id: Int
     let full_name: String
@@ -89,6 +94,8 @@ struct Repository: Decodable, Identifiable {
     let stargazers_count: Int?
     let forks_count: Int?
     let language: String?
+    let fork: Bool?
+    let parent: RepositoryReference?
     struct Permissions: Decodable { let admin: Bool?; let push: Bool? }
     let permissions: Permissions?
 }
@@ -144,6 +151,54 @@ final class GitHub: ObservableObject {
     private let session: URLSession
     private let accountGeneration = AccountStore.generation
     private var accountObserver: AnyCancellable?
+    // Session-scoped caches never publish mutations to the whole repository list.
+    private var parentTasks: [String: Task<RepositoryReference?, Never>] = [:]
+    private var parentCache: [String: (Date, RepositoryReference?)] = [:]
+    private var parentActive = 0
+    private var parentWaiters: [CheckedContinuation<Void, Never>] = []
+    private var collectionCache: [RepositoryHomeSection: [Repository]] = [:]
+    func cachedCollection(_ section: RepositoryHomeSection) -> [Repository]? { collectionCache[section] }
+    func cacheCollection(_ repositories: [Repository], section: RepositoryHomeSection) {
+        collectionCache[section] = repositories
+    }
+    func forkParent(for repository: Repository) async -> RepositoryReference? {
+        guard repository.fork == true, isCurrentSession else { return nil }
+        if let parent = repository.parent { return parent }
+        let key = repository.full_name
+        if let cached = parentCache[key], Date().timeIntervalSince(cached.0) < 300 { return cached.1 }
+        if let pending = parentTasks[key] { return await pending.value }
+        let task = Task<RepositoryReference?, Never> {
+            await self.acquireParentSlot()
+            defer { self.releaseParentSlot() }
+            guard self.isCurrentSession else { return nil }
+            do {
+                let bytes = try await self.data(Self.repoPath(key))
+                let parent = try await Task.detached(priority: .utility) {
+                    try JSONDecoder().decode(Repository.self, from: bytes).parent
+                }.value
+                guard self.isCurrentSession else { return nil }
+                return parent
+            } catch { return nil }
+        }
+        parentTasks[key] = task
+        let result = await task.value
+        parentTasks[key] = nil
+        if isCurrentSession {
+            if parentCache.count >= 512, let oldest = parentCache.min(by: { $0.value.0 < $1.value.0 })?.key {
+                parentCache[oldest] = nil
+            }
+            parentCache[key] = (Date(), result)
+        }
+        return result
+    }
+    private func acquireParentSlot() async {
+        if parentActive < 3 { parentActive += 1; return }
+        await withCheckedContinuation { parentWaiters.append($0) }
+    }
+    private func releaseParentSlot() {
+        if parentWaiters.isEmpty { parentActive -= 1 }
+        else { parentWaiters.removeFirst().resume() }
+    }
     init() {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 120

@@ -7,9 +7,7 @@ enum RepositoryHomeSection: String, CaseIterable, Identifiable {
     var systemImage: String { self == .owned ? "folder" : "star" }
 }
 
-/// Native sibling List rows, not a nested List or a VStack navigation row.
-/// The always-mounted header/footer own the fixed 22pt continuous ends;
-/// inserting only flat middle rows never morphs the outline's corner paths.
+/// Native sibling rows keep swipe actions; no synthetic footer or height animation.
 struct RepositoryInlineSection: View {
     @ObservedObject var api: GitHub
     let section: RepositoryHomeSection
@@ -18,8 +16,10 @@ struct RepositoryInlineSection: View {
     let loaded: Bool
     let busy: Bool
     let fork: (Repository) -> Void
+    let search: () -> Void
     var body: some View {
         Section {
+            HStack(spacing: 0) {
             Button {
                 var transaction = Transaction(animation: nil)
                 transaction.disablesAnimations = true
@@ -36,17 +36,20 @@ struct RepositoryInlineSection: View {
             .buttonStyle(.plain)
             .accessibilityLabel(section.title)
             .accessibilityValue(expanded ? "已展开" : "已收起")
-            .softGroupedRow(top: true, animateBackground: false)
+            Button(action: search) { Image(systemName: "magnifyingglass").frame(width: 44, height: 44).contentShape(Rectangle()) }
+                .buttonStyle(.borderless).accessibilityLabel("搜索" + section.title)
+            }
+            .softGroupedRow(top: true, bottom: !expanded, animateBackground: false)
             if expanded {
                 if repositories.isEmpty {
-                    if busy { ProgressView().frame(maxWidth: .infinity).softGroupedRow(animateBackground: false) }
-                    else { Text(loaded ? "暂无仓库" : "请登录后刷新").foregroundStyle(.secondary).softGroupedRow(animateBackground: false) }
+                    if busy { ProgressView().frame(maxWidth: .infinity).softGroupedRow(bottom: true, animateBackground: false) }
+                    else { Text(loaded ? "暂无仓库" : "请登录后刷新").foregroundStyle(.secondary).softGroupedRow(bottom: true, animateBackground: false) }
                 }
                 ForEach(repositories) { repository in
                     NavigationLink {
                         BrowserView(api: api, repo: repository.full_name, path: "", branch: repository.default_branch ?? "")
-                    } label: { RepositoryCard(repository: repository, account: api.login) }
-                    .softGroupedRow(animateBackground: false)
+                    } label: { RepositoryCard(repository: repository, account: api.login, api: api) }
+                    .softGroupedRow(bottom: repository.id == repositories.last?.id, animateBackground: false)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if !RepositoryGroupRules.isOwned(repository.full_name, login: api.login) {
                             Button("复刻") { fork(repository) }.tint(.accentColor).disabled(busy)
@@ -54,13 +57,7 @@ struct RepositoryInlineSection: View {
                     }
                 }
             }
-            // This noninteractive, always-present end cap means the header never
-            // changes its shape between expanded and collapsed states.
-            Color.clear.frame(height: 8)
-                .listRowInsets(EdgeInsets())
-                .environment(\.defaultMinListRowHeight, 8)
-                .accessibilityHidden(true)
-                .softGroupedRow(bottom: true, animateBackground: false)
+
         }
         .transaction { $0.animation = nil; $0.disablesAnimations = true }
     }
@@ -74,14 +71,20 @@ struct RepositoryCollectionView: View {
     @State private var loaded = false
     @State private var refreshing = false
     @State private var pendingFork: Repository?
+    var initialRepositories: [Repository]? = nil
+    @State private var query = ""
+    private var filteredRepositories: [Repository] {
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return repositories.filter { term.isEmpty || $0.name.localizedCaseInsensitiveContains(term) || $0.full_name.localizedCaseInsensitiveContains(term) || ($0.description?.localizedCaseInsensitiveContains(term) ?? false) }
+    }
     var body: some View {
         List {
             if busy && repositories.isEmpty && !refreshing { ProgressView().frame(maxWidth: .infinity) }
             else if loaded && repositories.isEmpty { Text("暂无仓库").foregroundStyle(.secondary) }
             else if !loaded && !busy { Text("请登录后刷新").foregroundStyle(.secondary) }
-            ForEach(repositories) { repository in
+            ForEach(filteredRepositories) { repository in
                 NavigationLink { BrowserView(api: api, repo: repository.full_name, path: "", branch: repository.default_branch ?? "") }
-                label: { RepositoryCard(repository: repository, account: api.login) }
+                label: { RepositoryCard(repository: repository, account: api.login, api: api) }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if !RepositoryGroupRules.isOwned(repository.full_name, login: api.login) {
                         Button("复刻") { pendingFork = repository }.tint(.accentColor).disabled(busy)
@@ -90,9 +93,16 @@ struct RepositoryCollectionView: View {
             }
         }
         .listStyle(.insetGrouped).navigationTitle(section.title).adaptiveWorkspaceLayout()
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索" + section.title)
+        .textInputAutocapitalization(.never).autocorrectionDisabled()
         .toolbar { Button("刷新") { Task { await load() } }.disabled(busy) }
         .refreshable { refreshing = true; defer { refreshing = false }; await load() }
-        .task { if !loaded && !CredentialStore.read().isEmpty { await load() } }
+        .task {
+            if !loaded, let cached = initialRepositories ?? api.cachedCollection(section) {
+                repositories = cached; loaded = true
+            }
+            if !loaded && !CredentialStore.read().isEmpty { await load() }
+        }
         .confirmationDialog("复刻到我的仓库？", isPresented: Binding(get: { pendingFork != nil }, set: { if !$0 { pendingFork = nil } }), titleVisibility: .visible) {
             if let repository = pendingFork { Button("复刻") { pendingFork = nil; Task { await fork(repository) } } }
             Button("取消", role: .cancel) { pendingFork = nil }
@@ -110,7 +120,7 @@ struct RepositoryCollectionView: View {
             } else { result = try await api.starredRepositories() }
             try Task.checkCancellation()
             guard generation == AccountStore.generation else { return }
-            repositories = result; loaded = true
+            repositories = result; api.cacheCollection(result, section: section); loaded = true
         } catch { if !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func fork(_ repository: Repository) async {
