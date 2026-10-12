@@ -13,7 +13,7 @@ app = Path('RepoPocket/RepoPocketApp.swift').read_text()
 class DeletionTests(unittest.TestCase):
     def test_production_wiring(self):
         self.assertIn('repositoryInfo?.permissions?.admin != true', app)
-        self.assertIn('confirmation != repository.full_name', ui)
+        self.assertIn('confirmation == repository.full_name', ui)
         self.assertIn('interactiveDismissDisabled(busy)', ui)
         self.assertIn('guard !busy else { return }', ui)
         self.assertIn('context: api.deletionContext(repositoryInfo)', app)
@@ -32,6 +32,37 @@ class DeletionTests(unittest.TestCase):
         self.assertIn('AccountStore.activate(account.id)', app)
         self.assertIn('AccountStore.remove(account.id)', app)
 
+    def test_prefill_clear_and_final_confirmation_contract(self):
+        self.assertIn('init(api: GitHub, repository: Repository, context: RepositoryDeletionContext,', ui)
+        self.assertIn('_confirmation = State(initialValue: repository.full_name)', ui)
+        self.assertNotIn('Section("输入完整 owner/repo 确认")', ui)
+        self.assertIn('Section("已预填所选仓库，无需输入")', ui)
+        self.assertIn('confirmation = ""', ui)
+        self.assertIn('.accessibilityLabel("清空仓库删除确认")', ui)
+        self.assertIn('.disabled(busy || confirmation.isEmpty)', ui)
+        self.assertIn('.toolbar { Button("取消") { dismiss() }.disabled(busy) }', ui)
+        self.assertIn('context == api.deletionContext(repository)', ui)
+        self.assertIn('repository.permissions?.admin == true', ui)
+        entry = ui[ui.index('Button("永久删除远端仓库"'):ui.index('.navigationTitle')]
+        self.assertIn('showFinalConfirmation = true', entry)
+        self.assertIn('guard canDelete else { return }', entry)
+        self.assertNotIn('deleteRepository', entry)
+        alert = ui[ui.index('.alert('):]
+        self.assertIn('Button("取消", role: .cancel)', alert)
+        self.assertIn('.keyboardShortcut(.defaultAction)', alert)
+        self.assertIn('role: .destructive', alert)
+        self.assertIn('confirmDeletion()', alert)
+        self.assertIn('repository.full_name', alert)
+        self.assertNotIn('\\(confirmation)', alert)
+        self.assertIn('不可撤销', alert)
+        execution = ui[ui.index('private func confirmDeletion()'):ui.index('var body: some View')]
+        self.assertLess(execution.index('guard canDelete else'), execution.index('busy = true'))
+        self.assertIn('let confirmedName = confirmation', execution)
+        self.assertIn('deleteRepository(repository, context: context, confirmation: confirmedName)', execution)
+        self.assertEqual(ui.count('api.deleteRepository('), 1)
+        self.assertIn('guard confirmation == captured.fullName else', core)
+        self.assertEqual(app.count('RepositoryDeletionView(api: api, repository: target.repository, context: target.context)'), 1)
+
     @unittest.skipUnless(shutil.which('swiftc'), 'requires macOS Actions Swift compiler')
     def test_mocked_production_orchestration(self):
         models = api[api.index('struct User:'):api.index('struct Entry:')]
@@ -39,14 +70,14 @@ class DeletionTests(unittest.TestCase):
 @main struct Tests {
     static func main() async throws {
         let generation = UUID()
-        let target = RepositoryDeletionContext(accountID: "alice", generation: generation, repositoryID: 7, fullName: "alice/tool")
-        func repository(_ id: Int = 7, _ name: String = "alice/tool", _ admin: String = "true") throws -> Repository {
-            let json = "{\"id\":\(id),\"full_name\":\"\(name)\",\"name\":\"tool\",\"html_url\":\"https://github.com/alice/tool\",\"permissions\":{\"admin\":\(admin)}}"
+        let target = RepositoryDeletionContext(accountID: "alice", generation: generation, repositoryID: 7, fullName: "alice/RepoPocket-releases")
+        func repository(_ id: Int = 7, _ name: String = "alice/RepoPocket-releases", _ admin: String = "true") throws -> Repository {
+            let json = "{\"id\":\(id),\"full_name\":\"\(name)\",\"name\":\"tool\",\"html_url\":\"https://github.com/alice/RepoPocket-releases\",\"permissions\":{\"admin\":\(admin)}}"
             return try JSONDecoder().decode(Repository.self, from: Data(json.utf8))
         }
         let fresh = try repository()
         // Exact confirmation: no trimming, partial names, case folding or blank bypass.
-        for bad in ["", "tool", "bob/tool", "Alice/tool", " alice/tool", "alice/tool "] {
+        for bad in ["", "tool", "bob/tool", "Alice/tool", " alice/RepoPocket-releases", "alice/RepoPocket-releases "] {
             var calls = 0
             do {
                 _ = try await RepositoryDeletion.execute(context: target, confirmation: bad, current: { target }, fetch: { calls += 1; return fresh }, remove: { calls += 100 })
@@ -55,9 +86,9 @@ class DeletionTests(unittest.TestCase):
         }
         // Account, generation (including switch away-and-back), and selected repo changes.
         for changed in [
-            RepositoryDeletionContext(accountID: "bob", generation: generation, repositoryID: 7, fullName: "alice/tool"),
-            RepositoryDeletionContext(accountID: "alice", generation: UUID(), repositoryID: 7, fullName: "alice/tool"),
-            RepositoryDeletionContext(accountID: "alice", generation: generation, repositoryID: 8, fullName: "alice/tool"),
+            RepositoryDeletionContext(accountID: "bob", generation: generation, repositoryID: 7, fullName: "alice/RepoPocket-releases"),
+            RepositoryDeletionContext(accountID: "alice", generation: UUID(), repositoryID: 7, fullName: "alice/RepoPocket-releases"),
+            RepositoryDeletionContext(accountID: "alice", generation: generation, repositoryID: 8, fullName: "alice/RepoPocket-releases"),
             RepositoryDeletionContext(accountID: "alice", generation: generation, repositoryID: 7, fullName: "alice/other")
         ] {
             var calls = 0
@@ -72,7 +103,7 @@ class DeletionTests(unittest.TestCase):
             } catch { precondition(calls == 0) }
         }
         // API repo identity and admin permission must be freshly checked.
-        for denied in [try repository(8), try repository(7, "alice/renamed"), try repository(7, "alice/tool", "false"), try repository(7, "alice/tool", "null")] {
+        for denied in [try repository(8), try repository(7, "alice/renamed"), try repository(7, "alice/RepoPocket-releases", "false"), try repository(7, "alice/RepoPocket-releases", "null")] {
             var deletes = 0
             do {
                 _ = try await RepositoryDeletion.execute(context: target, confirmation: target.fullName, current: { target }, fetch: { denied }, remove: { deletes += 1 })
