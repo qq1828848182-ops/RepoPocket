@@ -90,7 +90,7 @@ enum ReleaseManagementRules {
     }
     static func editable(_ body: String) -> Bool { body.utf8.count <= editBodyLimit }
     static func validAsset(size: Int64, name: String) -> Bool {
-        size >= 0 && size < assetLimit && !name.isEmpty && !name.contains("/") && !name.contains("\\") && !name.contains("\n") && name != "." && name != ".."
+        size > 0 && size < assetLimit && !name.isEmpty && !name.contains("/") && !name.contains("\\") && !name.contains("\n") && name != "." && name != ".."
     }
     static func browserDownloadURL(_ raw: String, repo: String) -> URL? {
         guard let c = URLComponents(string: raw), c.scheme == "https", c.host == "github.com",

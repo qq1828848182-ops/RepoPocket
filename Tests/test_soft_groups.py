@@ -41,18 +41,19 @@ assert 'NavigationLink("浏览")' in ui
 assert '.softGroupedRow().softGroupedRow' not in ui + workspace + upload
 assert ui.count('top: e.id == entries.first?.id, bottom: e.id == entries.last?.id') == 3
 assert 'if busy { ProgressView() }' in ui
-for marker in ['Button("导入一个或多个文件夹")', 'Button("导入一个或多个 ZIP")',
-               'Text(binding.repo + " · " + binding.branch)', 'TextField("提交说明", text: $commitMessage)']:
+# Import buttons moved into the toolbar Menu (not List rows).
+for marker in ['Text(binding.repo + " · " + binding.branch)', 'TextField("提交说明", text: $commitMessage)']:
     row = next(line for line in workspace.splitlines() if marker in line)
     assert '.softGroupedRow()' in row, row
 for marker in ['LabeledContent("目录",', 'Text(r.draft ?', 'Text("附件："',
                'Button("公开此 Release")', 'ShareLink("分享下载链接"',
-               'Button("上传到已选中的 Release / 重试")', 'Button("检查提交权限")']:
+               'Button("检查提交权限")']:
     row = next(line for line in upload.splitlines() if marker in line)
     assert '.softGroupedRow()' in row, row
 assert 'bottom: local == nil' in upload
 assert 'bottom: !(bytes > 10 * 1024 * 1024 && mode == 0)' in upload
-assert 'bottom: release == nil' in upload
+assert 'ReleaseEntryView(api: api, initialRepo: repo)' in upload
+assert 'Button("发布") { sharedReleaseEntry = true }' in upload
 # Exhaust optional terminal rows: exactly one bottom, never an internal rounded edge.
 for has_file in (False, True):
     for oversized in (False, True):

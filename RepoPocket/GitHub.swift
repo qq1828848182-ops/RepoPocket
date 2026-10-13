@@ -471,7 +471,7 @@ final class GitHub: ObservableObject {
     func downloadWorkspace(repo: String, branch: String) async throws -> URL {
         let (binding, stage) = try await fetchWorkspace(repo, branch: branch)
         defer { try? FileManager.default.removeItem(at: stage) }
-        let folder = try LocalStore.importFolder(stage, name: binding.repo.replacingOccurrences(of: "/", with: "-") + (binding.branch == "main" || binding.branch == "master" ? "" : "-" + binding.branch))
+        let folder = try LocalStore.importFolder(stage, name: binding.repo.replacingOccurrences(of: "/", with: "-") + "-" + binding.branch + "-" + (binding.remoteCommitterDate.map { ISO8601DateFormatter().string(from: $0) } ?? String(binding.head.prefix(8))))
         var downloadedBinding = binding
         downloadedBinding.lastPulled = Date()
         do { try LocalStore.saveBinding(downloadedBinding, folder: folder) }

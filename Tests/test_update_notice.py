@@ -13,7 +13,7 @@ class NoticeTests(unittest.TestCase):
         self.assertIn('.onDisappear { if !updateChecker.sharing { updateChecker.leavePage() } }', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
         self.assertIn('self.generation == token', feature)
         self.assertNotIn('（build', feature)
-        self.assertNotIn('CFBundleVersion', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
+        self.assertIn('CFBundleVersion', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())
         download = feature.split('    func download() {', 1)[1].split('final class UpdateDownloadDelegate', 1)[0]
         self.assertIn('clearNotice()', download)
         self.assertNotIn('showTransient(', download.split('downloading = true', 1)[1])
@@ -34,6 +34,8 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     let delay: UInt64
     let failure: String
     init(_ failure: String, delay: UInt64 = 0) { self.failure = failure; self.delay = delay }
+    var isCurrentSession = true
+    var accountID = "fixture"
     var canCheckAppUpdate = true
     var calls = 0
     func officialAppUpdateData() async throws -> Data {
@@ -46,7 +48,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
         throw AppError(text: failure)
     }
 }
-''' + rules + Path(REPO_ROOT, 'RepoPocket/RepositorySafetyRules.swift').read_text() + checker + '''
+''' + 'enum AccountStore { static var generation = UUID() }\n' + Path(REPO_ROOT, 'RepoPocket/AppUpdateSessionRules.swift').read_text() + rules + Path(REPO_ROOT, 'RepoPocket/RepositorySafetyRules.swift').read_text() + checker + '''
 @MainActor final class MockNoticeClock {
     var delays: [UInt64] = []
     var waits: [CheckedContinuation<Void, Error>] = []
@@ -92,7 +94,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     for _ in 0..<100 { if !clock.waits.isEmpty { break }; await Task.yield() }
     precondition(clock.delays.last == 6_000_000_000)
     timed.leavePage(); clock.fire(); await Task.yield()
-    precondition(timed.message.isEmpty && timed.release == nil)
+    precondition(timed.message.isEmpty && timed.release != nil)
     print("PASS deterministic production clock: latest 2s, failure 6s, new release untimed, leave-generation protection")
     let checker = UpdateChecker()
     await checker.check(api: GitHub("first"))

@@ -31,7 +31,13 @@ class BrowserRollbackTests(unittest.TestCase):
         api_original = subprocess.check_output(['git','show',f'{BASE}:RepoPocket/GitHub.swift'],cwd=ROOT,text=True)
         api_new = (ROOT/'RepoPocket/GitHub.swift').read_text()
         added_start = api_new.index('    // These bounded endpoints')
-        self.assertEqual(api_new[:added_start].rstrip() + '\n}\n', api_original)
+        # Only the explicitly approved default workspace naming expression differs
+        # outside the bounded Release endpoints. Normalize that single expression;
+        # the complete historic API baseline remains byte-for-byte protected.
+        approved = 'name: binding.repo.replacingOccurrences(of: "/", with: "-") + "-" + binding.branch + "-" + (binding.remoteCommitterDate.map { ISO8601DateFormatter().string(from: $0) } ?? String(binding.head.prefix(8)))'
+        historic = 'name: binding.repo.replacingOccurrences(of: "/", with: "-") + (binding.branch == "main" || binding.branch == "master" ? "" : "-" + binding.branch)'
+        self.assertEqual(api_new.count(approved), 1)
+        self.assertEqual(api_new[:added_start].replace(approved, historic).rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
         for menu in ('CopyRepositoryLinkButton','ForkRepositoryMenuButton','RepositoryStarMenuButton'):
             self.assertIn(menu,BROWSER)
