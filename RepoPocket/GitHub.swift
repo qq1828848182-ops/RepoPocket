@@ -875,7 +875,15 @@ final class GitHub: ObservableObject {
         let body = try object.map { try JSONSerialization.data(withJSONObject: $0) }
         let query: [URLQueryItem] = page.map { [.init(name: "per_page", value: String(perPage)), .init(name: "page", value: String($0))] } ?? []
         let r = try request(url(Self.repoPath(canonical) + suffix, query: query), method: method, body: body)
-        let (file, response) = try await session.download(for: r, delegate: ReleaseAPIRedirectPolicy())
+        let budget = ReleaseAPIRedirectPolicy()
+        let file: URL
+        let response: URLResponse
+        do { (file, response) = try await session.download(for: r, delegate: budget) }
+        catch {
+            try Task.checkCancellation(); try ensureActiveAccount()
+            if budget.exceededBudget { throw AppError(text: "发行版 JSON 超过 8 MiB 网络预算，已停止请求，请在 GitHub 查看。") }
+            throw error
+        }
         defer { try? FileManager.default.removeItem(at: file) }
         try Task.checkCancellation(); try ensureActiveAccount()
         // Error payloads are also bounded; never synchronously load a huge response.

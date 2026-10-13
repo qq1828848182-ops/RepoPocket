@@ -74,10 +74,16 @@ enum ReleaseManagementRules {
     static func displayBody(_ body: String) -> String { String(body.prefix(displayBodyLimit)) }
 }
 final class ReleaseAPIRedirectPolicy: NSObject, URLSessionDownloadDelegate {
+    private let lock = NSLock()
+    private var exceeded = false
+    var exceededBudget: Bool { lock.lock(); defer { lock.unlock() }; return exceeded }
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        if totalBytesWritten > Int64(ReleaseManagementRules.jsonLimit) || totalBytesExpectedToWrite > Int64(ReleaseManagementRules.jsonLimit) { downloadTask.cancel() }
+        if totalBytesWritten > Int64(ReleaseManagementRules.jsonLimit) || totalBytesExpectedToWrite > Int64(ReleaseManagementRules.jsonLimit) {
+            lock.lock(); exceeded = true; lock.unlock()
+            downloadTask.cancel()
+        }
     }
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,

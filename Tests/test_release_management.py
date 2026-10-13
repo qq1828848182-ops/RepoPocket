@@ -65,6 +65,10 @@ struct Item: Identifiable { let id: Int }
   precondition(!ReleaseManagementRules.more(count:19,page:1) && !ReleaseManagementRules.more(count:20,page:50))
   let merged=ReleaseManagementRules.merged([Item(id:1)], [Item(id:1),Item(id:2),Item(id:2)])
   precondition(merged.map(\.id) == [1,2])
+  let large = (0..<10_000).map { Item(id:$0) }
+  let deduped = ReleaseManagementRules.merged(large, large)
+  precondition(deduped.count == 10_000)
+  do { _ = try JSONDecoder().decode(ReleaseSummary.self,from:Data("{broken".utf8)); preconditionFailure("invalid JSON accepted") } catch {}
   precondition(!ReleaseManagementRules.validAsset(size:ReleaseManagementRules.assetLimit,name:"a"))
   precondition(ReleaseManagementRules.validAsset(size:ReleaseManagementRules.assetLimit-1,name:"中文😀.zip"))
   for name in ["", "..", ".", "a/b", "a\\b", "a\nb"] { precondition(!ReleaseManagementRules.validAsset(size:1,name:name)) }
