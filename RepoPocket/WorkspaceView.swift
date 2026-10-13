@@ -256,7 +256,7 @@ struct WorkspaceView: View {
             .sheet(isPresented: $showDetails) {
                 NavigationStack { List { if let folder { bindingSection(folder) } }.navigationTitle("工作区详情").toolbar { Button("关闭") { showDetails = false } } }
             }
-            .sheet(isPresented: $publishing) { ReleaseEntryView(api: api, initialRepo: binding?.repo ?? "") }
+            .sheet(isPresented: $publishing) { ReleaseEntryView(api: api, initialRepo: binding?.repo ?? "", initialBranch: binding?.branch ?? "") }
             .confirmationDialog("检查远端更新？此操作不会修改本地文件；检查完成后仍需确认才会拉取。", isPresented: $confirmPull, titleVisibility: .visible) {
                 Button("检查更新") { Task { await checkRemote() } }
                 Button("取消", role: .cancel) {}
@@ -427,13 +427,8 @@ Section("本地变更预览 / 勾选提交") {
                         TextField("提交说明", text: $commitMessage).focused($focusedField, equals: .commitMessage).submitLabel(.done).softGroupedRow()
                         Button("提交选中的 \(selected.count) 项") { confirming = true }.disabled(busy || commitBlockReason != nil).softGroupedRow()
                         if let commitBlockReason { Text(commitBlockReason).font(.caption).foregroundStyle(.secondary).softGroupedRow() }
-                        // Keep disclosure label and expanded content in one List row.
-                        // A background on DisclosureGroup itself is repeated across its List rows.
-                        VStack(alignment: .leading, spacing: 0) {
-                            DisclosureGroup("提交说明与限制") {
-                                Text("新增、修改、删除一次原子更新分支。单文件 ≤10 MiB；大文件使用 Release。远端变化拒绝提交，不强推；未勾选项保持本地修改。").font(.caption)
-                            }
-                        }.softGroupedRow(bottom: true)
+                        Text("修改导入副本后，刷新变更。")
+                            .font(.caption).foregroundStyle(.secondary).softGroupedRow(bottom: true)
                         }
                     }
     }

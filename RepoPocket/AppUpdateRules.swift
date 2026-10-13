@@ -89,8 +89,9 @@ enum AppUpdateRules {
     static func isNewer(_ release: AppUpdateRelease, local: String, localBuild: String) throws -> Bool {
         guard !release.draft, !release.prerelease, let remote = AppVersion(release.tag_name), remote.prerelease.isEmpty, let current = AppVersion(local) else { throw AppError(text: "发布版本格式无效或不是正式版本，无法安全比较。") }
         if remote != current { return current < remote }
-        // Numeric +metadata is an explicit build marker; never infer builds from dates/IDs.
-        if let remoteBuild = remote.build, let installedBuild = Int(localBuild) { return remoteBuild > installedBuild }
+        // Numeric +metadata is a user revision when present locally, otherwise a legacy build marker.
+        // Old clients cannot learn this change until manually installing the new IPA.
+        if let remoteBuild = remote.build, let installedBuild = current.build ?? Int(localBuild) { return remoteBuild > installedBuild }
         return false
     }
 }

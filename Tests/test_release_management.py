@@ -27,7 +27,7 @@ class ReleaseManagementTests(unittest.TestCase):
         self.assertIn('复制下载链接', ui)
         self.assertIn('UIPasteboard.general.url = link', ui)
         self.assertIn('asset.browser_download_url, repo: state.repo', ui)
-        for token in ['private let build: () -> AnyView', 'var body: AnyView { build() }', 'ForEach(state.rows)', 'ForEach(state.assets)', '.onDisappear { state.cancel() }', 'generation == AccountStore.generation', 'confirmation == "DELETE"', 'target.repo == state.repo', 'target.generation == AccountStore.generation', 'DownloadStore.shared.persist', 'state.saved', 'state.download(asset)', 'DisclosureGroup', 'if expanded', 'original: r', 'RefreshFailure.isCancellation', '新建发行版', '不删除 git 标签', '同名不覆盖', '已公开发行版会立即受到影响']:
+        for token in ['private let build: () -> AnyView', 'var body: AnyView { build() }', 'ForEach(state.rows)', 'ForEach(state.assets)', '.onDisappear { state.cancel() }', 'generation == AccountStore.generation', 'confirmation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "delete"', 'target.repo == state.repo', 'target.generation == AccountStore.generation', 'DownloadStore.shared.persist', 'state.saved', 'state.download(asset)', 'DisclosureGroup', 'if expanded', 'original: r', 'RefreshFailure.isCancellation', '新建发行版', '不删除 git 标签', '同名不覆盖', '已公开发行版会立即受到影响']:
             self.assertIn(token,ui)
         self.assertNotIn('AsyncImage',ui)
         transfers=(ROOT/'RepoPocket/ReleaseTransfers.swift').read_text()
@@ -37,6 +37,24 @@ class ReleaseManagementTests(unittest.TestCase):
         self.assertNotIn('let assets:',models)
         summary=models.split('struct ReleaseSummary:',1)[1].split('struct ReleaseForm',1)[0]
         self.assertNotIn('let body:',summary)
+
+    def test_inline_branch_and_delete_safety(self):
+        picker = (ROOT/'RepoPocket/ReleaseBranchPicker.swift').read_text()
+        ui = (ROOT/'RepoPocket/ReleaseManagementUI.swift').read_text()
+        for token in ['for page in 1...10', 'batch.count < 30', 'guard complete', 'generation == AccountStore.generation', 'token == identity', 'Task.checkCancellation()', 'task?.cancel()', 'info.permissions?.push', 'state.branches.count > 1', 'LabeledContent("目标分支", value: name)', 'if expanded', 'if searching', 'expanded = false', '.easeInOut(duration: 0.18)', 'accessibilityReduceMotion', '已有 Git 标签不受目标分支影响。', 'value.count == 40', 'api.commitDetail', 'ready = false']:
+            self.assertIn(token, picker)
+        rows = picker.split('ForEach(visible', 1)[1].split('} else if', 1)[0]
+        self.assertNotIn('await', rows)
+        self.assertNotIn('.task', rows)
+        self.assertIn('guard targetReady, !attachments.isEmpty', ui)
+        self.assertIn('attachments.isEmpty || !targetReady', ui)
+        self.assertIn('输入 delete 确认删除', ui)
+        self.assertIn('第一次确认删除', ui)
+        self.assertIn('target.generation == AccountStore.generation', ui)
+        for text in ['delete', ' DELETE ', '\nDeLeTe\t']:
+            self.assertEqual(text.strip().lower(), 'delete')
+        for text in ['', 'delet', 'delete now']:
+            self.assertNotEqual(text.strip().lower(), 'delete')
 
     def test_asset_row_actions_are_independent_and_accessible(self):
         import re

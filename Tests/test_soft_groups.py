@@ -52,7 +52,7 @@ for marker in ['LabeledContent("目录",', 'Text(r.draft ?', 'Text("附件："',
     assert '.softGroupedRow()' in row, row
 assert 'bottom: local == nil' in upload
 assert 'bottom: !(bytes > 10 * 1024 * 1024 && mode == 0)' in upload
-assert 'ReleaseEntryView(api: api, initialRepo: repo)' in upload
+assert 'ReleaseEntryView(api: api, initialRepo: repo, initialBranch: branch)' in upload
 assert 'Button("发布") { sharedReleaseEntry = true }' in upload
 # Exhaust optional terminal rows: exactly one bottom, never an internal rounded edge.
 for has_file in (False, True):
@@ -85,19 +85,17 @@ for has_binding in (False, True):
     edges = ([(True, False)] if has_binding else []) + [(not has_binding, True)]
     assert sum(top for top, _ in edges) == sum(bottom for _, bottom in edges) == 1
 
-# DisclosureGroup is multi-row when it is a direct List child. Its non-lazy
-# VStack must own the ONE terminal background, not its title or expanded Text.
-import re
+# The local changes section ends with one fixed, concise hint rather than an expandable
+# disclosure. Keep it as the terminal decorated row so the outer rounded group remains intact.
 changes = workspace.split('private var changesSection: some View {', 1)[1].split('private var conflictSheet', 1)[0]
-assert re.search(r'VStack\(alignment: \.leading, spacing: 0\) \{\s*DisclosureGroup\("提交说明与限制"\) \{\s*Text\("[^"\n]+"\)\.font\(\.caption\)\s*\}\s*\}\.softGroupedRow\(bottom: true\)', changes)
-assert '}.softGroupedRow(bottom: true)' not in changes.split('DisclosureGroup("提交说明与限制")', 1)[1].split('\n                            }', 1)[0]
+assert 'DisclosureGroup("提交说明与限制")' not in changes
+assert '修改导入副本后，刷新变更。' in changes
+assert '.font(.caption).foregroundStyle(.secondary).softGroupedRow(bottom: true)' in changes
 assert 'Button("刷新变更") { Task { await scan() } }.disabled(busy).softGroupedRow(bottom: selected.isEmpty)' in changes
 for has_selection in (False, True):
-    for expanded in (False, True):
-        # Expanded text stays inside the same decorated row: no internal edge.
-        bottoms = [not has_selection] + ([True] if has_selection else [])
-        assert sum(bottoms) == 1 and bottoms[-1]
+    bottoms = [not has_selection] + ([True] if has_selection else [])
+    assert sum(bottoms) == 1 and bottoms[-1]
 assert '.clipShape(' not in workspace and '.listStyle(.insetGrouped)' in workspace
-print('PASS local group boundaries: empty/single/multiple directories, bound/unbound menu, selected/unselected and collapsed/expanded single-row disclosure')
+print('PASS local group boundaries: empty/single/multiple directories, bound/unbound menu, selected/unselected and fixed terminal hint')
 print('PASS divider regression: settings, upload, local directory, workspace detail; conditional last-row corners')
 print('PASS soft grouped UI contracts: equal-width repositories, 22pt continuous row backgrounds, native lists/swipe deletion, semantic colors and adaptive text')
