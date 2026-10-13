@@ -110,24 +110,49 @@ def source(name):
 
 picker = source('ReleaseBranchPicker.swift')
 picker_ui = picker.split('struct ReleaseBranchPicker: View {', 1)[1]
-assert 'Section {\n            VStack(alignment: .leading, spacing: 0)' in picker_ui
-assert picker_ui.count('.softGroupedRow(') == 1
-assert '.listRowInsets(EdgeInsets())' in picker_ui
+# Restore both expansion interactions from 1.0.1+1: native sibling Form rows
+# for branches, and native DisclosureGroup for the advanced SHA target.
+assert 'Section {\n            if state.loading' in picker_ui
+assert 'VStack(alignment: .leading, spacing: 0)' not in picker_ui
+assert 'branchRow' not in picker_ui and '.listRowInsets(EdgeInsets())' not in picker_ui
 assert '.buttonStyle(.borderless)' in picker_ui
 assert 'minHeight: 44' in picker_ui and '.contentShape(Rectangle())' in picker_ui
 assert 'ForEach(visible, id: \\.self)' in picker_ui
-assert 'LazyVStack' not in picker_ui and 'DisclosureGroup' not in picker_ui
-assert picker_ui.count('Section {') == 1  # never nest Section inside VStack
+assert 'LazyVStack' not in picker_ui
+assert 'DisclosureGroup("高级：提交 SHA", isExpanded: $advanced)' in picker_ui
+assert picker_ui.count('Section {') == 1
 assert '.easeInOut(duration: 0.18)' in picker_ui and 'reduceMotion ? nil' in picker_ui
-assert 'Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)' in picker_ui
+assert 'animate { expanded.toggle() }' in picker_ui
+assert 'animate { expanded = false; advanced = false }' in picker_ui
+assert 'animate { advanced.toggle() }' not in picker_ui
+assert '.softGroupedRow(top: !state.loading)' in picker_ui
+assert 'softGroupedRow(top: false, bottom: false)' in picker_ui
+assert 'softGroupedRow(bottom: true)' in picker_ui
+assert 'Rectangle().fill(Color(uiColor: .separator))' not in picker_ui
 assert '.onDisappear { state.cancel(); ready = false }' in picker_ui
 
-release_fold = upload.split('private var releaseSection: some View {', 1)[1].split('static func inferredTrollVersion', 1)[0]
-assert 'releaseExpanded.toggle()' in release_fold and 'if releaseExpanded && !repo.isEmpty' in release_fold
-assert 'withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18))' in release_fold
-assert '.softGroupedRow(bottom: !releaseExpanded || repo.isEmpty)' in release_fold
-assert 'ReleaseManagementDestination(api: api, repo: repo)' in release_fold
-assert release_fold.count('.softGroupedRow(bottom: true)') == 1
+release_entry = upload.split('private var releaseSection: some View {', 1)[1].split('static func inferredTrollVersion', 1)[0]
+assert 'releaseExpanded' not in upload
+assert '已有发行版 / 继续草稿' not in release_entry
+assert 'DisclosureGroup' not in release_entry and 'withAnimation' not in release_entry
+assert 'ReleaseManagementDestination(api: api, repo: repo)' in release_entry
+assert '.disabled(busy || repo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)' in release_entry
+assert release_entry.count('.softGroupedRow(bottom: true)') == 1
+# Empty/whitespace cannot navigate, other input retains the destination's
+# existing parser, repository lookup and permission validation (no input-time I/O).
+for value, busy in itertools.product(('', '   ', '\n\t', 'wm0104/RepoPocket',
+                                      'https://github.com/wm0104/RepoPocket', 'not-a-repository'),
+                                     (False, True)):
+    disabled = busy or not value.strip()
+    assert disabled == (busy or value in ('', '   ', '\n\t'))
+github = source('GitHub.swift')
+managed_json = github.split('private func managedJSON<', 1)[1].split('private var managedPresenceCache', 1)[0]
+assert 'let canonical = try RepositoryInput.parse(repo)' in managed_json
+assert managed_json.index('RepositoryInput.parse(repo)') < managed_json.index('try request(')
+assert 'if http.statusCode == 404 { throw ManagedReleaseHTTPError' in managed_json
+assert 'try await managedJSON([ReleaseSummary].self, repo: repo' in github
+assert 'api.managedRepository(repo)' in source('ReleaseManagementUI.swift')
+assert 'ReleaseManagementRules.canWrite' in source('ReleaseManagementUI.swift')
 
 release = source('ReleaseManagementUI.swift')
 assert 'bottom: row.id == state.rows.last?.id && !state.more' in release
@@ -172,8 +197,27 @@ for busy, error, valid in itertools.product((False, True), repeat=3):
     if error: rows += [(not busy, valid)]
     if not valid: rows += [(not busy and not error, True)]
     edges_ok(rows)
-for expanded, empty in itertools.product((False, True), repeat=2):
-    edges_ok([(True, False), (False, False), (False, not expanded or empty)] + ([(False, True)] if expanded and not empty else []))
+# Management is now an always-present native row, independent of link state.
+for empty in (False, True):
+    edges_ok([(True, False), (False, False), (False, True)])
+# Native branch rows have one top/bottom even during loading, errors, empty
+# catalogue, search, and advanced SHA verification. The fixed hint ends the group.
+for loading, count, error, ready, expanded, searching, advanced, matches, sha_target in itertools.product(
+        (False, True), (0, 1, 3), (False, True), (False, True),
+        (False, True), (False, True), (False, True), (0, 2), (False, True)):
+    rows = [(True, False)] if loading else []
+    if count:
+        rows += [(not loading, False)]
+        if count > 1 and expanded:
+            rows += [(False, False)]  # search control
+            if searching: rows += [(False, False)]
+            rows += [(False, False)] * (matches or 1)  # names or empty hint
+    if error: rows += [(not loading and count == 0, False)]
+    if not loading and not ready: rows += [(count == 0 and not error, False)]
+    rows += [(not loading and count == 0 and not error and ready, False)]  # advanced header
+    if advanced: rows += [(False, False)] * (2 + int(ready and sha_target))
+    rows += [(False, True)]
+    edges_ok(rows)
 for name, author, section, priority, homepage in itertools.product((False, True), repeat=5):
     rows = ([(True, False)] if name else []) + ([(not name, False)] if author else [])
     rows += [(not name and not author, False)] + [(False, False)] * 4
@@ -212,7 +256,7 @@ for file, marker in [
         assert current.split('    private func load() async {')[-1] == old.split('    private func load() async {')[-1]
     else:
         assert current.split(marker, 1)[1] == old.split(marker, 1)[1], file
-print('PASS feature-page matrices: release pagination/status/attachments, fold states and 32 optional deb field combinations; stable branch container; exact cc62549 business/shared-style protection')
+print('PASS feature-page matrices: release pagination/status/attachments, direct management entry and 32 optional deb field combinations; native branch/SHA expansion boundaries; exact cc62549 business/shared-style protection')
 
 # Byte-exact operation bodies for mixed UI/logic files: rendering may move, API
 # calls/cancellation/permission and destructive confirmation logic may not.

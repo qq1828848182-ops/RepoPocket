@@ -276,21 +276,13 @@ struct UploadView: View {
         }.disabled(busy)
     }
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var releaseExpanded = false
     private var releaseSection: some View {
         Section("发行版") {
             TextField("仓库链接（可留空后选择）", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
             Button("发布") { sharedReleaseEntry = true }.disabled(busy).softGroupedRow()
-            Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { releaseExpanded.toggle() }
-            } label: {
-                HStack { Text("已有发行版 / 继续草稿"); Spacer(); Image(systemName: releaseExpanded ? "chevron.up" : "chevron.down").font(.caption) }.frame(minHeight: 44)
-            }.softGroupedRow(bottom: !releaseExpanded || repo.isEmpty)
-            if releaseExpanded && !repo.isEmpty {
-                NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: { Text("发行版管理") }
-                    .softGroupedRow(bottom: true)
-            }
+            NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: { Text("发行版管理") }
+                .disabled(busy || repo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .softGroupedRow(bottom: true)
         }
     }
     static func inferredTrollVersion(from filename: String) -> String {

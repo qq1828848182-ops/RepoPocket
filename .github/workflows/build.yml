@@ -95,7 +95,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "8"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "9"
           test "$(lipo -archs "$APP/RepoPocket")" = "arm64"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
