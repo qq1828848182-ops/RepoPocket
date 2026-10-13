@@ -96,6 +96,25 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     timed.leavePage(); clock.fire(); await Task.yield()
     precondition(timed.message.isEmpty && timed.release != nil)
     print("PASS deterministic production clock: latest 2s, failure 6s, new release untimed, leave-generation protection")
+    let automatic = UpdateChecker()
+    let autoAPI = GitHub("new"); autoAPI.accountID = "auto-fixture-" + UUID().uuidString
+    await automatic.automaticCheck(api: autoAPI)
+    await automatic.automaticCheck(api: autoAPI)
+    precondition(autoAPI.calls == 1 && automatic.release != nil && automatic.message.isEmpty)
+    automatic.leavePage(); automatic.enterPage()
+    precondition(automatic.release != nil)
+    await automatic.check(api: GitHub("automatic failure"), automatic: true)
+    precondition(automatic.release != nil && automatic.message.isEmpty)
+    await automatic.check(api: autoAPI)
+    precondition(autoAPI.calls == 2) // Explicit manual check bypasses auto cooldown.
+    let switched = UpdateChecker()
+    let lateAPI = GitHub("new", delay: 100_000_000)
+    let switchedTask = Task { await switched.check(api: lateAPI) }
+    for _ in 0..<100 { if lateAPI.calls == 1 { break }; await Task.yield() }
+    AccountStore.generation = UUID()
+    await switchedTask.value
+    precondition(switched.release == nil)
+    print("PASS production automatic once, manual bypass, tab retention, silent failure retains known update, account generation ignores late result")
     let checker = UpdateChecker()
     await checker.check(api: GitHub("first"))
     precondition(checker.message == "检查失败，请稍后重试")
