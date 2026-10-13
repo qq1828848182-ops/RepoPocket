@@ -23,11 +23,11 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertNotIn('contents: write', self.source)
         self.assertNotIn('gh release', self.source)
         self.assertNotIn('softprops/action-gh-release', self.source)
-        self.assertIn('Print :CFBundleVersion\' "$APP/Info.plist")" = "9"', self.source)
+        self.assertIn('Print :CFBundleVersion\' "$APP/Info.plist")" = "10"', self.source)
         self.assertIn('Print :CFBundleShortVersionString\' "$APP/Info.plist")" = "1.0.2"', self.source)
         project = (REPO_ROOT / 'project.yml').read_text()
         self.assertIn('MARKETING_VERSION: "1.0.2"', project)
-        self.assertIn('CURRENT_PROJECT_VERSION: "9"', project)
+        self.assertIn('CURRENT_PROJECT_VERSION: "10"', project)
 
     def test_python_scripts_use_organized_existing_paths(self):
         import re

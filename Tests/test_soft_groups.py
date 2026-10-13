@@ -157,12 +157,20 @@ assert 'ReleaseManagementRules.canWrite' in source('ReleaseManagementUI.swift')
 release = source('ReleaseManagementUI.swift')
 assert 'bottom: row.id == state.rows.last?.id && !state.more' in release
 assert 'top: state.rows.isEmpty && state.busy, bottom: true' in release
-assert 'bottom: asset.id == state.assets.last?.id && !state.assetMore' in release
+detail_ui = release.split('struct ReleaseDetailView: View', 1)[1].split('private func upload', 1)[0]
+asset_ui = detail_ui.split('ForEach(state.assets) { asset in', 1)[1].split('if state.assets.isEmpty', 1)[0]
+assert 'let isLastAsset = asset.id == state.assets.last?.id && !state.assetMore' in asset_ui
+assert asset_ui.count('.softGroupedRow(') == 4  # metadata, download, optional copy, optional delete
+assert '}.softGroupedRow(top: asset.id == state.assets.first?.id)' in asset_ui
+assert '.softGroupedRow(bottom: isLastAsset && link == nil && !state.canWrite)' in asset_ui
+assert '.softGroupedRow(bottom: isLastAsset && !state.canWrite)' in asset_ui
+assert '.softGroupedRow(bottom: isLastAsset)' in asset_ui
+assert 'Divider()' not in asset_ui and 'Rectangle().fill' not in asset_ui
 assert 'bottom: item.id == attachments.last?.id && !staging' in release
 assert 'bottom: markerReady || state.busy' in release
 assert 'bottom: state.error.isEmpty && state.valid' in release
 assert 'top: !state.busy && state.error.isEmpty, bottom: true' in release
-assert 'Divider()' in release  # intentionally preserve the asset danger boundary
+assert 'Divider()' not in detail_ui  # all detail rows use the same full-width separator
 assert 'originalKeys, id: \\.self' in source('DebEditorView.swift')
 assert 'bottom: key == originalKeys.last' in source('DebEditorView.swift')
 assert 'top: original["Name"] == nil && original["Author"] == nil' in source('DebEditorView.swift')
@@ -192,6 +200,27 @@ for n, busy, more in itertools.product(range(4), (False, True), (False, True)):
     if n == 0: rows += [(False, not busy)]
     if busy: rows += [(False, True)]
     edges_ok(rows)
+# Attachment metadata and all independently available actions must share one
+# continuous group. Only the last visible action closes it, never metadata.
+# Cover invalid/absent copy links, read-only/write modes, busy, pagination,
+# and heterogeneous link availability across multiple assets.
+for n, can_write, busy, more in itertools.product(range(4), (False, True), (False, True), (False, True)):
+    for links in itertools.product((False, True), repeat=n):
+        rows = []
+        for i, has_link in enumerate(links):
+            terminal = i == n - 1 and not more
+            rows += [(i == 0, False)]  # metadata is followed by download
+            rows += [(False, terminal and not has_link and not can_write)]
+            if has_link: rows += [(False, terminal and not can_write)]
+            if can_write: rows += [(False, terminal)]
+        if not n and not more: rows += [(True, True)]
+        if more: rows += [(not n, True)]
+        edges_ok(rows)
+        assert len(rows) == (sum(2 + int(link) + int(can_write) for link in links)
+                             + int(not n and not more) + int(more))
+        # Every nonterminal native row paints a separator; the terminal row
+        # closes the rounded group without an extra outside line.
+        assert sum(not bottom for _, bottom in rows) == len(rows) - 1
 for busy, error, valid in itertools.product((False, True), repeat=3):
     rows = [(True, False), (False, False), (False, not error and valid)] if busy else []
     if error: rows += [(not busy, valid)]

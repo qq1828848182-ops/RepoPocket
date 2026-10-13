@@ -59,7 +59,7 @@ class ReleaseManagementTests(unittest.TestCase):
     def test_asset_row_actions_are_independent_and_accessible(self):
         import re
         ui = (ROOT/'RepoPocket/ReleaseManagementUI.swift').read_text()
-        row = ui.split('ForEach(state.assets) { asset in', 1)[1].split('if state.assetMore', 1)[0]
+        row = ui.split('ForEach(state.assets) { asset in', 1)[1].split('if state.assets.isEmpty', 1)[0]
         self.assertIn('VStack(alignment: .leading, spacing: 12)', row)
         self.assertEqual(len(re.findall(r'^\s*Button(?:\(| \{)', row, re.M)), 3)
         actions = re.findall(r'Button(?:\(role: \.destructive\))? \{ ([^{}]+) \} label: \{\s*Text\("([^"]+)"\)(.*?)\n\s*\}\s*\.buttonStyle\(\.(borderless|plain)\)', row, re.S)
@@ -74,7 +74,22 @@ class ReleaseManagementTests(unittest.TestCase):
             self.assertIn('.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)', label_view)
             self.assertIn('.contentShape(Rectangle())', label_view)
             self.assertNotIn('.lineLimit', label_view)
-        self.assertIn('if state.canWrite {\n                                Divider()', row)
+        # The file metadata and every action must be distinct native List rows.
+        # An inset Divider inside one VStack caused the measured 1050/1168px mix
+        # and omitted separators between metadata/download/copy in the screenshots.
+        metadata = row.split('VStack(alignment: .leading, spacing: 12) {', 1)[1].split('}.softGroupedRow(', 1)[0]
+        self.assertIn('Text(asset.name)', metadata)
+        self.assertIn('asset.size', metadata)
+        self.assertNotIn('Button', metadata)
+        self.assertNotIn('Divider()', row)
+        self.assertEqual(row.count('.softGroupedRow('), 4)
+        self.assertIn('}.softGroupedRow(top: asset.id == state.assets.first?.id)', row)
+        self.assertIn('let isLastAsset = asset.id == state.assets.last?.id && !state.assetMore', row)
+        self.assertIn('.softGroupedRow(bottom: isLastAsset && link == nil && !state.canWrite)', row)
+        self.assertIn('.softGroupedRow(bottom: isLastAsset && !state.canWrite)', row)
+        self.assertIn('.softGroupedRow(bottom: isLastAsset)', row)
+        self.assertIn('if state.canWrite {', row)
+        self.assertIn('if let link = link {', row)
         self.assertEqual(row.count('.disabled(state.busy)'), 2)
         self.assertNotIn('.automatic', row)
         self.assertNotIn('.onTapGesture', row)

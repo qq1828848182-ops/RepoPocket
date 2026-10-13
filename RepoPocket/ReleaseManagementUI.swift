@@ -203,37 +203,41 @@ struct ReleaseDetailView: View {
                 }
                 Section {
                     ForEach(state.assets) { asset in
+                        let link = ReleaseManagementRules.browserDownloadURL(asset.browser_download_url, repo: state.repo)
+                        let isLastAsset = asset.id == state.assets.last?.id && !state.assetMore
                         VStack(alignment: .leading, spacing: 12) {
                             Text(asset.name).lineLimit(2)
                             Text(ByteCountFormatter.string(fromByteCount: Int64(asset.size), countStyle: .file)).font(.caption)
-                            // List's automatic style can activate every Button in a row.
-                            // Keep each action independent, with a full-width 44pt minimum target.
-                            Button { state.download(asset) } label: {
-                                Text("下载并保存")
+                        }.softGroupedRow(top: asset.id == state.assets.first?.id)
+                        // Each action is a native List row, with the same full-width separator.
+                        // Explicit borderless buttons also keep List activation independent.
+                        Button { state.download(asset) } label: {
+                            Text("下载并保存")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(state.busy)
+                        .softGroupedRow(bottom: isLastAsset && link == nil && !state.canWrite)
+                        if let link = link {
+                            Button { UIPasteboard.general.url = link; copied = true } label: {
+                                Text("复制下载链接")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .softGroupedRow(bottom: isLastAsset && !state.canWrite)
+                        }
+                        if state.canWrite {
+                            Button(role: .destructive) { prepareDelete(r, asset: asset) } label: {
+                                Text("删除附件")
                                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.borderless)
                             .disabled(state.busy)
-                            if let link = ReleaseManagementRules.browserDownloadURL(asset.browser_download_url, repo: state.repo) {
-                                Button { UIPasteboard.general.url = link; copied = true } label: {
-                                    Text("复制下载链接")
-                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.borderless)
-                            }
-                            if state.canWrite {
-                                Divider()
-                                Button(role: .destructive) { prepareDelete(r, asset: asset) } label: {
-                                    Text("删除附件")
-                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.borderless)
-                                .disabled(state.busy)
-                            }
-                        }.softGroupedRow(top: asset.id == state.assets.first?.id, bottom: asset.id == state.assets.last?.id && !state.assetMore)
+                            .softGroupedRow(bottom: isLastAsset)
+                        }
                     }
                     if state.assets.isEmpty && !state.assetMore { Text("暂无附件").softGroupedRow(top: true, bottom: true) }
                     if state.assetMore { Button("加载更多附件") { state.run { try await state.nextAssets(id) } }.disabled(state.busy).softGroupedRow(top: state.assets.isEmpty, bottom: true) }
