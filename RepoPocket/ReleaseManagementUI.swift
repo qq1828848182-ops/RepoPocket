@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import Combine
 
 struct ReleaseManagementDestination: View {
     private let build: () -> AnyView
@@ -29,7 +30,13 @@ struct ReleaseManagementDestination: View {
     private var assetPage = 1
     private var task: Task<Void, Never>?
     private var operation = UUID()
-    init(api: GitHub, repo: String) { self.api = api; self.repo = repo }
+    private var accountObserver: AnyCancellable?
+    init(api: GitHub, repo: String) {
+        self.api = api; self.repo = repo
+        accountObserver = NotificationCenter.default.publisher(for: .githubAccountChanged).sink { [weak self] _ in
+            self?.cancel(); self?.canWrite = false; self?.rows = []; self?.assets = []; self?.release = nil; self?.saved = nil
+        }
+    }
     var valid: Bool { generation == AccountStore.generation && api.isCurrentSession }
     func cancel() { operation = UUID(); task?.cancel(); task = nil; busy = false }
     func run(_ work: @escaping () async throws -> Void) {
@@ -295,7 +302,7 @@ struct ReleaseEditorView: View {
     }
 }
 
-@ViewBuilder private func releaseStatus(_ state: ReleaseScreenState) -> some View {
+@MainActor @ViewBuilder private func releaseStatus(_ state: ReleaseScreenState) -> some View {
     if state.busy {
         ProgressView(value: state.progress)
         Text("请保持前台，勿锁屏；取消不显示伪失败。").font(.caption)
