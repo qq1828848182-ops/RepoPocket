@@ -137,6 +137,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     let probeAPI = GitHub("new"); probeAPI.accountID = "probe-" + UUID().uuidString
     let probeKey = "RepoPocket.update.lastCheck." + probeAPI.accountID
     let lastDate = Date(); UserDefaults.standard.set(lastDate, forKey: probeKey)
+    AppUpdateSessionRules.startupPromptOffered = false
     let probe = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
     await probe.automaticCheck(api: probeAPI); await probe.automaticCheck(api: probeAPI)
     precondition(probeAPI.calls == 1 && probe.startupRelease != nil)
