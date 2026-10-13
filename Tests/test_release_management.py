@@ -72,10 +72,32 @@ class ReleaseManagementTests(unittest.TestCase):
         self.assertNotIn('公开附件可直接在浏览器下载', ui)
         self.assertEqual(ui.count('Text("私有附件需在浏览器登录。")'), 1)
         self.assertIn('} footer: {', ui)
-        self.assertIn('var draft = true', models)
+        self.assertIn('var draft = false', models)
         self.assertIn('ReleaseManagementRules.more', ui)
         self.assertIn('第二次确认', ui)
         self.assertIn('已公开发行版会立即受到影响', ui)
+
+    def test_official_marker_and_tag_write_contracts(self):
+        ui = (ROOT/'RepoPocket/ReleaseManagementUI.swift').read_text()
+        api = (ROOT/'RepoPocket/GitHub.swift').read_text()
+        for text in ['Picker("发行版标记"', 'Text("无")', 'Text("预发行版")', 'if !form.draft', 'Text("最新发行版")', 'Toggle("保存为草稿"', 'form.marker = .none', '!markerReady', '发布此发行版？']:
+            self.assertIn(text, ui)
+        self.assertNotIn('Toggle("预发行"', ui)
+        latest = api.split('func managedLatestID(', 1)[1].split('private func verifyManagedTagAvailable', 1)[0]
+        for text in ['ensureActiveAccount()', 'Task.checkCancellation()', 'managedLatestCache[canonical]', 'suffix: "/releases/latest"', 'error.status == 404', 'managedRepository(canonical)']:
+            self.assertIn(text, latest)
+        self.assertNotIn('created_at', latest)
+        tag = api.split('private func verifyManagedTagAvailable', 1)[1].split('func invalidateManagedPresence', 1)[0]
+        for text in ['"/releases/tags/" + Self.component(tag)', '1...ReleaseManagementRules.pageLimit', '$0.id != originalID', '此标签已有发行版', 'rows.count < ReleaseManagementRules.pageSize']:
+            self.assertIn(text, tag)
+        self.assertNotIn('/git/refs', tag)
+        save = api.split('func saveManagedRelease', 1)[1].split('func deleteManagedRelease', 1)[0]
+        for text in ['managedWriteAccess(repo)', 'form.validMarker', 'validTag(form.tag)', 'current == original', '"make_latest": form.makeLatest', 'object.removeValue(forKey: "make_latest")']:
+            self.assertIn(text, save)
+        self.assertNotIn('form.title ==', save)
+        upload = api.split('func uploadManagedAsset', 1)[1]
+        for text in ['1...ReleaseManagementRules.pageLimit', 'duplicate(name: file.lastPathComponent', 'guard checkedAll']:
+            self.assertIn(text, upload)
 
     def test_commit_patch_scope_and_ui(self):
         view=(ROOT/'RepoPocket/CommitPatchView.swift').read_text()
@@ -124,6 +146,27 @@ struct Item: Identifiable { let id: Int }
   let detail = try JSONDecoder().decode(ManagedRelease.self, from: Data(json.utf8))
   precondition(summary.id==7 && detail.body=="完整正文" && detail.draft)
   precondition(ReleaseForm(detail).body==detail.body)
+  var form = ReleaseForm()
+  precondition(!form.draft && form.marker == .none && form.makeLatest == "false" && !form.prerelease)
+  form.marker = .prerelease
+  precondition(form.prerelease && form.makeLatest == "false" && form.validMarker)
+  form.marker = .latest
+  precondition(!form.prerelease && form.makeLatest == "true" && form.validMarker)
+  form.draft = true; precondition(!form.validMarker)
+  let publishedJSON = json.replacingOccurrences(of: "\"draft\":true", with: "\"draft\":false")
+  let published = try JSONDecoder().decode(ManagedRelease.self, from: Data(publishedJSON.utf8))
+  precondition(ReleaseForm(published, latestID:7).marker == .latest)
+  precondition(ReleaseForm(published, latestID:8).marker == .none)
+  precondition(ReleaseForm(detail, latestID:7).draft && ReleaseForm(detail, latestID:7).marker != .latest)
+  for tag in ["v1.0.0+2", "版本/测试😀", "release/v1", "1.0.0"] { precondition(ReleaseManagementRules.validTag(tag)) }
+  for tag in ["", "@", "a b", "a\nb", "a\u{7f}", "a~", "a^", "a:", "a?", "a*", "a[", "a\\b", "a..b", "a@{b", "a//b", "a/", "/a", "a.", ".a", "a/.b", "a.lock", "a.lock/b"] { precondition(!ReleaseManagementRules.validTag(tag)) }
+  let duplicateJSON = #"{"errors":[{"field":"tag_name","code":"already_exists"}]}"#
+  precondition(ReleaseManagementRules.tagAlreadyExists(Data(duplicateJSON.utf8)))
+  precondition(!ReleaseManagementRules.tagAlreadyExists(Data("{broken".utf8)))
+  precondition(!ReleaseManagementRules.tagAlreadyExists(Data(#"{"errors":[{"field":"name","code":"already_exists"}]}"#.utf8)))
+  let payload = try JSONSerialization.data(withJSONObject:["make_latest":form.makeLatest,"prerelease":form.prerelease])
+  let decodedPayload = try JSONSerialization.jsonObject(with:payload) as! [String:Any]
+  precondition(decodedPayload["make_latest"] as? String == "true" && decodedPayload["prerelease"] as? Bool == false)
   let patch = "@@ -10,2 +20,2 @@ func\n-old😀\n+新中文\n context\n\\ No newline at end of file"
   let parsed=try CommitPatchParser.parse(patch)
   precondition(parsed.rows.count==5 && !parsed.malformed)
