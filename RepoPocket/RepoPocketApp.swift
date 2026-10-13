@@ -33,7 +33,7 @@ struct AccountRootView: View {
                 GitWorkspaceView().environmentObject(gitCore).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }
                 WorkspaceView(api: api).tabItem { Label("本地", systemImage: "folder.badge.gearshape") }
                 UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }
-                SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.badge(updateChecker.hasUpdate ? "●" : nil)
+                SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }
             }
             .task { await updateChecker.automaticCheck(api: api) }
             .alert("提示", isPresented: Binding(get: { !api.message.isEmpty }, set: { if !$0 { api.message = "" } })) {

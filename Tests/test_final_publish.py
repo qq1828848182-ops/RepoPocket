@@ -28,7 +28,11 @@ class FinalPublishTests(unittest.TestCase):
         for token in ['Menu("工作区…")', 'if !selected.isEmpty', 'Text("暂无变更")', '复制实际副本路径', '发布为发行版']:
             self.assertIn(token, workspace)
         self.assertIn('await updateChecker.automaticCheck(api: api)', app)
-        self.assertIn('.badge(updateChecker.hasUpdate', app)
+        self.assertNotIn('.badge(updateChecker.hasUpdate', app)
+        self.assertNotIn('Circle().fill(Color.red)', updates)
+        self.assertIn('Text("应用更新")', updates)
+        for token in ['checker.check(api: api)', 'Button("下载更新")', 'Button("分享 IPA 安装")', 'DisclosureGroup("发布说明"', 'if release.ipaURL != nil']:
+            self.assertIn(token, updates)
         self.assertIn('UserDefaults.standard.set(now', updates)
         self.assertIn('!automatic', updates)
         self.assertNotIn('Timer', updates)
