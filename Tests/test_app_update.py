@@ -14,8 +14,12 @@ class UpdateTests(unittest.TestCase):
         self.assertNotIn('officialAppUpdateData', entry)
         self.assertEqual(feature.count('await checker.check(api: api)'), 1)
         self.assertNotIn('forHTTPHeaderField: "Authorization"', feature)
-        for forbidden in ['TrollStore', 'apple-magnifier', 'openTrollStore', 'URLQueryItem(name: "url"']:
+        # The authorized TrollStore handoff is isolated from the normal verified download path.
+        for forbidden in ['apple-magnifier://', 'URLQueryItem(name: "url"']:
             self.assertNotIn(forbidden, feature)
+        self.assertIn('TrollStoreInstallRules.installURL(for: ipa)', feature)
+        self.assertIn('Button("下载更新")', feature)
+        self.assertIn('不经过 RepoPocket 的本地 SHA256 校验', feature)
         for value in ['downloadTask?.cancel()', 'snapshotFileSHA256', 'archive.extract', 'HTTPURLResponse', 'https://github.com/wm0104/RepoPocket/releases']:
             self.assertIn(value, feature)
         self.assertIn('AppUpdateSection(api: api, checker: updateChecker)', Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text())

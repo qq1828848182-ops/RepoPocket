@@ -160,6 +160,10 @@ struct AppUpdateSection: View {
     @State private var share: SharedFile?
     @State private var authorizing = false
     @State private var expanded = false
+    @State private var openingTrollStore = false
+    @State private var confirmTrollStore = false
+    @State private var trollStoreRequestID = UUID()
+    @AppStorage("RepoPocket.update.trollStoreLinkAcknowledged") private var trollStoreLinkAcknowledged = false
     var body: some View {
         Group {
             HStack {
@@ -170,7 +174,7 @@ struct AppUpdateSection: View {
                     if let release = checker.release, let ipa = release.ipaURL {
                         Button("复制可信下载链接") { UIPasteboard.general.url = ipa }
                     }
-                    if checker.downloaded != nil { Button("重新下载") { authorizeDownload() }.disabled(authorizing || checker.downloading) }
+                    if checker.downloaded != nil { Button("重新下载") { authorizeDownload() }.disabled(authorizing || checker.checking || checker.downloading || openingTrollStore) }
                 } label: { Image(systemName: "ellipsis") }
             }.softGroupedRow(top: true)
             if !checker.message.isEmpty { Text(checker.message).font(.caption).textSelection(.enabled).softGroupedRow() }
@@ -185,7 +189,10 @@ struct AppUpdateSection: View {
                     Text(String((release.body ?? "暂无发布说明").prefix(16_384))).font(.caption)
                 }.softGroupedRow()
                 if release.ipaURL != nil {
-                    Button("下载更新") { authorizeDownload() }.disabled(authorizing || checker.downloading).softGroupedRow()
+                    if let ipa = release.ipaURL, TrollStoreInstallRules.installURL(for: ipa) != nil {
+                        Button("TrollStore 更新安装") { requestTrollStoreInstall() }.disabled(checker.checking || checker.downloading || authorizing || openingTrollStore).softGroupedRow()
+                    }
+                    Button("下载更新") { authorizeDownload() }.disabled(checker.checking || authorizing || checker.downloading || openingTrollStore).softGroupedRow()
                 } else {
                     Text("未找到唯一可信 IPA，请前往官方发行版下载。").font(.caption).softGroupedRow()
                     Link("前往下载", destination: release.html_url).softGroupedRow()
@@ -194,9 +201,39 @@ struct AppUpdateSection: View {
                 Button(checker.checking ? "检查中…" : "检查更新") { Task { await checker.check(api: api) } }.disabled(checker.checking || checker.downloading).softGroupedRow()
             }
         }.sheet(item: $share, onDismiss: { checker.sharing = false }) { ShareSheet(url: $0.url) }
+        .alert("使用 TrollStore 更新", isPresented: $confirmTrollStore) {
+            Button("取消", role: .cancel) {}
+            Button("继续") { trollStoreLinkAcknowledged = true; openTrollStoreInstall() }
+        } message: {
+            Text("请先在 TrollStore 设置中启用 URL Scheme，并按它的提示应用设置。TrollStore 将下载官方 IPA 并处理安装，此方式不经过 RepoPocket 的本地 SHA256 校验。未安装 TrollStore 或未启用协议时可能打开放大器；也可取消后使用下载更新和分享安装。")
+        }.onDisappear { confirmTrollStore = false; openingTrollStore = false; trollStoreRequestID = UUID() }
+    }
+    private func requestTrollStoreInstall() {
+        guard api.isCurrentSession, !checker.checking, !checker.downloading, !authorizing, !openingTrollStore,
+              let ipa = checker.release?.ipaURL, TrollStoreInstallRules.installURL(for: ipa) != nil else { return }
+        if trollStoreLinkAcknowledged {
+            openTrollStoreInstall()
+        } else { confirmTrollStore = true }
+    }
+    private func openTrollStoreInstall() {
+        guard api.isCurrentSession, !checker.checking, !checker.downloading, !authorizing, !openingTrollStore,
+              let release = checker.release, let ipa = release.ipaURL else { return }
+        let session = AccountStore.generation
+        let tag = release.tag_name
+        let requestID = UUID(); trollStoreRequestID = requestID
+        openingTrollStore = true
+        TrollStoreInstaller.open(ipaURL: ipa) { opened in
+            guard trollStoreRequestID == requestID else { return }
+            openingTrollStore = false
+            guard session == AccountStore.generation, api.isCurrentSession,
+                  checker.release?.tag_name == tag, checker.release?.ipaURL == ipa else { return }
+            checker.message = opened
+                ? "已请求打开 TrollStore，请在其中查看下载和安装结果。若打开放大器，请启用 TrollStore 的 URL Scheme，或使用下载更新。"
+                : "无法打开链接安装，请启用 TrollStore 的 URL Scheme，或使用下载更新后分享安装。"
+        }
     }
     private func authorizeDownload() {
-        guard !authorizing else { return }; authorizing = true
+        guard api.isCurrentSession, !authorizing, !checker.checking, !checker.downloading, !openingTrollStore else { return }; authorizing = true
         Task { @MainActor in
             defer { authorizing = false }
             do {
