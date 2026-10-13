@@ -182,7 +182,13 @@ for name, author, section, priority, homepage in itertools.product((False, True)
 
 # cc62549 local allowance is ONLY UI rendering. Preserve the exact historic
 # logic and shared decoration, not a broad regex normalization of whole files.
-BASE = 'cc62549'
+# The Actions checkout is shallow. Fetch only this immutable baseline when it
+# is absent; keep the byte-exact protection equally strict locally and in CI.
+BASE = 'cc62549598166c4b8b1f3dc5edccc34e3a81037d'
+if subprocess.run(['git', 'cat-file', '-e', BASE + '^{commit}'],
+                  cwd=REPO_ROOT, capture_output=True).returncode:
+    subprocess.run(['git', 'fetch', '--depth=1', 'origin', BASE],
+                   cwd=REPO_ROOT, check=True, timeout=120)
 def baseline(name):
     return subprocess.check_output(['git', 'show', f'{BASE}:RepoPocket/{name}'], cwd=REPO_ROOT, text=True)
 for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
