@@ -15,9 +15,9 @@ struct CommitPatchView: View {
         ScrollView(.vertical) {
             LazyVStack(alignment: .leading, spacing: 0) {
                 Text(file.filename).font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(8)
-                Text("GitHub 局部 patch，不是完整文件；长行自动换行，不请求整文件补全。").font(.caption).padding(8)
+                Text("仅显示本次提交的变化").font(.caption).padding(8)
                 Toggle("显示空白（· 空格 / ⇥ Tab）", isOn: $whitespace).padding(8)
-                Toggle("原始 patch（预算内）", isOn: $raw).padding(8)
+                Toggle("原始 patch", isOn: $raw).padding(8)
                 if file.patch == nil {
                     Text("二进制或大文件未提供 patch，无法预览；不代表没有改动。").padding(8)
                 } else if let result {

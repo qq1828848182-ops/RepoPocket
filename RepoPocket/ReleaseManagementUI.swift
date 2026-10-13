@@ -105,7 +105,6 @@ struct ReleaseListView: View {
     var body: some View {
         List {
             Text(state.repo).font(.caption)
-            Text("每页 20 条，最多 1,000 条；不自动下载或预览附件。Latest 无可靠证据时不标记。").font(.caption).foregroundColor(.secondary)
             ForEach(state.rows) { row in
                 NavigationLink { ReleaseManagementDestination(api: state.api, repo: state.repo, id: row.id) } label: {
                     VStack(alignment: .leading) {
@@ -118,7 +117,7 @@ struct ReleaseListView: View {
             }
             if state.more { Button("加载下一页") { state.list(reset: false) }.disabled(state.busy) }
             if state.rows.isEmpty && !state.busy { Text(state.listLoaded && state.error.isEmpty ? "暂无发行版" : "尚未成功加载发行版，可手动刷新。") }
-            if state.canWrite { Button("新建发行版（默认草稿）") { creating = true }.disabled(state.busy) }
+            if state.canWrite { Button("新建发行版") { creating = true }.disabled(state.busy) }
             releaseStatus(state)
         }
         .navigationTitle("发行版")
@@ -165,20 +164,45 @@ struct ReleaseDetailView: View {
                         }
                     }
                 }
-                Section("附件（独立分页，每页20）") {
+                Section {
                     ForEach(state.assets) { asset in
-                        VStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text(asset.name).lineLimit(2)
                             Text(ByteCountFormatter.string(fromByteCount: Int64(asset.size), countStyle: .file)).font(.caption)
-                            Button("下载并保存") { state.download(asset) }.disabled(state.busy)
-                            if let link = ReleaseManagementRules.browserDownloadURL(asset.browser_download_url, repo: state.repo) {
-                                Button("复制下载链接") { UIPasteboard.general.url = link; copied = true }
+                            // List's automatic style can activate every Button in a row.
+                            // Keep each action independent, with a full-width 44pt minimum target.
+                            Button { state.download(asset) } label: {
+                                Text("下载并保存")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    .contentShape(Rectangle())
                             }
-                            Text("公开附件可直接在浏览器下载；私有仓库需浏览器登录有权限账号。链接不含 Token；草稿公开前可能无法下载。").font(.caption).foregroundColor(.secondary)
-                            if state.canWrite { Button("删除附件", role: .destructive) { prepareDelete(r, asset: asset) }.disabled(state.busy) }
+                            .buttonStyle(.borderless)
+                            .disabled(state.busy)
+                            if let link = ReleaseManagementRules.browserDownloadURL(asset.browser_download_url, repo: state.repo) {
+                                Button { UIPasteboard.general.url = link; copied = true } label: {
+                                    Text("复制下载链接")
+                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            if state.canWrite {
+                                Divider()
+                                Button(role: .destructive) { prepareDelete(r, asset: asset) } label: {
+                                    Text("删除附件")
+                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(state.busy)
+                            }
                         }
                     }
                     if state.assetMore { Button("加载更多附件") { state.run { try await state.nextAssets(id) } }.disabled(state.busy) }
+                } header: {
+                    Text("附件")
+                } footer: {
+                    Text("私有附件需在浏览器登录。")
                 }
                 if state.canWrite {
                     Section("管理") {
@@ -305,7 +329,7 @@ struct ReleaseEditorView: View {
 @MainActor @ViewBuilder private func releaseStatus(_ state: ReleaseScreenState) -> some View {
     if state.busy {
         ProgressView(value: state.progress)
-        Text("请保持前台，勿锁屏；取消不显示伪失败。").font(.caption)
+        Text("请保持前台，勿锁屏。").font(.caption)
         Button("取消当前操作") { state.cancel() }
     }
     if !state.error.isEmpty { Text(state.error).foregroundColor(.red).textSelection(.enabled) }

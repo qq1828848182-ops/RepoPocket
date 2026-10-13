@@ -23,7 +23,7 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertNotIn('contents: write', self.source)
         self.assertNotIn('gh release', self.source)
         self.assertNotIn('softprops/action-gh-release', self.source)
-        self.assertIn('Print :CFBundleVersion\' "$APP/Info.plist")" = "3"', self.source)
+        self.assertIn('Print :CFBundleVersion\' "$APP/Info.plist")" = "4"', self.source)
 
     def test_python_scripts_use_organized_existing_paths(self):
         import re
@@ -41,11 +41,11 @@ class BuildWorkflowTests(unittest.TestCase):
         commands = self.source
         for required in ('xcodebuild', 'CODE_SIGNING_ALLOWED=NO',
                          'codesign --verify --deep --strict',
-                         'unzip -t RepoPocket-1.0.0-build3.ipa',
-                         'shasum -a 256 -c RepoPocket-1.0.0-build3.ipa.sha256'):
+                         'unzip -t RepoPocket-1.0.0-build4.ipa',
+                         'shasum -a 256 -c RepoPocket-1.0.0-build4.ipa.sha256'):
             self.assertIn(required, commands)
         self.assertIn('uses: actions/upload-artifact@v4', commands)
-        self.assertIn('name: RepoPocket-1.0.0-build3', commands)
+        self.assertIn('name: RepoPocket-1.0.0-build4', commands)
 
 
 if __name__ == '__main__':
