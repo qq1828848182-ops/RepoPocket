@@ -294,13 +294,13 @@ struct WorkspaceView: View {
             .sheet(item: $checkPending, onDismiss: { discardCheck() }) { pending in
                 NavigationStack {
                     List {
-                        if pending.binding.head == binding?.head { Text("远端无新提交，本地更改保持不变。") }
+                        if pending.binding.head == binding?.head { Text("远端无新提交，本地更改保持不变。").softGroupedRow(top: true, bottom: true) }
                         else {
-                            Text("下列路径是远端相对当前基线的实际变更；拉取会按三方合并，冲突另行逐项确认。")
+                            Text("下列路径是远端相对当前基线的实际变更；拉取会按三方合并，冲突另行逐项确认。").softGroupedRow(top: true)
                             ForEach(WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot), id: \.path) { change in
-                                LabeledContent(change.path, value: change.kind)
+                                LabeledContent(change.path, value: change.kind).softGroupedRow(bottom: change.path == WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).last?.path)
                             }
-                            if WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).isEmpty { Text("提交改变，但文件内容未变。") }
+                            if WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).isEmpty { Text("提交改变，但文件内容未变。").softGroupedRow(bottom: true) }
                         }
                     }
                     .navigationTitle("远端更新检查")
@@ -437,17 +437,17 @@ Section("本地变更预览 / 勾选提交") {
                 NavigationStack {
                     List {
                         if let pending = pull, let binding = binding {
-                            Text("同文件双改或删除/修改冲突不会自动覆盖。请逐项选择；取消不会改变工作区。二进制或大文本仅显示哈希。")
+                            Text("同文件双改或删除/修改冲突不会自动覆盖。请逐项选择；取消不会改变工作区。二进制或大文本仅显示哈希。").softGroupedRow(top: true, bottom: true)
                             ForEach(pending.conflicts, id: \.self) { path in
                                 Section(path) {
-                                    Text("基线：" + (binding.snapshot.texts[path] ?? binding.snapshot.hashes[path] ?? "已删除"))
-                                    Text("本地：" + (pending.local.texts[path] ?? pending.local.hashes[path] ?? "已删除"))
-                                    Text("远端：" + (pending.binding.snapshot.texts[path] ?? pending.binding.snapshot.hashes[path] ?? "已删除"))
-                                    Button { pullChoices[path] = false } label: { Label("保留本地", systemImage: pullChoices[path] == false ? "checkmark.circle.fill" : "circle") }
-                                    Button { pullChoices[path] = true } label: { Label("采用远端", systemImage: pullChoices[path] == true ? "checkmark.circle.fill" : "circle") }
+                                    Text("基线：" + (binding.snapshot.texts[path] ?? binding.snapshot.hashes[path] ?? "已删除")).softGroupedRow(top: true)
+                                    Text("本地：" + (pending.local.texts[path] ?? pending.local.hashes[path] ?? "已删除")).softGroupedRow()
+                                    Text("远端：" + (pending.binding.snapshot.texts[path] ?? pending.binding.snapshot.hashes[path] ?? "已删除")).softGroupedRow()
+                                    Button { pullChoices[path] = false } label: { Label("保留本地", systemImage: pullChoices[path] == false ? "checkmark.circle.fill" : "circle") }.softGroupedRow()
+                                    Button { pullChoices[path] = true } label: { Label("采用远端", systemImage: pullChoices[path] == true ? "checkmark.circle.fill" : "circle") }.softGroupedRow(bottom: true)
                                 }.font(.system(.caption, design: .monospaced))
                             }
-                            Button("安全应用全部选择") { Task { await applyResolvedPull() } }.disabled(busy || pending.conflicts.contains { pullChoices[$0] == nil })
+                            Button("安全应用全部选择") { Task { await applyResolvedPull() } }.disabled(busy || pending.conflicts.contains { pullChoices[$0] == nil }).softGroupedRow(top: true, bottom: true)
                         }
                     }.navigationTitle("拉取冲突对照")
                         .toolbar { Button("取消") { resolvingPull = false } }

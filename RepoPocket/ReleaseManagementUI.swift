@@ -110,23 +110,45 @@ struct ReleaseListView: View {
     init(api: GitHub, repo: String) { _state = StateObject(wrappedValue: ReleaseScreenState(api: api, repo: repo)) }
     var body: some View {
         List {
-            Text(state.repo).font(.caption)
-            ForEach(state.rows) { row in
-                NavigationLink { ReleaseManagementDestination(api: state.api, repo: state.repo, id: row.id) } label: {
-                    VStack(alignment: .leading) {
-                        Text(row.title).lineLimit(2)
-                        Text(row.tag_name + " · " + String(row.date.prefix(10))).font(.caption)
-                        if row.draft { Text("草稿").font(.caption) }
-                        if row.prerelease { Text("预发行").font(.caption) }
-                        if state.latestID == row.id && !row.draft && !row.prerelease { Text("最新发行版").font(.caption) }
+            Section {
+                Text(state.repo).font(.caption)
+                    .softGroupedRow(top: true, bottom: true)
+            }
+            Section {
+                ForEach(state.rows) { row in
+                    NavigationLink { ReleaseManagementDestination(api: state.api, repo: state.repo, id: row.id) } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(row.title).lineLimit(2)
+                            Text(row.tag_name + " · " + String(row.date.prefix(10))).font(.caption)
+                            if row.draft { Text("草稿").font(.caption) }
+                            if row.prerelease { Text("预发行").font(.caption) }
+                            if state.latestID == row.id && !row.draft && !row.prerelease { Text("最新发行版").font(.caption) }
+                        }
+                        .padding(.vertical, 7)
                     }
+                    .softGroupedRow(top: row.id == state.rows.first?.id,
+                                    bottom: row.id == state.rows.last?.id && !state.more)
+                }
+                if state.rows.isEmpty && !state.busy {
+                    Text(state.listLoaded && state.error.isEmpty ? "暂无发行版" : "尚未成功加载发行版，可手动刷新。")
+                        .softGroupedRow(top: true, bottom: !state.more)
+                }
+                if state.more {
+                    Button("加载下一页") { state.list(reset: false) }.disabled(state.busy)
+                        .softGroupedRow(top: state.rows.isEmpty && state.busy, bottom: true)
                 }
             }
-            if state.more { Button("加载下一页") { state.list(reset: false) }.disabled(state.busy) }
-            if state.rows.isEmpty && !state.busy { Text(state.listLoaded && state.error.isEmpty ? "暂无发行版" : "尚未成功加载发行版，可手动刷新。") }
-            if state.canWrite { Button("新建发行版") { creating = true }.disabled(state.busy) }
-            releaseStatus(state)
+            if state.canWrite {
+                Section {
+                    Button("新建发行版") { creating = true }.disabled(state.busy)
+                        .softGroupedRow(top: true, bottom: true)
+                }
+            }
+            Section {
+                releaseStatus(state)
+            }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("发行版")
         .toolbar { Button("刷新") { state.list(reset: true) }.disabled(state.busy) }
         .task { if state.rows.isEmpty { state.list(reset: true) } }
@@ -163,13 +185,21 @@ struct ReleaseDetailView: View {
         List {
             if let r = state.release {
                 Section {
-                    Text(r.title); Text(r.tag_name + " · " + String(r.date.prefix(10))).font(.caption)
-                    Text(r.draft ? "草稿" : (r.prerelease ? "预发行" : "已发布"))
-                    DisclosureGroup("发布说明", isExpanded: $expanded) {
-                        if expanded { Text(ReleaseManagementRules.displayBody(r.body ?? "")).textSelection(.enabled)
-                            if (r.body ?? "").count > ReleaseManagementRules.displayBodyLimit { Text("显示已限额；完整正文保留，编辑不截断。请在 GitHub 查看全文。").font(.caption) }
+                    Text(r.title).softGroupedRow(top: true); Text(r.tag_name + " · " + String(r.date.prefix(10))).font(.caption).softGroupedRow()
+                    Text(r.draft ? "草稿" : (r.prerelease ? "预发行" : "已发布")).softGroupedRow()
+                    VStack(alignment: .leading, spacing: 0) {
+                        DisclosureGroup("发布说明", isExpanded: $expanded) {
+                            if expanded {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text(ReleaseManagementRules.displayBody(r.body ?? "")).textSelection(.enabled)
+                                    if (r.body ?? "").count > ReleaseManagementRules.displayBodyLimit {
+                                        Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)
+                                        Text("显示已限额；完整正文保留，编辑不截断。请在 GitHub 查看全文。").font(.caption)
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
-                    }
+                    }.softGroupedRow(bottom: true)
                 }
                 Section {
                     ForEach(state.assets) { asset in
@@ -203,9 +233,10 @@ struct ReleaseDetailView: View {
                                 .buttonStyle(.borderless)
                                 .disabled(state.busy)
                             }
-                        }
+                        }.softGroupedRow(top: asset.id == state.assets.first?.id, bottom: asset.id == state.assets.last?.id && !state.assetMore)
                     }
-                    if state.assetMore { Button("加载更多附件") { state.run { try await state.nextAssets(id) } }.disabled(state.busy) }
+                    if state.assets.isEmpty && !state.assetMore { Text("暂无附件").softGroupedRow(top: true, bottom: true) }
+                    if state.assetMore { Button("加载更多附件") { state.run { try await state.nextAssets(id) } }.disabled(state.busy).softGroupedRow(top: state.assets.isEmpty, bottom: true) }
                 } header: {
                     Text("附件")
                 } footer: {
@@ -213,16 +244,17 @@ struct ReleaseDetailView: View {
                 }
                 if state.canWrite {
                     Section("管理") {
-                        Button("编辑发行版") { editing = true }.disabled(state.busy || !ReleaseManagementRules.editable(r.body ?? ""))
-                        if !ReleaseManagementRules.editable(r.body ?? "") { Text("正文超过128 KiB，禁止本地编辑，避免截断保存；请在 GitHub 编辑。") }
-                        if r.draft { Button("发布草稿（在编辑表单确认）") { editing = true }.disabled(state.busy) }
-                        Button("上传附件") { picking = true }.disabled(state.busy)
-                        Button("删除发行版（不删除 git 标签）", role: .destructive) { prepareDelete(r, asset: nil) }.disabled(state.busy)
+                        Button("编辑发行版") { editing = true }.disabled(state.busy || !ReleaseManagementRules.editable(r.body ?? "")).softGroupedRow(top: true)
+                        if !ReleaseManagementRules.editable(r.body ?? "") { Text("正文超过128 KiB，禁止本地编辑，避免截断保存；请在 GitHub 编辑。").softGroupedRow() }
+                        if r.draft { Button("发布草稿（在编辑表单确认）") { editing = true }.disabled(state.busy).softGroupedRow() }
+                        Button("上传附件") { picking = true }.disabled(state.busy).softGroupedRow()
+                        Button("删除发行版（不删除 git 标签）", role: .destructive) { prepareDelete(r, asset: nil) }.disabled(state.busy).softGroupedRow(bottom: true)
                     }
                 }
             }
-            releaseStatus(state)
+            Section { releaseStatus(state) }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("发行版详情")
         .alert("下载链接已复制", isPresented: $copied) { Button("好", role: .cancel) {} }
         .toolbar { Button("刷新") { state.detail(id) }.disabled(state.busy) }
@@ -251,10 +283,10 @@ struct ReleaseDetailView: View {
         .sheet(isPresented: $secondDelete, onDismiss: { deleteTarget = nil }) {
             NavigationStack {
                 Form {
-                    Text(deleteDescription)
-                    Text("第二次确认：输入 delete 确认删除。固定仓库/发行版/附件 ID，切换账号后禁止执行。删除发行版不会删除 git 标签。")
-                    TextField("输入 delete 确认删除", text: $confirmation).textInputAutocapitalization(.never)
-                    Button("永久删除", role: .destructive) { performDelete() }.disabled(confirmation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "delete")
+                    Text(deleteDescription).softGroupedRow(top: true)
+                    Text("第二次确认：输入 delete 确认删除。固定仓库/发行版/附件 ID，切换账号后禁止执行。删除发行版不会删除 git 标签。").softGroupedRow()
+                    TextField("输入 delete 确认删除", text: $confirmation).textInputAutocapitalization(.never).softGroupedRow()
+                    Button("永久删除", role: .destructive) { performDelete() }.disabled(confirmation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "delete").softGroupedRow(bottom: true)
                 }.navigationTitle("最终确认").toolbar { Button("取消") { secondDelete = false } }
             }
         }
@@ -313,27 +345,35 @@ struct ReleaseEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Text(state.repo)
-                TextField("标题", text: $form.title)
-                TextField("标签（已有或新建）", text: $form.tag).textInputAutocapitalization(.never)
+                Section {
+                    Text(state.repo).softGroupedRow(top: true)
+                    TextField("标题", text: $form.title).softGroupedRow()
+                    TextField("标签（已有或新建）", text: $form.tag).textInputAutocapitalization(.never).softGroupedRow(bottom: true)
+                }
                 if original == nil { ReleaseBranchPicker(api: state.api, repo: state.repo, preferred: initialBranch, selected: $form.branch, ready: $targetReady).disabled(state.busy || plan.draftID != nil) }
-                TextEditor(text: $form.body).frame(minHeight: 200)
+                Section {
+                TextEditor(text: $form.body).frame(minHeight: 200).softGroupedRow(top: true)
                 Toggle("保存为草稿", isOn: $form.draft)
-                    .onChange(of: form.draft) { draft in if draft && form.marker == .latest { form.marker = .none } }
+                    .onChange(of: form.draft) { draft in if draft && form.marker == .latest { form.marker = .none } }.softGroupedRow()
                 Picker("发行版标记", selection: $form.marker) {
                     Text("无").tag(ReleaseMarker.none)
                     Text("预发行版").tag(ReleaseMarker.prerelease)
                     if !form.draft { Text("最新发行版").tag(ReleaseMarker.latest) }
+                }.softGroupedRow(bottom: true)
                 }
                 if original == nil {
                     attachmentSection
-                    if let id = plan.draftID { Text("已保留草稿 #\(id)，失败或取消不公开、不删除；可在此重试或从发行版详情继续。").font(.caption) }
-                    Text("仅发布所选附件，不会编译、打包或提交本地源码。标签目标请明确选择远端分支或提交。").font(.caption)
+                    Section {
+                        if let id = plan.draftID { Text("已保留草稿 #\(id)，失败或取消不公开、不删除；可在此重试或从发行版详情继续。").font(.caption).softGroupedRow(top: true) }
+                        Text("仅发布所选附件，不会编译、打包或提交本地源码。标签目标请明确选择远端分支或提交。").font(.caption).softGroupedRow(top: plan.draftID == nil, bottom: true)
+                    }
                 }
+                Section {
                 Button(actionTitle) { confirm = true }
-                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && (attachments.isEmpty || !targetReady || form.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)))
-                if !markerReady && !state.busy { Button("重试读取发行版标记") { loadMarker() } }
-                releaseStatus(state)
+                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && (attachments.isEmpty || !targetReady || form.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))).softGroupedRow(top: true, bottom: markerReady || state.busy)
+                if !markerReady && !state.busy { Button("重试读取发行版标记") { loadMarker() }.softGroupedRow(bottom: true) }
+                }
+                Section { releaseStatus(state) }
             }.disabled(!state.valid)
             .navigationTitle(original == nil ? "新建发行版" : "编辑发行版")
             .toolbar { Button("关闭") { plan.cancel(); state.cancel(); dismiss() } }
@@ -359,7 +399,7 @@ struct ReleaseEditorView: View {
     }
     private var attachmentSection: some View {
         Section("附件") {
-            Button("选择文件 / 追加附件") { pickingAttachments = true }.disabled(state.busy || staging || plan.draftID != nil)
+            Button("选择文件 / 追加附件") { pickingAttachments = true }.disabled(state.busy || staging || plan.draftID != nil).softGroupedRow(top: true)
             ForEach(attachments) { item in
                 VStack(alignment: .leading) {
                     Text(item.name)
@@ -369,10 +409,10 @@ struct ReleaseEditorView: View {
                         try? FileManager.default.removeItem(at: item.file.deletingLastPathComponent())
                         attachments.removeAll { $0.id == item.id }
                     }.disabled(state.busy || staging || plan.draftID != nil)
-                }
+                }.softGroupedRow(bottom: item.id == attachments.last?.id && !staging)
             }
-            if attachments.isEmpty { Text("请选择至少一个非空附件；每件小于 2 GiB，同名不覆盖。").font(.caption) }
-            if staging { ProgressView("正在复制附件…") }
+            if attachments.isEmpty { Text("请选择至少一个非空附件；每件小于 2 GiB，同名不覆盖。").font(.caption).softGroupedRow(bottom: !staging) }
+            if staging { ProgressView("正在复制附件…").softGroupedRow(bottom: true) }
         }
     }
     private func cleanupAttachments() {
@@ -461,10 +501,10 @@ struct ReleaseEditorView: View {
 
 @MainActor @ViewBuilder private func releaseStatus(_ state: ReleaseScreenState) -> some View {
     if state.busy {
-        ProgressView(value: state.progress)
-        Text("请保持前台，勿锁屏。").font(.caption)
-        Button("取消当前操作") { state.cancel() }
+        ProgressView(value: state.progress).softGroupedRow(top: true)
+        Text("请保持前台，勿锁屏。").font(.caption).softGroupedRow()
+        Button("取消当前操作") { state.cancel() }.softGroupedRow(bottom: state.error.isEmpty && state.valid)
     }
-    if !state.error.isEmpty { Text(state.error).foregroundColor(.red).textSelection(.enabled) }
-    if !state.valid { Text("账号已切换，请重新打开此页面。") }
+    if !state.error.isEmpty { Text(state.error).foregroundColor(.red).textSelection(.enabled).softGroupedRow(top: !state.busy, bottom: state.valid) }
+    if !state.valid { Text("账号已切换，请重新打开此页面。").softGroupedRow(top: !state.busy && state.error.isEmpty, bottom: true) }
 }

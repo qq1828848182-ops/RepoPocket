@@ -40,7 +40,7 @@ assert '.sheet(isPresented: $showOpen)' in ui
 assert 'NavigationLink("浏览")' in ui
 assert '.softGroupedRow().softGroupedRow' not in ui + workspace + upload
 assert ui.count('top: e.id == entries.first?.id, bottom: e.id == entries.last?.id') == 3
-assert 'if busy { ProgressView() }' in ui
+assert 'if busy { ProgressView().softGroupedRow(bottom: true) }' in ui
 # Import buttons moved into the toolbar Menu (not List rows).
 for marker in ['Text(binding.repo + " · " + binding.branch)', 'TextField("提交说明", text: $commitMessage)']:
     row = next(line for line in workspace.splitlines() if marker in line)
@@ -99,3 +99,147 @@ assert '.clipShape(' not in workspace and '.listStyle(.insetGrouped)' in workspa
 print('PASS local group boundaries: empty/single/multiple directories, bound/unbound menu, selected/unselected and fixed terminal hint')
 print('PASS divider regression: settings, upload, local directory, workspace detail; conditional last-row corners')
 print('PASS soft grouped UI contracts: equal-width repositories, 22pt continuous row backgrounds, native lists/swipe deletion, semantic colors and adaptive text')
+
+# Feature-page expansion: explicit native-row contracts plus complete conditional
+# edge matrices. No new script: existing workflow registration/count stays exact.
+import itertools
+import subprocess
+
+def source(name):
+    return (REPO_ROOT / 'RepoPocket' / name).read_text()
+
+picker = source('ReleaseBranchPicker.swift')
+picker_ui = picker.split('struct ReleaseBranchPicker: View {', 1)[1]
+assert 'Section {\n            VStack(alignment: .leading, spacing: 0)' in picker_ui
+assert picker_ui.count('.softGroupedRow(') == 1
+assert '.listRowInsets(EdgeInsets())' in picker_ui
+assert '.buttonStyle(.borderless)' in picker_ui
+assert 'minHeight: 44' in picker_ui and '.contentShape(Rectangle())' in picker_ui
+assert 'ForEach(visible, id: \\.self)' in picker_ui
+assert 'LazyVStack' not in picker_ui and 'DisclosureGroup' not in picker_ui
+assert picker_ui.count('Section {') == 1  # never nest Section inside VStack
+assert '.easeInOut(duration: 0.18)' in picker_ui and 'reduceMotion ? nil' in picker_ui
+assert 'Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)' in picker_ui
+assert '.onDisappear { state.cancel(); ready = false }' in picker_ui
+
+release_fold = upload.split('private var releaseSection: some View {', 1)[1].split('static func inferredTrollVersion', 1)[0]
+assert 'releaseExpanded.toggle()' in release_fold and 'if releaseExpanded && !repo.isEmpty' in release_fold
+assert 'withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18))' in release_fold
+assert '.softGroupedRow(bottom: !releaseExpanded || repo.isEmpty)' in release_fold
+assert 'ReleaseManagementDestination(api: api, repo: repo)' in release_fold
+assert release_fold.count('.softGroupedRow(bottom: true)') == 1
+
+release = source('ReleaseManagementUI.swift')
+assert 'bottom: row.id == state.rows.last?.id && !state.more' in release
+assert 'top: state.rows.isEmpty && state.busy, bottom: true' in release
+assert 'bottom: asset.id == state.assets.last?.id && !state.assetMore' in release
+assert 'bottom: item.id == attachments.last?.id && !staging' in release
+assert 'bottom: markerReady || state.busy' in release
+assert 'bottom: state.error.isEmpty && state.valid' in release
+assert 'top: !state.busy && state.error.isEmpty, bottom: true' in release
+assert 'Divider()' in release  # intentionally preserve the asset danger boundary
+assert 'originalKeys, id: \\.self' in source('DebEditorView.swift')
+assert 'bottom: key == originalKeys.last' in source('DebEditorView.swift')
+assert 'top: original["Name"] == nil && original["Author"] == nil' in source('DebEditorView.swift')
+assert 'top: repository.id == filteredRepositories.first?.id' in source('RepositorySections.swift')
+assert 'bottom: repository.id == filteredRepositories.last?.id' in source('RepositorySections.swift')
+for file in ['AccountManagement.swift', 'DebEditorView.swift', 'DesktopViews.swift',
+             'GitWorkspaceView.swift', 'ReleaseEntryView.swift', 'RepositoryDeletionView.swift',
+             'RepositorySearchView.swift', 'TargetPickerView.swift', 'TrollMetadataView.swift']:
+    text = source(file)
+    assert '.softGroupedRow(' in text and 'top:' in text and 'bottom:' in text, file
+    assert '.listRowSeparator(.hidden)' not in text, file  # no blanket hiding
+
+# Every generated semantic group has exactly one first/last edge, including
+# combined empty/error/loading/pagination states. Assert terminality, not counts alone.
+def edges_ok(edges):
+    if not edges: return
+    assert sum(t for t, b in edges) == 1 and edges[0][0], edges
+    assert sum(b for t, b in edges) == 1 and edges[-1][1], edges
+
+for n, busy, more in itertools.product(range(4), (False, True), (False, True)):
+    rows = [(i == 0, i == n - 1 and not more) for i in range(n)]
+    if n == 0 and not busy: rows += [(True, not more)]
+    if more: rows += [(n == 0 and busy, True)]
+    edges_ok(rows)  # ReleaseList
+    rows = [(True, False)]  # Attachment picker
+    rows += [(False, i == n - 1 and not busy) for i in range(n)]
+    if n == 0: rows += [(False, not busy)]
+    if busy: rows += [(False, True)]
+    edges_ok(rows)
+for busy, error, valid in itertools.product((False, True), repeat=3):
+    rows = [(True, False), (False, False), (False, not error and valid)] if busy else []
+    if error: rows += [(not busy, valid)]
+    if not valid: rows += [(not busy and not error, True)]
+    edges_ok(rows)
+for expanded, empty in itertools.product((False, True), repeat=2):
+    edges_ok([(True, False), (False, False), (False, not expanded or empty)] + ([(False, True)] if expanded and not empty else []))
+for name, author, section, priority, homepage in itertools.product((False, True), repeat=5):
+    rows = ([(True, False)] if name else []) + ([(not name, False)] if author else [])
+    rows += [(not name and not author, False)] + [(False, False)] * 4
+    rows += [(False, False)] * (section + priority + homepage) + [(False, True)]
+    edges_ok(rows)
+
+# cc62549 local allowance is ONLY UI rendering. Preserve the exact historic
+# logic and shared decoration, not a broad regex normalization of whole files.
+BASE = 'cc62549'
+def baseline(name):
+    return subprocess.check_output(['git', 'show', f'{BASE}:RepoPocket/{name}'], cwd=REPO_ROOT, text=True)
+for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
+             'RepositoryStar.swift', 'RepositoryStarUI.swift', 'ReleaseManagement.swift',
+             'ReleasePublishPlan.swift', 'ReleaseTransfers.swift']:
+    assert source(file) == baseline(file), file
+for file, marker in [
+    ('ReleaseBranchPicker.swift', 'struct ReleaseBranchPicker: View {'),
+    ('ReleaseEntryView.swift', '    private func proceed() async {'),
+    ('TargetPickerView.swift', '    private func load() async {'),
+    ('RepositorySearchView.swift', '    private func begin('),
+    ('DebEditorView.swift', '    private var editorPresentation: some View {'),
+    ('WorkspaceView.swift', '    @MainActor private func importItems('),
+    ('TrollMetadataView.swift', '    @MainActor private func load() async {')]:
+    current, old = source(file), baseline(file)
+    if file == 'ReleaseBranchPicker.swift':
+        assert current.split(marker)[0] == old.split(marker)[0], file
+    elif file == 'RepositorySearchView.swift':
+        # UserRepositories UI is also explicitly allowed, its network code isn't.
+        assert current.split(marker)[1].split('struct UserRepositoriesView:')[0] == old.split(marker)[1].split('struct UserRepositoriesView:')[0]
+        assert current.split('    private func load() async {')[-1] == old.split('    private func load() async {')[-1]
+    else:
+        assert current.split(marker, 1)[1] == old.split(marker, 1)[1], file
+print('PASS feature-page matrices: release pagination/status/attachments, fold states and 32 optional deb field combinations; stable branch container; exact cc62549 business/shared-style protection')
+
+# Byte-exact operation bodies for mixed UI/logic files: rendering may move, API
+# calls/cancellation/permission and destructive confirmation logic may not.
+def function_blocks(text):
+    import re
+    matches = list(re.finditer(r'^    (?:@MainActor )?(?:private |static )*func [^\n]*', text, re.M))
+    result = {}
+    for match in matches:
+        start = match.start()
+        opening = text.index('{', start)
+        depth, quote, escaped = 1, False, False
+        index = opening + 1
+        while depth:
+            char = text[index]
+            if quote:
+                if escaped: escaped = False
+                elif char == '\\': escaped = True
+                elif char == '"': quote = False
+            elif char == '"': quote = True
+            elif char == '{': depth += 1
+            elif char == '}': depth -= 1
+            index += 1
+        signature = text[start:opening].strip()
+        result[signature] = text[opening:index]
+    return result
+for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.swift',
+             'UploadView.swift', 'RepositoryDeletionView.swift', 'RepositorySections.swift',
+             'AccountManagement.swift', 'DebEditorView.swift', 'TargetPickerView.swift',
+             'ReleaseEntryView.swift', 'WorkspaceView.swift', 'TrollMetadataView.swift']:
+    old, current = function_blocks(baseline(file)), function_blocks(source(file))
+    # Only these three functions produce UI rather than business actions.
+    rendering = ['workspaceManagement(', 'bindingSection(', 'outputSection(']
+    for signature, body in old.items():
+        if any(token in signature for token in rendering): continue
+        assert current.get(signature) == body, (file, signature)
+print('PASS byte-exact baseline operation bodies: account, navigation/API actions, local/remote workspace, upload, release and destructive guards')
