@@ -20,6 +20,28 @@ class NoticeTests(unittest.TestCase):
         self.assertIn('guard self.generation == token else { throw CancellationError() }', download)
         self.assertIn('defer { if self.generation == token', download)
 
+    def test_startup_card_ui_and_safety(self):
+        app = (REPO_ROOT / 'RepoPocket/RepoPocketApp.swift').read_text()
+        card = (REPO_ROOT / 'RepoPocket/StartupUpdateCard.swift').read_text()
+        for token in ['.sheet(isPresented: $startupSheetVisible', '.task(id: startupUpdateReady)', 'StartupUpdateCard(api: api',
+                      '!accountPresentation.showing', 'downloads.picker == nil', 'api.message.isEmpty',
+                      'selectedTab = 4']:
+            self.assertIn(token, app)
+        for token in ['ScrollView {', 'Text(verbatim: notes)', 'prefix(16_384)',
+                      'VStack(spacing: 8)', 'minHeight: 46', 'minHeight: 44',
+                      '.presentationDetents', '.height(300)', '.presentationDragIndicator(.visible)',
+                      '跳转TrollStore安装需启用 URL Scheme', 'TrollStore 安装', '暂不更新',
+                      '关闭更新提示', 'checker.dismissStartupUpdate()', 'TrollStoreInstaller.open(ipaURL: ipa)',
+                      'session == AccountStore.generation', 'checker.release?.ipaURL == ipa',
+                      'requestID == id', '前往应用更新']:
+            self.assertIn(token, card)
+        self.assertNotIn('SHA256', card)
+        self.assertNotIn('.animation(', card)
+        self.assertNotIn('Timer', card)
+        self.assertNotIn('exit(', card)
+        self.assertNotIn('UIApplication.shared.open', feature.split('    func download() {', 1)[0])
+        self.assertLess(card.index('ScrollView {'), card.index('// The footer does not scroll'))
+
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift available on Actions')
     def test_production_checker_with_mock_api(self):
         checker = feature.split('@MainActor final class UpdateChecker', 1)[1].split('    func download() {', 1)[0]
@@ -107,6 +129,34 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     precondition(automatic.release != nil && automatic.message.isEmpty)
     await automatic.check(api: autoAPI)
     precondition(autoAPI.calls == 2) // Explicit manual check bypasses auto cooldown.
+    precondition(automatic.startupRelease != nil)
+    automatic.dismissStartupUpdate()
+    precondition(automatic.startupRelease == nil && automatic.release != nil)
+    await automatic.check(api: autoAPI, automatic: true)
+    precondition(automatic.startupRelease == nil) // Dismissed prompt stays dismissed this session.
+    let probeAPI = GitHub("new"); probeAPI.accountID = "probe-" + UUID().uuidString
+    let probeKey = "RepoPocket.update.lastCheck." + probeAPI.accountID
+    let lastDate = Date(); UserDefaults.standard.set(lastDate, forKey: probeKey)
+    let probe = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
+    await probe.automaticCheck(api: probeAPI); await probe.automaticCheck(api: probeAPI)
+    precondition(probeAPI.calls == 1 && probe.startupRelease != nil)
+    precondition(UserDefaults.standard.object(forKey: probeKey) as? Date == lastDate)
+    probe.dismissStartupUpdate()
+    await probe.automaticCheck(api: probeAPI)
+    precondition(probe.startupRelease == nil && probeAPI.calls == 1)
+    let nextLaunch = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
+    await nextLaunch.automaticCheck(api: probeAPI)
+    precondition(probeAPI.calls == 2 && nextLaunch.startupRelease != nil)
+    let officialAPI = GitHub("new"); officialAPI.accountID = probeAPI.accountID
+    let official = UpdateChecker(installedVersion: { ("1.0.4", "3") })
+    await official.automaticCheck(api: officialAPI)
+    precondition(officialAPI.calls == 0 && official.startupRelease == nil)
+    let noUpdateAPI = GitHub("latest"); noUpdateAPI.accountID = "latest-" + UUID().uuidString
+    let noUpdate = UpdateChecker(installedVersion: { ("1.0.4", "3") })
+    await noUpdate.automaticCheck(api: noUpdateAPI)
+    precondition(noUpdate.release == nil && noUpdate.startupRelease == nil && noUpdate.message.isEmpty)
+    precondition(manual.startupRelease == nil && timed.startupRelease == nil)
+    print("PASS startup prompt, no auto-install, dismiss once, RC cold-launch cache bypass, official six-hour cache preserved, no latest/manual popup")
     let switched = UpdateChecker()
     let lateAPI = GitHub("new", delay: 100_000_000)
     let switchedTask = Task { await switched.check(api: lateAPI) }
