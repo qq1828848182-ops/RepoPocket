@@ -117,20 +117,20 @@ struct UploadView: View {
                 NavigationStack {
                     List {
                         Section("最终提交预览") {
-                            LabeledContent("仓库", value: repo)
-                            LabeledContent("分支", value: branch.isEmpty ? "默认分支（以已选目标 HEAD 校验）" : branch)
-                            Text(note)
+                            LabeledContent("仓库", value: repo).softGroupedRow(top: true)
+                            LabeledContent("分支", value: branch.isEmpty ? "默认分支（以已选目标 HEAD 校验）" : branch).softGroupedRow()
+                            Text(note).softGroupedRow(bottom: queue.isEmpty)
                             ForEach(queue) { item in
                                 VStack(alignment: .leading) {
                                     Text((item.local == nil ? "删除：" : item.sha == nil ? "新增：" : "替换：") + (item.path ?? "未选择"))
                                     if let sha = item.sha { Text("原 SHA：" + sha).font(.caption) }
-                                }
+                                }.softGroupedRow(bottom: item.id == queue.last?.id)
                             }
                         }
                         Button("确认提交以上全部项目") {
                             busy = true; progress = 0
                             submitAfterDismiss = true; confirmCommit = false
-                        }
+                        }.softGroupedRow(top: true, bottom: true)
                     }
                     .navigationTitle("确认原子提交")
                     .toolbar { Button("取消") { confirmCommit = false } }
@@ -142,15 +142,15 @@ struct UploadView: View {
             .sheet(isPresented: $trollPreview) {
                 NavigationStack {
                     Form {
-                        LabeledContent("仓库", value: repo)
-                        LabeledContent("分支", value: branch.isEmpty ? "默认分支" : branch)
-                        LabeledContent("插件文件", value: "downloads/" + (local?.lastPathComponent ?? ""))
-                        LabeledContent("名称", value: trollName)
-                        LabeledContent("版本", value: trollVersion)
-                        LabeledContent("描述", value: trollDescription.isEmpty ? trollName : trollDescription)
-                        LabeledContent("Bundle ID", value: trollBundleID.isEmpty ? "未填写" : trollBundleID)
-                        LabeledContent("作者", value: trollAuthor.isEmpty ? "未填写" : trollAuthor)
-                        Text("一次 Git 提交同步插件与索引；保留其他条目和外链。")
+                        LabeledContent("仓库", value: repo).softGroupedRow(top: true)
+                        LabeledContent("分支", value: branch.isEmpty ? "默认分支" : branch).softGroupedRow()
+                        LabeledContent("插件文件", value: "downloads/" + (local?.lastPathComponent ?? "")).softGroupedRow()
+                        LabeledContent("名称", value: trollName).softGroupedRow()
+                        LabeledContent("版本", value: trollVersion).softGroupedRow()
+                        LabeledContent("描述", value: trollDescription.isEmpty ? trollName : trollDescription).softGroupedRow()
+                        LabeledContent("Bundle ID", value: trollBundleID.isEmpty ? "未填写" : trollBundleID).softGroupedRow()
+                        LabeledContent("作者", value: trollAuthor.isEmpty ? "未填写" : trollAuthor).softGroupedRow()
+                        Text("一次 Git 提交同步插件与索引；保留其他条目和外链。").softGroupedRow(bottom: true)
                     }
                     .navigationTitle("TrollFools 发布预览")
                     .toolbar {
@@ -276,13 +276,21 @@ struct UploadView: View {
         }.disabled(busy)
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var releaseExpanded = false
     private var releaseSection: some View {
         Section("发行版") {
             TextField("仓库链接（可留空后选择）", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
             Button("发布") { sharedReleaseEntry = true }.disabled(busy).softGroupedRow()
-            DisclosureGroup("已有发行版 / 继续草稿") {
-                if !repo.isEmpty { NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: { Text("发行版管理") } }
-            }.softGroupedRow(bottom: true)
+            Button {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { releaseExpanded.toggle() }
+            } label: {
+                HStack { Text("已有发行版 / 继续草稿"); Spacer(); Image(systemName: releaseExpanded ? "chevron.up" : "chevron.down").font(.caption) }.frame(minHeight: 44)
+            }.softGroupedRow(bottom: !releaseExpanded || repo.isEmpty)
+            if releaseExpanded && !repo.isEmpty {
+                NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: { Text("发行版管理") }
+                    .softGroupedRow(bottom: true)
+            }
         }
     }
     static func inferredTrollVersion(from filename: String) -> String {

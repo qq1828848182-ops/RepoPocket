@@ -117,12 +117,12 @@ struct RepositoriesView: View {
             .sheet(isPresented: $showOpen) {
                 NavigationStack {
                     Form {
-                        TextField("仓库链接", text: $input).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        TextField("仓库链接", text: $input).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
                         NavigationLink("浏览") { BrowserView(api: api, repo: input, path: "", branch: "") }
-                            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow()
                         Button("Fork 到我的账号") { Task { await fork() } }
-                            .disabled(busy || isOwnRepository || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        if isOwnRepository { Text("自己的仓库无需 Fork，直接浏览或上传。").font(.caption).foregroundColor(.secondary) }
+                            .disabled(busy || isOwnRepository || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: !isOwnRepository)
+                        if isOwnRepository { Text("自己的仓库无需 Fork，直接浏览或上传。").font(.caption).foregroundColor(.secondary).softGroupedRow(bottom: true) }
                     }.navigationTitle("打开仓库").toolbar { Button("关闭") { showOpen = false } }
                 }
             }
@@ -135,10 +135,10 @@ struct RepositoriesView: View {
             .sheet(isPresented: $showCreate) {
                 NavigationStack {
                     Form {
-                        TextField("新仓库名", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        Toggle("私有仓库", isOn: $isPrivate)
-                        Text("在你的 GitHub 账号下创建，包含初始 README。不会覆盖现有仓库。").font(.caption)
-                        Button("创建仓库") { Task { await create() } }.disabled(busy || newName.isEmpty)
+                        TextField("新仓库名", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
+                        Toggle("私有仓库", isOn: $isPrivate).softGroupedRow()
+                        Text("在你的 GitHub 账号下创建，包含初始 README。不会覆盖现有仓库。").font(.caption).softGroupedRow()
+                        Button("创建仓库") { Task { await create() } }.disabled(busy || newName.isEmpty).softGroupedRow(bottom: true)
                     }.navigationTitle("新建仓库").adaptiveWorkspaceLayout().toolbar { Button("关闭") { showCreate = false } }
                 }
             }
@@ -420,19 +420,19 @@ struct FileView: View {
             Section("文件") {
                 Label(entry.name, systemImage: entry.name.lowercased().hasSuffix(".deb") ? "shippingbox.fill" : "doc.text.fill")
                     .font(.headline).foregroundColor(.primary).padding(.vertical, 4).softGroupedRow(top: true)
-                LabeledContent("路径") { Text(entry.path).textSelection(.enabled) }
-                LabeledContent("仓库", value: repo)
+                LabeledContent("路径") { Text(entry.path).textSelection(.enabled) }.softGroupedRow()
+                LabeledContent("仓库", value: repo).softGroupedRow()
                 LabeledContent("分支", value: branch.isEmpty ? "默认分支" : branch).softGroupedRow(bottom: true)
             }
             Section {
-                if writable && entry.name.lowercased().hasSuffix(".deb") { Button("编辑包信息") { showDeb = true }.disabled(busy || deleted) }
-                if writable && entry.name.lowercased().hasSuffix(".dylib") { Button("编辑插件信息") { showMetadata = true }.disabled(busy || deleted) }
-                Button("下载 / 存到文件") { Task { await download() } }.disabled(busy || deleted)
-                Button("加载文本（最多 1 MiB）") { Task { await read() } }.disabled(busy || deleted)
-                if busy { ProgressView() }
+                if writable && entry.name.lowercased().hasSuffix(".deb") { Button("编辑包信息") { showDeb = true }.disabled(busy || deleted).softGroupedRow(top: true) }
+                if writable && entry.name.lowercased().hasSuffix(".dylib") { Button("编辑插件信息") { showMetadata = true }.disabled(busy || deleted).softGroupedRow(top: true) }
+                Button("下载 / 存到文件") { Task { await download() } }.disabled(busy || deleted).softGroupedRow(top: !(writable && (entry.name.lowercased().hasSuffix(".deb") || entry.name.lowercased().hasSuffix(".dylib"))))
+                Button("加载文本（最多 1 MiB）") { Task { await read() } }.disabled(busy || deleted).softGroupedRow(bottom: !busy)
+                if busy { ProgressView().softGroupedRow(bottom: true) }
             }
             if editable && !deleted {
-                if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled) } }
+                if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled).softGroupedRow(top: true, bottom: true) } }
                 else {
                 Section("编辑") { TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 260).softGroupedRow(top: true, bottom: true) }
                 Section("提交") {
@@ -442,7 +442,7 @@ struct FileView: View {
             }
             }
             if writable { Section { Button("删除仓库里的此文件", role: .destructive) { confirmDelete = true }.disabled(busy || deleted).softGroupedRow(top: true, bottom: true) } }
-            if deleted { Text("文件已删除，请返回目录刷新。") }
+            if deleted { Text("文件已删除，请返回目录刷新。").softGroupedRow(top: true, bottom: true) }
         }
         .navigationTitle(entry.name)
         .adaptiveWorkspaceLayout()
