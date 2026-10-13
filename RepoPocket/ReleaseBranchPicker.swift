@@ -16,7 +16,7 @@ import SwiftUI
         task = Task {
             defer { if token == identity { loading = false; task = nil } }
             do {
-                func check() throws {
+                @MainActor func check() throws {
                     try Task.checkCancellation()
                     guard token == identity, generation == AccountStore.generation, api.isCurrentSession else { throw CancellationError() }
                 }
