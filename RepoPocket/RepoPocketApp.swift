@@ -26,14 +26,16 @@ struct RepoPocketApp: App {
 struct AccountRootView: View {
     @StateObject private var api = GitHub()
     @StateObject private var gitCore = GitCore()
+    @StateObject private var updateChecker = UpdateChecker()
     var body: some View {
             TabView {
                 RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }
                 GitWorkspaceView().environmentObject(gitCore).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }
                 WorkspaceView(api: api).tabItem { Label("本地", systemImage: "folder.badge.gearshape") }
                 UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }
-                SettingsView(api: api).tabItem { Label("设置", systemImage: "gear") }
+                SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.badge(updateChecker.hasUpdate ? "●" : nil)
             }
+            .task { await updateChecker.automaticCheck(api: api) }
             .alert("提示", isPresented: Binding(get: { !api.message.isEmpty }, set: { if !$0 { api.message = "" } })) {
                 Button("好", role: .cancel) { api.message = "" }
             } message: { Text(api.message) }
@@ -501,7 +503,7 @@ struct FileView: View {
 
 struct SettingsView: View {
     @ObservedObject var api: GitHub
-    @StateObject private var updateChecker = UpdateChecker()
+    @ObservedObject var updateChecker: UpdateChecker
     @State private var pendingRemoval: GitHubAccount?
     @EnvironmentObject private var accountPresentation: AccountPresentation
     @State private var token = ""
@@ -550,7 +552,7 @@ struct SettingsView: View {
                 Section {
                     AppUpdateSection(api: api, checker: updateChecker)
                     // The version is the stable final row of the update group in every state.
-                    Text("RepoPocket \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—") · iOS 16+").foregroundColor(.secondary).softGroupedRow(bottom: true)
+                    Text("RepoPocket " + AppUpdateSessionRules.version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—", build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—") + " · iOS 16+").foregroundColor(.secondary).softGroupedRow(bottom: true)
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }

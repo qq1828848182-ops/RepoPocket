@@ -74,6 +74,10 @@ jobs:
         run: python3 Tests/test_local_diff.py
       - name: Test bounded release management and commit patch parser
         run: python3 Tests/test_release_management.py
+      - name: Test final publishing and update session production models
+        run: python3 Tests/test_final_publish.py
+      - name: Select Xcode 15.4
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
       - name: Generate Xcode project
         run: |
           brew install xcodegen
@@ -87,11 +91,11 @@ jobs:
           set -euo pipefail
           APP=build/Build/Products/Release-iphoneos/RepoPocket.app
           test -d "$APP"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.1"
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "4"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "5"
           test "$(lipo -archs "$APP/RepoPocket")" = "arm64"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
@@ -99,19 +103,19 @@ jobs:
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           cd dist
-          zip -qry RepoPocket-1.0.0-build4.ipa Payload
-          unzip -t RepoPocket-1.0.0-build4.ipa
+          zip -qry RepoPocket-1.0.1-build5.ipa Payload
+          unzip -t RepoPocket-1.0.1-build5.ipa
           mkdir verify
-          unzip -q RepoPocket-1.0.0-build4.ipa -d verify
+          unzip -q RepoPocket-1.0.1-build5.ipa -d verify
           codesign --verify --deep --strict verify/Payload/RepoPocket.app
-          shasum -a 256 RepoPocket-1.0.0-build4.ipa > RepoPocket-1.0.0-build4.ipa.sha256
-          shasum -a 256 -c RepoPocket-1.0.0-build4.ipa.sha256
+          shasum -a 256 RepoPocket-1.0.1-build5.ipa > RepoPocket-1.0.1-build5.ipa.sha256
+          shasum -a 256 -c RepoPocket-1.0.1-build5.ipa.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: RepoPocket-1.0.0-build4
+          name: RepoPocket-1.0.1-build5
           path: |
-            dist/RepoPocket-1.0.0-build4.ipa
-            dist/RepoPocket-1.0.0-build4.ipa.sha256
+            dist/RepoPocket-1.0.1-build5.ipa
+            dist/RepoPocket-1.0.1-build5.ipa.sha256
           retention-days: 30
       - uses: actions/upload-artifact@v4
         if: failure()

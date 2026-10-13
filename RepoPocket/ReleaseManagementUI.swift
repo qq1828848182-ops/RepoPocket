@@ -295,6 +295,12 @@ struct ReleaseEditorView: View {
     @State private var form: ReleaseForm
     @State private var confirm = false
     @State private var markerReady = false
+    @State private var attachments: [ReleaseAttachment] = []
+    @State private var pickingAttachments = false
+    @State private var staging = false
+    @State private var plan = ReleasePublishPlan()
+    @State private var retainedDraft: ManagedRelease?
+    private var actionTitle: String { original != nil ? "保存" : (form.draft ? "保存草稿" : "发布") }
     init(api: GitHub, repo: String, original: ManagedRelease?) {
         self.original = original
         _state = StateObject(wrappedValue: ReleaseScreenState(api: api, repo: repo))
@@ -316,28 +322,126 @@ struct ReleaseEditorView: View {
                     Text("预发行版").tag(ReleaseMarker.prerelease)
                     if !form.draft { Text("最新发行版").tag(ReleaseMarker.latest) }
                 }
-                Button("检查并保存") { confirm = true }
-                    .disabled(state.busy || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body))
+                if original == nil {
+                    attachmentSection
+                    if let id = plan.draftID { Text("已保留草稿 #\(id)，失败或取消不公开、不删除；可在此重试或从发行版详情继续。").font(.caption) }
+                    Text("仅发布所选附件，不会编译、打包或提交本地源码。标签目标请明确选择远端分支或提交。").font(.caption)
+                }
+                Button(actionTitle) { confirm = true }
+                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && attachments.isEmpty))
                 if !markerReady && !state.busy { Button("重试读取发行版标记") { loadMarker() } }
                 releaseStatus(state)
             }.disabled(!state.valid)
             .navigationTitle(original == nil ? "新建发行版" : "编辑发行版")
-            .toolbar { Button("关闭") { state.cancel(); dismiss() } }
+            .toolbar { Button("关闭") { plan.cancel(); state.cancel(); dismiss() } }
             .interactiveDismissDisabled(state.busy)
             .task { loadMarker() }
-            .onDisappear { state.cancel() }
+            .onDisappear { plan.cancel(); state.cancel(); if !staging { cleanupAttachments() } }
+            .fileImporter(isPresented: $pickingAttachments, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in stage(result) }
             .alert(form.draft ? "保存草稿？" : "发布此发行版？", isPresented: $confirm) {
                 Button("取消", role: .cancel) {}
                 Button("确认保存") {
                     let captured = form
                     state.run {
-                        _ = try await state.api.saveManagedRelease(state.repo, original: original, form: captured)
+                        if let original {
+                            _ = try await state.api.saveManagedRelease(state.repo, original: original, form: captured)
+                        } else { try await publishAttachments(captured) }
                         try state.check()
                         ReleaseManagementChanges.changed(api: state.api, repo: state.repo)
                         dismiss()
                     }
                 }
             } message: { Text("\(state.repo) · \(form.tag)\n\(form.draft ? "保存后仍为草稿。" : "发布后可见（按仓库权限）。")") }
+        }
+    }
+    private var attachmentSection: some View {
+        Section("附件") {
+            Button("选择文件 / 追加附件") { pickingAttachments = true }.disabled(state.busy || staging || plan.draftID != nil)
+            ForEach(attachments) { item in
+                VStack(alignment: .leading) {
+                    Text(item.name)
+                    Text(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)).font(.caption)
+                    if plan.uploaded[item.name] != nil { Text("已上传，重试时核验后跳过").font(.caption) }
+                    Button("移除", role: .destructive) {
+                        try? FileManager.default.removeItem(at: item.file.deletingLastPathComponent())
+                        attachments.removeAll { $0.id == item.id }
+                    }.disabled(state.busy || staging || plan.draftID != nil)
+                }
+            }
+            if attachments.isEmpty { Text("请选择至少一个非空附件；每件小于 2 GiB，同名不覆盖。").font(.caption) }
+            if staging { ProgressView("正在复制附件…") }
+        }
+    }
+    private func cleanupAttachments() {
+        for item in attachments { try? FileManager.default.removeItem(at: item.file.deletingLastPathComponent()) }
+    }
+    private func stage(_ result: Result<[URL], Error>) {
+        guard !state.busy, !staging, state.valid else { return }
+        switch result {
+        case .failure(let error): if !RefreshFailure.isCancellation(error) { state.error = error.localizedDescription }
+        case .success(let urls):
+            staging = true
+            state.run {
+                defer { staging = false }
+                for source in urls {
+                    let item = try await Task.detached { try ReleaseAttachmentRules.copy(source) }.value
+                    do {
+                        try state.check()
+                        guard ReleaseAttachmentRules.valid(size: item.size, name: item.name, existing: attachments.map(\.name)) else { throw AppError(text: "同名附件已选择，请先移除或改名。") }
+                        attachments.append(item)
+                    } catch { try? FileManager.default.removeItem(at: item.file.deletingLastPathComponent()); throw error }
+                }
+            }
+        }
+    }
+    private func publishAttachments(_ captured: ReleaseForm) async throws {
+        guard !attachments.isEmpty else { throw AppError(text: "请添加附件后发布。") }
+        try state.check()
+        plan.begin()
+        do {
+            if retainedDraft == nil {
+                var draft = captured; draft.draft = true; draft.marker = .none
+                let created = try await state.api.saveManagedRelease(state.repo, original: nil, form: draft)
+                // Record acknowledged draft before cancellation check; never delete it.
+                retainedDraft = created; plan.created(created.id)
+            }
+            try state.check()
+            guard let retainedDraft, retainedDraft.tag_name == captured.tag else { throw AppError(text: "重试必须使用原草稿标签；请从发行版详情继续编辑。") }
+            var current = try await state.api.managedRelease(state.repo, id: retainedDraft.id)
+            guard current.draft else { throw AppError(text: "草稿已被外部公开，请刷新详情核实；未继续写入。") }
+            var remote: [Asset] = []; var complete = false
+            for page in 1...ReleaseManagementRules.pageLimit {
+                let batch = try await state.api.managedAssets(state.repo, id: current.id, page: page)
+                try state.check(); remote += batch
+                if batch.count < ReleaseManagementRules.pageSize { complete = true; break }
+            }
+            guard complete else { throw AppError(text: "附件核验超过分页预算，请在 GitHub 继续。") }
+            for item in attachments {
+                try state.check()
+                if let acknowledged = plan.uploaded[item.name] {
+                    guard remote.contains(where: { $0.id == acknowledged.id && $0.name == item.name && Int64($0.size) == item.size }) else { throw AppError(text: "已上传附件身份或大小已变化，禁止覆盖。") }
+                    continue
+                }
+                guard !remote.contains(where: { $0.name == item.name }) else { throw AppError(text: "远端存在未知同名附件，请从详情核实；不自动覆盖。") }
+                current = try await state.api.managedRelease(state.repo, id: current.id)
+                try state.check(); guard current.draft else { throw AppError(text: "发行版已不再是草稿，停止上传。") }
+                let asset = try await state.api.uploadManagedAsset(state.repo, original: current, file: item.file) { progress in
+                    Task { @MainActor in if state.valid && state.busy { state.progress = progress } }
+                }
+                guard asset.name == item.name && Int64(asset.size) == item.size else { throw AppError(text: "上传响应附件身份或大小不匹配，请核实草稿。") }
+                plan.acknowledge(name: item.name, id: asset.id, size: item.size)
+                try state.check()
+            }
+            try state.check()
+            guard plan.mayFinalize(names: attachments.map(\.name)) else { throw CancellationError() }
+            current = try await state.api.managedRelease(state.repo, id: current.id)
+            try state.check(); guard current.draft else { throw AppError(text: "草稿状态已变化，请刷新核实。") }
+            plan.finalizing()
+            _ = try await state.api.saveManagedRelease(state.repo, original: current, form: captured)
+            try state.check(); plan.finish()
+        } catch {
+            if RefreshFailure.isCancellation(error) || Task.isCancelled || !state.valid { plan.cancel() } else { plan.fail() }
+            throw error
         }
     }
     private func loadMarker() {
