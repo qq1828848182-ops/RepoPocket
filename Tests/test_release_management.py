@@ -27,7 +27,7 @@ class ReleaseManagementTests(unittest.TestCase):
         self.assertIn('复制下载链接', ui)
         self.assertIn('UIPasteboard.general.url = link', ui)
         self.assertIn('asset.browser_download_url, repo: state.repo', ui)
-        for token in ['private let build: () -> AnyView', 'var body: AnyView { build() }', 'ForEach(state.rows)', 'ForEach(state.assets)', '.onDisappear { state.cancel() }', 'generation == AccountStore.generation', 'confirmation == "DELETE"', 'target.repo == state.repo', 'target.generation == AccountStore.generation', 'DownloadStore.shared.persist', 'state.saved', 'state.download(asset)', 'DisclosureGroup', 'if expanded', 'original: r', 'RefreshFailure.isCancellation', '默认草稿', '不删除 git 标签', '同名不覆盖', '已公开发行版会立即受到影响']:
+        for token in ['private let build: () -> AnyView', 'var body: AnyView { build() }', 'ForEach(state.rows)', 'ForEach(state.assets)', '.onDisappear { state.cancel() }', 'generation == AccountStore.generation', 'confirmation == "DELETE"', 'target.repo == state.repo', 'target.generation == AccountStore.generation', 'DownloadStore.shared.persist', 'state.saved', 'state.download(asset)', 'DisclosureGroup', 'if expanded', 'original: r', 'RefreshFailure.isCancellation', '新建发行版', '不删除 git 标签', '同名不覆盖', '已公开发行版会立即受到影响']:
             self.assertIn(token,ui)
         self.assertNotIn('AsyncImage',ui)
         transfers=(ROOT/'RepoPocket/ReleaseTransfers.swift').read_text()
@@ -38,12 +38,51 @@ class ReleaseManagementTests(unittest.TestCase):
         summary=models.split('struct ReleaseSummary:',1)[1].split('struct ReleaseForm',1)[0]
         self.assertNotIn('let body:',summary)
 
+    def test_asset_row_actions_are_independent_and_accessible(self):
+        import re
+        ui = (ROOT/'RepoPocket/ReleaseManagementUI.swift').read_text()
+        row = ui.split('ForEach(state.assets) { asset in', 1)[1].split('if state.assetMore', 1)[0]
+        self.assertIn('VStack(alignment: .leading, spacing: 12)', row)
+        self.assertEqual(len(re.findall(r'^\s*Button(?:\(| \{)', row, re.M)), 3)
+        actions = re.findall(r'Button(?:\(role: \.destructive\))? \{ ([^{}]+) \} label: \{\s*Text\("([^"]+)"\)(.*?)\n\s*\}\s*\.buttonStyle\(\.(borderless|plain)\)', row, re.S)
+        self.assertEqual(len(actions), 3, 'Every asset button must explicitly opt out of automatic List activation')
+        expected = {
+            '下载并保存': 'state.download(asset)',
+            '复制下载链接': 'UIPasteboard.general.url = link; copied = true',
+            '删除附件': 'prepareDelete(r, asset: asset)',
+        }
+        self.assertEqual({label: action.strip() for action, label, _, _ in actions}, expected)
+        for _, _, label_view, _ in actions:
+            self.assertIn('.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)', label_view)
+            self.assertIn('.contentShape(Rectangle())', label_view)
+            self.assertNotIn('.lineLimit', label_view)
+        self.assertIn('if state.canWrite {\n                                Divider()', row)
+        self.assertEqual(row.count('.disabled(state.busy)'), 2)
+        self.assertNotIn('.automatic', row)
+        self.assertNotIn('.onTapGesture', row)
+        self.assertNotIn('HStack', row)  # Stack vertically for iOS 16, small screens and Dynamic Type.
+
+    def test_concise_copy_keeps_safety_and_budget_guards(self):
+        ui = (ROOT/'RepoPocket/ReleaseManagementUI.swift').read_text()
+        models = (ROOT/'RepoPocket/ReleaseManagement.swift').read_text()
+        self.assertNotIn('Latest 无可靠证据', ui)
+        self.assertNotIn('每页 20 条，最多', ui)
+        self.assertNotIn('新建发行版（默认草稿）', ui)
+        self.assertNotIn('附件（独立分页', ui)
+        self.assertNotIn('公开附件可直接在浏览器下载', ui)
+        self.assertEqual(ui.count('Text("私有附件需在浏览器登录。")'), 1)
+        self.assertIn('} footer: {', ui)
+        self.assertIn('var draft = true', models)
+        self.assertIn('ReleaseManagementRules.more', ui)
+        self.assertIn('第二次确认', ui)
+        self.assertIn('已公开发行版会立即受到影响', ui)
+
     def test_commit_patch_scope_and_ui(self):
         view=(ROOT/'RepoPocket/CommitPatchView.swift').read_text()
         desktop=(ROOT/'RepoPocket/DesktopViews.swift').read_text()
         self.assertIn('CommitPatchDestination(file: f)',desktop)
         self.assertNotIn('Text(f.preview)',desktop)
-        for token in ['LazyVStack(alignment: .leading', '.topLeading', 'row.old', 'row.new', 'row.marker', 'Color.green.opacity(0.12)', 'Color.red.opacity(0.12)', 'whitespace = true', '原始 patch', '长行自动换行', '不是完整文件', '不代表没有改动', 'Task.detached', 'withTaskCancellationHandler', 'worker.cancel()', 'try Task.checkCancellation()']:
+        for token in ['LazyVStack(alignment: .leading', '.topLeading', 'row.old', 'row.new', 'row.marker', 'Color.green.opacity(0.12)', 'Color.red.opacity(0.12)', 'whitespace = true', '原始 patch', '仅显示本次提交的变化', 'if result.limited', '不代表没有改动', 'Task.detached', 'withTaskCancellationHandler', 'worker.cancel()', 'try Task.checkCancellation()']:
             self.assertIn(token,view)
         self.assertNotIn('api.',view)
         self.assertNotIn('before',view)
