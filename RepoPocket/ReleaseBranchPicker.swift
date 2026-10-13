@@ -73,64 +73,59 @@ struct ReleaseBranchPicker: View {
     @State private var sha = ""
     private var visible: [String] { search.isEmpty ? state.branches : state.branches.filter { $0.localizedCaseInsensitiveContains(search) } }
     private func animate(_ change: () -> Void) { withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18), change) }
+    // Keep each entry a native Form row, as in 1.0.1+1. The shared row
+    // decoration only paints separators/corners; List owns insertion animation.
     var body: some View {
         Section {
-            VStack(alignment: .leading, spacing: 0) {
-                if state.loading { branchRow { ProgressView("正在核验目标分支…") } }
-                if state.branches.count > 1 {
-                    branchRow {
-                        Button { animate { expanded.toggle() } } label: {
-                            HStack { Text("目标分支"); Spacer(); Text(selected.isEmpty ? "请选择" : selected).foregroundStyle(.secondary); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption) }
+            if state.loading { ProgressView("正在核验目标分支…").softGroupedRow(top: true) }
+            if state.branches.count > 1 {
+                Button { animate { expanded.toggle() } } label: {
+                    HStack { Text("目标分支"); Spacer(); Text(selected.isEmpty ? "请选择" : selected).foregroundStyle(.secondary); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption) }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                }.disabled(state.loading).softGroupedRow(top: !state.loading)
+                if expanded {
+                    Button(searching ? "关闭搜索" : "搜索分支") { searching.toggle(); search = "" }
+                        .frame(minHeight: 44).softGroupedRow()
+                    if searching {
+                        TextField("搜索已加载分支", text: $search).textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .frame(minHeight: 44).softGroupedRow()
+                    }
+                    ForEach(visible, id: \.self) { name in
+                        Button { selected = name; ready = true; animate { expanded = false; advanced = false } } label: {
+                            HStack { Text(name); Spacer(); if selected == name { Image(systemName: "checkmark") } }
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                        }.disabled(state.loading)
+                        }.disabled(state.loading).softGroupedRow()
                     }
-                    if expanded {
-                        branchRow { Button(searching ? "关闭搜索" : "搜索分支") { searching.toggle(); search = "" }.frame(minHeight: 44) }
-                        if searching { branchRow { TextField("搜索已加载分支", text: $search).textInputAutocapitalization(.never).autocorrectionDisabled().frame(minHeight: 44) } }
-                        ForEach(visible, id: \.self) { name in
-                            branchRow {
-                                Button { selected = name; ready = true; animate { expanded = false; advanced = false } } label: {
-                                    HStack { Text(name); Spacer(); if selected == name { Image(systemName: "checkmark") } }
-                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                                }.disabled(state.loading)
-                            }
-                        }
-                        if visible.isEmpty { branchRow { Text("没有匹配分支").foregroundStyle(.secondary) } }
-                    }
-                } else if let name = state.branches.first { branchRow { LabeledContent("目标分支", value: name) } }
-                if !state.error.isEmpty { branchRow { Text(state.error).font(.caption).foregroundColor(.red) } }
-                if !state.loading && !state.ready { branchRow { Button("重新读取分支") { reload() }.frame(minHeight: 44) } }
-                branchRow {
-                    Button { animate { advanced.toggle() } } label: {
-                        HStack { Text("高级：提交 SHA"); Spacer(); Image(systemName: advanced ? "chevron.up" : "chevron.down").font(.caption) }
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
-                    }
+                    if visible.isEmpty { Text("没有匹配分支").foregroundStyle(.secondary).softGroupedRow() }
                 }
-                if advanced {
-                    branchRow {
-                        TextField("完整提交 SHA", text: $sha).textInputAutocapitalization(.never).autocorrectionDisabled().frame(minHeight: 44)
-                            .onChange(of: sha) { _ in state.cancel(); ready = false }
-                    }
-                    branchRow { Button("核验并使用提交") { ready = false; state.verify(api: api, repo: repo, sha: sha, selected: $selected) }.disabled(state.loading).frame(minHeight: 44) }
-                    if ready && selected.count == 40 { branchRow { Text("已核验目标：\(selected)").font(.caption) } }
-                }
-                Text("已有 Git 标签不受目标分支影响。").font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 12)
+            } else if let name = state.branches.first {
+                LabeledContent("目标分支", value: name).softGroupedRow(top: !state.loading)
             }
-            .buttonStyle(.borderless)
-            .listRowInsets(EdgeInsets())
-            .softGroupedRow(top: true, bottom: true)
+            if !state.error.isEmpty {
+                Text(state.error).font(.caption).foregroundColor(.red)
+                    .softGroupedRow(top: !state.loading && state.branches.isEmpty)
+            }
+            if !state.loading && !state.ready {
+                Button("重新读取分支") { reload() }.frame(minHeight: 44)
+                    .softGroupedRow(top: state.branches.isEmpty && state.error.isEmpty)
+            }
+            DisclosureGroup("高级：提交 SHA", isExpanded: $advanced) {
+                TextField("完整提交 SHA", text: $sha).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .frame(minHeight: 44).onChange(of: sha) { _ in state.cancel(); ready = false }
+                    .softGroupedRow(top: false, bottom: false)
+                Button("核验并使用提交") { ready = false; state.verify(api: api, repo: repo, sha: sha, selected: $selected) }
+                    .disabled(state.loading).frame(minHeight: 44).softGroupedRow(top: false, bottom: false)
+                if ready && selected.count == 40 { Text("已核验目标：\(selected)").font(.caption).softGroupedRow(top: false, bottom: false) }
+            }
+            .softGroupedRow(top: !state.loading && state.branches.isEmpty && state.error.isEmpty && state.ready)
+            Text("已有 Git 标签不受目标分支影响。").font(.caption).foregroundStyle(.secondary)
+                .softGroupedRow(bottom: true)
         }
+        .buttonStyle(.borderless)
         .task { reload() }
         .onChange(of: state.ready) { ready = $0 }
         .onChange(of: AccountStore.generation) { _ in state.cancel(); ready = false }
         .onDisappear { state.cancel(); ready = false }
-    }
-    private func branchRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content().frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 6)
-            Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)
-        }
     }
     private func reload() { ready = false; state.load(api: api, repo: repo, preferred: preferred, selected: $selected) }
 }
