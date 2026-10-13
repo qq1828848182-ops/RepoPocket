@@ -164,7 +164,6 @@ struct AppUpdateSection: View {
         Group {
             HStack {
                 Text("应用更新")
-                if checker.hasUpdate { Circle().fill(Color.red).frame(width: 7, height: 7).accessibilityLabel("有新版本") }
                 Spacer()
                 Menu {
                     Link("官方发行版页", destination: URL(string: "https://github.com/wm0104/RepoPocket/releases")!)
