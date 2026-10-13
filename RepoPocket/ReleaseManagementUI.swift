@@ -313,7 +313,7 @@ struct ReleaseEditorView: View {
                 Text(state.repo)
                 TextField("标题", text: $form.title)
                 TextField("标签（已有或新建）", text: $form.tag).textInputAutocapitalization(.never)
-                if original == nil { TextField("新标签目标分支（空为默认分支）", text: $form.branch).textInputAutocapitalization(.never) }
+                if original == nil { TextField("标签目标分支或提交 SHA（必填）", text: $form.branch).textInputAutocapitalization(.never) }
                 TextEditor(text: $form.body).frame(minHeight: 200)
                 Toggle("保存为草稿", isOn: $form.draft)
                     .onChange(of: form.draft) { draft in if draft && form.marker == .latest { form.marker = .none } }
@@ -328,7 +328,7 @@ struct ReleaseEditorView: View {
                     Text("仅发布所选附件，不会编译、打包或提交本地源码。标签目标请明确选择远端分支或提交。").font(.caption)
                 }
                 Button(actionTitle) { confirm = true }
-                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && attachments.isEmpty))
+                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && (attachments.isEmpty || form.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)))
                 if !markerReady && !state.busy { Button("重试读取发行版标记") { loadMarker() } }
                 releaseStatus(state)
             }.disabled(!state.valid)
@@ -351,7 +351,7 @@ struct ReleaseEditorView: View {
                         dismiss()
                     }
                 }
-            } message: { Text("\(state.repo) · \(form.tag)\n\(form.draft ? "保存后仍为草稿。" : "发布后可见（按仓库权限）。")") }
+            } message: { Text("\(state.repo) · \(form.tag)\n目标：\(form.branch)\n\(form.draft ? "保存后仍为草稿。" : "发布后可见（按仓库权限）。")") }
         }
     }
     private var attachmentSection: some View {
@@ -382,7 +382,7 @@ struct ReleaseEditorView: View {
         case .success(let urls):
             staging = true
             state.run {
-                defer { staging = false }
+                defer { staging = false; if Task.isCancelled || !state.valid { cleanupAttachments() } }
                 for source in urls {
                     let item = try await Task.detached { try ReleaseAttachmentRules.copy(source) }.value
                     do {
@@ -395,7 +395,7 @@ struct ReleaseEditorView: View {
         }
     }
     private func publishAttachments(_ captured: ReleaseForm) async throws {
-        guard !attachments.isEmpty else { throw AppError(text: "请添加附件后发布。") }
+        guard !attachments.isEmpty, !captured.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请添加附件并明确选择远端标签目标后发布。") }
         try state.check()
         plan.begin()
         do {

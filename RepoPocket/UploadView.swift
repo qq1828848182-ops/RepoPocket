@@ -270,7 +270,8 @@ struct UploadView: View {
             TextField("Bundle ID（选填）", text: $trollBundleID).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
             TextField("作者（选填）", text: $trollAuthor).softGroupedRow()
             DisclosureGroup("分支") { TextField("留空使用默认分支", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled() }.softGroupedRow()
-            Text("单次 Git 提交更新 downloads/ 与 trollpackages.json；保留既有条目及外链。section：插件（已有值保留）。") .font(.caption).softGroupedRow()
+            Text("上传插件并更新索引").font(.caption).softGroupedRow()
+            DisclosureGroup("索引说明") { Text("单次 Git 提交更新 downloads/ 与 trollpackages.json；保留既有条目及外链。section：插件（已有值保留）。").font(.caption) }.softGroupedRow()
             Button("预览并发布插件") { trollPreview = true }.disabled(busy || !canWrite || local == nil || repo.isEmpty || trollName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || trollVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: true)
         }.disabled(busy)
     }
@@ -278,7 +279,7 @@ struct UploadView: View {
     private var releaseSection: some View {
         Section("发行版") {
             TextField("仓库链接（可留空后选择）", text: $repo).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
-            Button("发布") { sharedReleaseEntry = true }.disabled(busy).softGroupedRow(bottom: true)
+            Button("发布") { sharedReleaseEntry = true }.disabled(busy).softGroupedRow()
             DisclosureGroup("已有发行版 / 继续草稿") {
                 if !repo.isEmpty { NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: { Text("发行版管理") } }
             }.softGroupedRow(bottom: true)
