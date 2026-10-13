@@ -26,17 +26,34 @@ struct ReleaseSummary: Decodable, Identifiable {
     var title: String { name?.isEmpty == false ? name! : tag_name }
     var date: String { published_at ?? created_at }
 }
+enum ReleaseMarker: String, CaseIterable, Identifiable {
+    case none, prerelease, latest
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .none: return "无"; case .prerelease: return "预发行版"; case .latest: return "最新发行版" }
+    }
+}
+struct ManagedReleaseHTTPError: LocalizedError {
+    let status: Int
+    let tagAlreadyExists: Bool
+    var errorDescription: String? { "发行版不存在或当前账号无权访问（HTTP \(status)）。" }
+}
 struct ReleaseForm {
     var title = ""
     var tag = ""
     var body = ""
     var branch = ""
-    var draft = true
-    var prerelease = false
+    var draft = false
+    var marker: ReleaseMarker = .none
+    var initialLatestID: Int?
+    var prerelease: Bool { marker == .prerelease }
+    var makeLatest: String { marker == .latest ? "true" : "false" }
+    var validMarker: Bool { !(draft && marker == .latest) }
     init() {}
-    init(_ release: ManagedRelease) {
+    init(_ release: ManagedRelease, latestID: Int? = nil) {
         title = release.name ?? ""; tag = release.tag_name; body = release.body ?? ""
-        draft = release.draft; prerelease = release.prerelease
+        draft = release.draft; initialLatestID = latestID
+        marker = release.prerelease ? .prerelease : (!release.draft && latestID == release.id ? .latest : .none)
     }
 }
 enum ReleaseManagementRules {
@@ -46,6 +63,24 @@ enum ReleaseManagementRules {
     static let displayBodyLimit = 16_384
     static let editBodyLimit = 131_072
     static let assetLimit: Int64 = 2 * 1024 * 1024 * 1024
+    static func validTag(_ tag: String) -> Bool {
+        guard !tag.isEmpty, tag != "@", !tag.contains(".."), !tag.contains("@{"),
+              !tag.hasSuffix("."), !tag.unicodeScalars.contains(where: {
+                  $0.value <= 32 || $0.value == 127 || CharacterSet.whitespacesAndNewlines.contains($0) || "~^:?*[\\".unicodeScalars.contains($0)
+              }) else { return false }
+        return tag.split(separator: "/", omittingEmptySubsequences: false).allSatisfy {
+            !$0.isEmpty && !$0.hasPrefix(".") && !$0.hasSuffix(".lock")
+        }
+    }
+    static func tagAlreadyExists(_ data: Data) -> Bool {
+        struct Failure: Decodable {
+            struct Detail: Decodable { let field: String?; let code: String? }
+            let errors: [Detail]?
+        }
+        return (try? JSONDecoder().decode(Failure.self, from: data).errors?.contains {
+            $0.field == "tag_name" && $0.code == "already_exists"
+        }) == true
+    }
     static func canWrite(_ push: Bool?, session: Bool) -> Bool { push == true && session }
     static func validPage(_ page: Int) -> Bool { (1...pageLimit).contains(page) }
     static func more(count: Int, page: Int) -> Bool { count == pageSize && page < pageLimit }

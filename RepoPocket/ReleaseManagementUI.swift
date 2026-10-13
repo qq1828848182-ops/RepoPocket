@@ -19,6 +19,7 @@ struct ReleaseManagementDestination: View {
     @Published var error = ""
     @Published var progress: Double = 0
     @Published var canWrite = false
+    @Published var latestID: Int?
     @Published var rows: [ReleaseSummary] = []
     @Published var assets: [Asset] = []
     @Published var release: ManagedRelease?
@@ -34,7 +35,7 @@ struct ReleaseManagementDestination: View {
     init(api: GitHub, repo: String) {
         self.api = api; self.repo = repo
         accountObserver = NotificationCenter.default.publisher(for: .githubAccountChanged).sink { [weak self] _ in
-            self?.cancel(); self?.canWrite = false; self?.rows = []; self?.assets = []; self?.release = nil; self?.saved = nil
+            self?.cancel(); self?.canWrite = false; self?.rows = []; self?.assets = []; self?.release = nil; self?.saved = nil; self?.latestID = nil
         }
     }
     var valid: Bool { generation == AccountStore.generation && api.isCurrentSession }
@@ -67,6 +68,11 @@ struct ReleaseManagementDestination: View {
             self.rows = ReleaseManagementRules.merged(self.rows, batch)
             self.listLoaded = true
             self.more = ReleaseManagementRules.more(count: batch.count, page: p); self.page = p + 1
+            if reset {
+                self.latestID = nil
+                do { self.latestID = try await self.api.managedLatestID(self.repo, refresh: true); try self.check() }
+                catch { try self.check() } // Unknown stays unmarked; never infer Latest from dates.
+            }
         }
     }
     func detail(_ id: Int) {
@@ -112,6 +118,7 @@ struct ReleaseListView: View {
                         Text(row.tag_name + " · " + String(row.date.prefix(10))).font(.caption)
                         if row.draft { Text("草稿").font(.caption) }
                         if row.prerelease { Text("预发行").font(.caption) }
+                        if state.latestID == row.id && !row.draft && !row.prerelease { Text("最新发行版").font(.caption) }
                     }
                 }
             }
@@ -287,10 +294,12 @@ struct ReleaseEditorView: View {
     let original: ManagedRelease?
     @State private var form: ReleaseForm
     @State private var confirm = false
+    @State private var markerReady = false
     init(api: GitHub, repo: String, original: ManagedRelease?) {
         self.original = original
         _state = StateObject(wrappedValue: ReleaseScreenState(api: api, repo: repo))
-        _form = State(initialValue: original.map(ReleaseForm.init) ?? ReleaseForm())
+        _form = State(initialValue: original.map { ReleaseForm($0) } ?? ReleaseForm())
+        _markerReady = State(initialValue: original == nil)
     }
     var body: some View {
         NavigationStack {
@@ -299,18 +308,25 @@ struct ReleaseEditorView: View {
                 TextField("标题", text: $form.title)
                 TextField("标签（已有或新建）", text: $form.tag).textInputAutocapitalization(.never)
                 if original == nil { TextField("新标签目标分支（空为默认分支）", text: $form.branch).textInputAutocapitalization(.never) }
-                Text("只操作发行版元数据；不移动、强制更新或删除真实 git 标签。")
                 TextEditor(text: $form.body).frame(minHeight: 200)
-                Toggle("草稿", isOn: $form.draft)
-                Toggle("预发行", isOn: $form.prerelease)
-                Button("检查并保存") { confirm = true }.disabled(state.busy || !ReleaseManagementRules.editable(form.body))
+                Toggle("保存为草稿", isOn: $form.draft)
+                    .onChange(of: form.draft) { draft in if draft && form.marker == .latest { form.marker = .none } }
+                Picker("发行版标记", selection: $form.marker) {
+                    Text("无").tag(ReleaseMarker.none)
+                    Text("预发行版").tag(ReleaseMarker.prerelease)
+                    if !form.draft { Text("最新发行版").tag(ReleaseMarker.latest) }
+                }
+                Button("检查并保存") { confirm = true }
+                    .disabled(state.busy || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body))
+                if !markerReady && !state.busy { Button("重试读取发行版标记") { loadMarker() } }
                 releaseStatus(state)
             }.disabled(!state.valid)
             .navigationTitle(original == nil ? "新建发行版" : "编辑发行版")
             .toolbar { Button("关闭") { state.cancel(); dismiss() } }
             .interactiveDismissDisabled(state.busy)
+            .task { loadMarker() }
             .onDisappear { state.cancel() }
-            .alert("确认保存发行版", isPresented: $confirm) {
+            .alert(form.draft ? "保存草稿？" : "发布此发行版？", isPresented: $confirm) {
                 Button("取消", role: .cancel) {}
                 Button("确认保存") {
                     let captured = form
@@ -321,7 +337,17 @@ struct ReleaseEditorView: View {
                         dismiss()
                     }
                 }
-            } message: { Text("\(state.repo) · \(form.tag)\n\(form.draft ? "保存为草稿" : "将公开发行版，正文/附件对外可见")\n保存前重读比较远端；GitHub无原子条件写入保证，检查后仍可能并发变化。") }
+            } message: { Text("\(state.repo) · \(form.tag)\n\(form.draft ? "保存后仍为草稿。" : "发布后可见（按仓库权限）。")") }
+        }
+    }
+    private func loadMarker() {
+        guard let original, !markerReady else { return }
+        state.run {
+            let latestID = try await state.api.managedLatestID(state.repo, refresh: true)
+            try state.check()
+            form.marker = ReleaseForm(original, latestID: latestID).marker
+            form.initialLatestID = latestID
+            markerReady = true
         }
     }
 }

@@ -892,6 +892,10 @@ final class GitHub: ObservableObject {
                 let handle = try FileHandle(forReadingFrom: file); defer { try? handle.close() }
                 return try handle.read(upToCount: 8192) ?? Data()
             }.value
+            if http.statusCode == 404 { throw ManagedReleaseHTTPError(status: 404, tagAlreadyExists: false) }
+            if http.statusCode == 422 && ReleaseManagementRules.tagAlreadyExists(payload) {
+                throw AppError(text: "此标签已有发行版，请编辑原发行版。")
+            }
             try check(payload, response, operation: "发行版管理")
         } else { try check(Data(), response, operation: "发行版管理") }
         let result = try await Task.detached { try ReleaseJSON.decode(type, file: file) }.value
@@ -910,7 +914,43 @@ final class GitHub: ObservableObject {
         managedPresenceCache[canonical] = !rows.isEmpty
         return !rows.isEmpty
     }
-    func invalidateManagedPresence(_ repo: String) { managedPresenceCache.removeValue(forKey: repo) }
+    private var managedLatestCache: [String: Int] = [:] // 0 represents a verified 404; owner is this account/session API.
+    func managedLatestID(_ repo: String, refresh: Bool = false) async throws -> Int? {
+        let canonical = try RepositoryInput.parse(repo)
+        try ensureActiveAccount(); try Task.checkCancellation()
+        if !refresh, let cached = managedLatestCache[canonical] { return cached == 0 ? nil : cached }
+        struct Latest: Decodable { let id: Int }
+        let id: Int
+        do { id = try await managedJSON(Latest.self, repo: canonical, suffix: "/releases/latest").id }
+        catch let error as ManagedReleaseHTTPError where error.status == 404 {
+            _ = try await managedRepository(canonical) // A hidden/inaccessible repo is not "no latest".
+            id = 0
+        }
+        try ensureActiveAccount(); try Task.checkCancellation()
+        if managedLatestCache.count >= 100 { managedLatestCache.removeAll() }
+        managedLatestCache[canonical] = id
+        return id == 0 ? nil : id
+    }
+    private func verifyManagedTagAvailable(_ repo: String, tag: String, originalID: Int?) async throws {
+        do {
+            let found = try await managedJSON(ManagedRelease.self, repo: repo, suffix: "/releases/tags/" + Self.component(tag))
+            guard found.id == originalID else { throw AppError(text: "此标签已有发行版，请编辑原发行版。") }
+        } catch let error as ManagedReleaseHTTPError where error.status == 404 {
+            // The tag endpoint omits drafts. Check all visible releases, not git refs.
+        }
+        for page in 1...ReleaseManagementRules.pageLimit {
+            let rows = try await managedReleases(repo, page: page)
+            if rows.contains(where: { $0.tag_name == tag && $0.id != originalID }) {
+                throw AppError(text: "此标签已有发行版，请编辑原发行版。")
+            }
+            if rows.count < ReleaseManagementRules.pageSize { return }
+        }
+        throw AppError(text: "发行版超过标签检查范围，请在 GitHub 管理。")
+    }
+    func invalidateManagedPresence(_ repo: String) {
+        managedPresenceCache.removeValue(forKey: repo)
+        managedLatestCache.removeValue(forKey: repo)
+    }
     func managedRepository(_ repo: String) async throws -> Repository {
         try await managedJSON(Repository.self, repo: repo, suffix: "")
     }
@@ -934,14 +974,24 @@ final class GitHub: ObservableObject {
     }
     func saveManagedRelease(_ repo: String, original: ManagedRelease?, form: ReleaseForm) async throws -> ManagedRelease {
         try await managedWriteAccess(repo)
-        guard !form.tag.isEmpty, !form.tag.contains(where: { $0.isWhitespace }), ReleaseManagementRules.editable(form.body) else {
+        guard ReleaseManagementRules.validTag(form.tag), form.validMarker, ReleaseManagementRules.editable(form.body) else {
             throw AppError(text: "请填写有效标签；正文编辑限 128 KiB，超限请在 GitHub 编辑，不会截断保存。")
         }
         if let original {
             let current = try await managedRelease(repo, id: original.id)
             guard current == original else { throw AppError(text: "远端发行版已变化，请关闭编辑并刷新；未覆盖远端。") }
         }
-        var object: [String: Any] = ["name": form.title, "tag_name": form.tag, "body": form.body, "draft": form.draft, "prerelease": form.prerelease]
+        if original?.tag_name != form.tag { try await verifyManagedTagAvailable(repo, tag: form.tag, originalID: original?.id) }
+        if let original, form.marker == .latest {
+            let latest = try await managedLatestID(repo, refresh: true)
+            if form.initialLatestID == original.id && latest != original.id {
+                throw AppError(text: "最新版标记已变化，请关闭编辑并刷新。")
+            }
+        }
+        var object: [String: Any] = ["name": form.title, "tag_name": form.tag, "body": form.body, "draft": form.draft, "prerelease": form.prerelease, "make_latest": form.makeLatest]
+        if let original, form.initialLatestID == original.id, form.marker == .latest {
+            object.removeValue(forKey: "make_latest") // Preserve an unchanged official Latest; do not promote it again.
+        }
         if original == nil && !form.branch.isEmpty { object["target_commitish"] = form.branch }
         // PATCH only changes release metadata; never calls git refs/tag mutation APIs.
         return try await managedJSON(ManagedRelease.self, repo: repo,
