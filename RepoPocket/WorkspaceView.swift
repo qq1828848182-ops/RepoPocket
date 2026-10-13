@@ -324,7 +324,7 @@ Section("从远端建立工作区") {
 
     private var localSection: some View {
 Section("本地工作目录") {
-                    Text("修改导入后的副本，再刷新变更。") .font(.caption).softGroupedRow(top: true)
+                    Text("修改导入后的副本，再刷新变更。") .font(.caption).softGroupedRow(top: true, bottom: roots.isEmpty)
                     ForEach(roots, id: \.path) { root in
                         Button { folder = root; Task { await scan() } } label: {
                             VStack(alignment: .leading) {
@@ -334,7 +334,7 @@ Section("本地工作目录") {
                                 }
                             }
                         }.disabled(busy)
-                        .softGroupedRow()
+                        .softGroupedRow(bottom: root == roots.last)
                         .swipeActions {
                             Button("删除", role: .destructive) { pendingDelete = root; confirmDelete = true }.disabled(busy)
                         }
@@ -347,7 +347,7 @@ Section("本地工作目录") {
 
     private func workspaceManagement(_ folder: URL) -> some View {
         Section {
-            if let binding { Text(binding.repo + " / " + binding.branch).font(.headline) }
+            if let binding { Text(binding.repo + " / " + binding.branch).font(.headline).softGroupedRow(top: true) }
             Menu("工作区…") {
                 Button("检查远端更新") { focusedField = nil; confirmPull = true }.disabled(busy || binding == nil)
                 Button("关联仓库 / 分支") { showAssociation = true }
@@ -355,7 +355,7 @@ Section("本地工作目录") {
                 Button("工作区详情") { showDetails = true }
                 Button("发布为发行版") { publishing = true }
                 Button("删除本地工作区", role: .destructive) { pendingDelete = folder; confirmDelete = true }
-            }.disabled(busy)
+            }.disabled(busy).softGroupedRow(top: binding == nil, bottom: true)
         }
     }
 
@@ -422,13 +422,17 @@ Section("本地变更预览 / 勾选提交") {
                                 NavigationLink { LocalDiffView(change: change) } label: { VStack(alignment: .leading) { Text(change.relativePath); Text(change.kind).font(.caption) } }
                             }.softGroupedRow(top: change.id == changes.first?.id && binding != nil && !busy)
                         }
-                        Button("刷新变更") { Task { await scan() } }.disabled(busy).softGroupedRow()
+                        Button("刷新变更") { Task { await scan() } }.disabled(busy).softGroupedRow(bottom: selected.isEmpty)
                         if !selected.isEmpty {
                         TextField("提交说明", text: $commitMessage).focused($focusedField, equals: .commitMessage).submitLabel(.done).softGroupedRow()
                         Button("提交选中的 \(selected.count) 项") { confirming = true }.disabled(busy || commitBlockReason != nil).softGroupedRow()
                         if let commitBlockReason { Text(commitBlockReason).font(.caption).foregroundStyle(.secondary).softGroupedRow() }
-                        DisclosureGroup("提交说明与限制") {
-                            Text("新增、修改、删除一次原子更新分支。单文件 ≤10 MiB；大文件使用 Release。远端变化拒绝提交，不强推；未勾选项保持本地修改。").font(.caption)
+                        // Keep disclosure label and expanded content in one List row.
+                        // A background on DisclosureGroup itself is repeated across its List rows.
+                        VStack(alignment: .leading, spacing: 0) {
+                            DisclosureGroup("提交说明与限制") {
+                                Text("新增、修改、删除一次原子更新分支。单文件 ≤10 MiB；大文件使用 Release。远端变化拒绝提交，不强推；未勾选项保持本地修改。").font(.caption)
+                            }
                         }.softGroupedRow(bottom: true)
                         }
                     }
