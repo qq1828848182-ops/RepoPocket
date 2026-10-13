@@ -1,4 +1,4 @@
-name: Build Test IPA
+name: Build IPA
 on:
   push:
     branches: [main, 'test/**']
@@ -82,6 +82,8 @@ jobs:
         run: python3 Tests/test_browser_no_releases.py
       - name: Test lazy directory navigation contract
         run: python3 Tests/test_lazy_directory_navigation.py
+      - name: Test local diff production model and preview contracts
+        run: python3 Tests/test_local_diff.py
       - name: Generate Xcode project
         run: |
           brew install xcodegen
@@ -99,26 +101,27 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "1"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "2"
+          test "$(lipo -archs "$APP/RepoPocket")" = "arm64"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
           codesign --display --entitlements :- "$APP"
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           cd dist
-          zip -qry RepoPocket.ipa Payload
-          unzip -t RepoPocket.ipa
+          zip -qry RepoPocket-1.0.0-build2.ipa Payload
+          unzip -t RepoPocket-1.0.0-build2.ipa
           mkdir verify
-          unzip -q RepoPocket.ipa -d verify
+          unzip -q RepoPocket-1.0.0-build2.ipa -d verify
           codesign --verify --deep --strict verify/Payload/RepoPocket.app
-          shasum -a 256 RepoPocket.ipa > RepoPocket.ipa.sha256
-          shasum -a 256 -c RepoPocket.ipa.sha256
+          shasum -a 256 RepoPocket-1.0.0-build2.ipa > RepoPocket-1.0.0-build2.ipa.sha256
+          shasum -a 256 -c RepoPocket-1.0.0-build2.ipa.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: RepoPocket-iOS16-Test
+          name: RepoPocket-1.0.0-build2
           path: |
-            dist/RepoPocket.ipa
-            dist/RepoPocket.ipa.sha256
+            dist/RepoPocket-1.0.0-build2.ipa
+            dist/RepoPocket-1.0.0-build2.ipa.sha256
           retention-days: 30
       - uses: actions/upload-artifact@v4
         if: failure()

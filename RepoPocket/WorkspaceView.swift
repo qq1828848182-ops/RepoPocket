@@ -637,19 +637,5 @@ Section("本地变更预览 / 勾选提交") {
 
 struct LocalDiffView: View {
     let change: LocalChange
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(change.kind + " · " + change.path).font(.headline)
-                Text("小于等于 64 KiB 的 UTF-8 文本可预览；此处为完整前后对照，不是逐行补丁。") .font(.caption)
-                Group {
-                    Text("基线文本").font(.headline)
-                    Text(change.before ?? "（无文本基线：新增、二进制或超过 64 KiB）")
-                    Divider()
-                    Text("当前文本").font(.headline)
-                    Text(change.after ?? "（无当前文本：已删除、二进制或超过 64 KiB）")
-                }.font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding()
-        }.navigationTitle("变更对照")
-    }
+    var body: some View { LocalDiffPreview(change: change) }
 }
