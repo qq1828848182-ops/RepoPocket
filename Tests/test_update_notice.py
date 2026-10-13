@@ -96,7 +96,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     timed.leavePage(); clock.fire(); await Task.yield()
     precondition(timed.message.isEmpty && timed.release != nil)
     print("PASS deterministic production clock: latest 2s, failure 6s, new release untimed, leave-generation protection")
-    let automatic = UpdateChecker()
+    let automatic = UpdateChecker(installedVersion: { ("1.0.1", "5") })
     let autoAPI = GitHub("new"); autoAPI.accountID = "auto-fixture-" + UUID().uuidString
     await automatic.automaticCheck(api: autoAPI)
     await automatic.automaticCheck(api: autoAPI)
