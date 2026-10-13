@@ -49,6 +49,15 @@ func release(_ tag: String, _ draft: Bool = false, _ pre: Bool = false, _ assets
 precondition(try AppUpdateRules.isNewer(release("v1.1.0"), local: "1.0.1", localBuild: "7"))
 precondition(try AppUpdateRules.isNewer(release("v1.0.1+8"), local: "1.0.1", localBuild: "7"))
 precondition(try !AppUpdateRules.isNewer(release("v1.0.1"), local: "1.0.1", localBuild: "7"))
+// Legacy installs still interpret +1 as build1: document rather than conceal it.
+precondition(try !AppUpdateRules.isNewer(release("v1.0.1+1"), local: "1.0.1", localBuild: "6"))
+precondition(try !AppUpdateRules.isNewer(release("v1.0.1+1"), local: "1.0.1+1", localBuild: "7"))
+precondition(try AppUpdateRules.isNewer(release("v1.0.1+2"), local: "1.0.1+1", localBuild: "7"))
+precondition(try !AppUpdateRules.isNewer(release("v1.0.1"), local: "1.0.1+1", localBuild: "7"))
+precondition(try AppUpdateRules.isNewer(release("v1.0.0+4"), local: "1.0.0", localBuild: "3"))
+precondition(try !AppUpdateRules.isNewer(release("v1.0.0+4"), local: "1.0.0", localBuild: "4"))
+precondition(try !AppUpdateRules.isNewer(release("v1.0.1+other"), local: "1.0.1+1", localBuild: "7"))
+precondition(try AppUpdateRules.isNewer(release("v1.0.2"), local: "1.0.1+1", localBuild: "7"))
 for bad in [try release("v1.1.0", true), try release("v1.1.0", false, true), try release("v1.1.0-rc.1")] {
     do { _ = try AppUpdateRules.isNewer(bad, local: "1.0.1", localBuild: "7"); fatalError("invalid release accepted") } catch {}
 }

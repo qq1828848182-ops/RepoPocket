@@ -252,9 +252,9 @@ struct ReleaseDetailView: View {
             NavigationStack {
                 Form {
                     Text(deleteDescription)
-                    Text("第二次确认：输入 DELETE。固定仓库/发行版/附件 ID，切换账号后禁止执行。删除发行版不会删除 git 标签。")
-                    TextField("DELETE", text: $confirmation).textInputAutocapitalization(.never)
-                    Button("永久删除", role: .destructive) { performDelete() }.disabled(confirmation != "DELETE")
+                    Text("第二次确认：输入 delete 确认删除。固定仓库/发行版/附件 ID，切换账号后禁止执行。删除发行版不会删除 git 标签。")
+                    TextField("输入 delete 确认删除", text: $confirmation).textInputAutocapitalization(.never)
+                    Button("永久删除", role: .destructive) { performDelete() }.disabled(confirmation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "delete")
                 }.navigationTitle("最终确认").toolbar { Button("取消") { secondDelete = false } }
             }
         }
@@ -267,7 +267,7 @@ struct ReleaseDetailView: View {
         deleteTarget = ReleaseDeleteTarget(repo: state.repo, generation: state.generation, release: r, asset: asset)
     }
     private func performDelete() {
-        guard let target = deleteTarget, confirmation == "DELETE", target.repo == state.repo, target.generation == AccountStore.generation else { secondDelete = false; return }
+        guard let target = deleteTarget, confirmation.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "delete", target.repo == state.repo, target.generation == AccountStore.generation else { secondDelete = false; return }
         secondDelete = false
         state.run {
             try await state.api.deleteManagedRelease(target.repo, original: target.release, asset: target.asset)
@@ -294,6 +294,8 @@ struct ReleaseEditorView: View {
     let original: ManagedRelease?
     @State private var form: ReleaseForm
     @State private var confirm = false
+    @State private var targetReady = false
+    let initialBranch: String
     @State private var markerReady = false
     @State private var attachments: [ReleaseAttachment] = []
     @State private var pickingAttachments = false
@@ -301,7 +303,8 @@ struct ReleaseEditorView: View {
     @State private var plan = ReleasePublishPlan()
     @State private var retainedDraft: ManagedRelease?
     private var actionTitle: String { original != nil ? "保存" : (form.draft ? "保存草稿" : "发布") }
-    init(api: GitHub, repo: String, original: ManagedRelease?) {
+    init(api: GitHub, repo: String, original: ManagedRelease?, initialBranch: String = "") {
+        self.initialBranch = initialBranch
         self.original = original
         _state = StateObject(wrappedValue: ReleaseScreenState(api: api, repo: repo))
         _form = State(initialValue: original.map { ReleaseForm($0) } ?? ReleaseForm())
@@ -313,7 +316,7 @@ struct ReleaseEditorView: View {
                 Text(state.repo)
                 TextField("标题", text: $form.title)
                 TextField("标签（已有或新建）", text: $form.tag).textInputAutocapitalization(.never)
-                if original == nil { TextField("标签目标分支或提交 SHA（必填）", text: $form.branch).textInputAutocapitalization(.never) }
+                if original == nil { ReleaseBranchPicker(api: state.api, repo: state.repo, preferred: initialBranch, selected: $form.branch, ready: $targetReady).disabled(state.busy || plan.draftID != nil) }
                 TextEditor(text: $form.body).frame(minHeight: 200)
                 Toggle("保存为草稿", isOn: $form.draft)
                     .onChange(of: form.draft) { draft in if draft && form.marker == .latest { form.marker = .none } }
@@ -328,7 +331,7 @@ struct ReleaseEditorView: View {
                     Text("仅发布所选附件，不会编译、打包或提交本地源码。标签目标请明确选择远端分支或提交。").font(.caption)
                 }
                 Button(actionTitle) { confirm = true }
-                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && (attachments.isEmpty || form.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)))
+                    .disabled(state.busy || staging || !markerReady || !form.validMarker || !ReleaseManagementRules.editable(form.body) || (original == nil && (attachments.isEmpty || !targetReady || form.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)))
                 if !markerReady && !state.busy { Button("重试读取发行版标记") { loadMarker() } }
                 releaseStatus(state)
             }.disabled(!state.valid)
@@ -395,7 +398,7 @@ struct ReleaseEditorView: View {
         }
     }
     private func publishAttachments(_ captured: ReleaseForm) async throws {
-        guard !attachments.isEmpty, !captured.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请添加附件并明确选择远端标签目标后发布。") }
+        guard targetReady, !attachments.isEmpty, !captured.branch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请添加附件并明确选择远端标签目标后发布。") }
         try state.check()
         plan.begin()
         do {

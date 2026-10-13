@@ -104,7 +104,7 @@ struct UploadView: View {
                 if openedFromFolder { Button("关闭") { dismiss() }.disabled(busy) }
 
             }
-            .sheet(isPresented: $sharedReleaseEntry) { ReleaseEntryView(api: api, initialRepo: repo) }
+            .sheet(isPresented: $sharedReleaseEntry) { ReleaseEntryView(api: api, initialRepo: repo, initialBranch: branch) }
             .sheet(item: $savedAsset) { ShareSheet(url: $0.url) }
             .interactiveDismissDisabled(busy)
             .alert("提示", isPresented: Binding(get: { !alertText.isEmpty }, set: { if !$0 { alertText = "" } })) {

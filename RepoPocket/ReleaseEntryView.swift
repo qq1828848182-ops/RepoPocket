@@ -11,9 +11,12 @@ struct ReleaseEntryView: View {
     @State private var isPrivate = true
     @State private var busy = false
     @State private var error = ""
+    @State private var createdHere = false
     @State private var target: ReleaseEntryTarget?
     private let generation = AccountStore.generation
-    init(api: GitHub, initialRepo: String = "") { self.api = api; _repo = State(initialValue: initialRepo) }
+    let initialRepo: String
+    let initialBranch: String
+    init(api: GitHub, initialRepo: String = "", initialBranch: String = "") { self.initialRepo = initialRepo; self.initialBranch = initialBranch; self.api = api; _repo = State(initialValue: initialRepo) }
     var body: some View {
         NavigationStack {
             Form {
@@ -30,7 +33,7 @@ struct ReleaseEntryView: View {
             }.navigationTitle("发布为发行版")
                 .toolbar { Button("关闭") { dismiss() }.disabled(busy) }
                 .interactiveDismissDisabled(busy)
-                .sheet(item: $target) { value in ReleaseEditorView(api: api, repo: value.repo, original: nil) }
+                .sheet(item: $target) { value in ReleaseEditorView(api: api, repo: value.repo, original: nil, initialBranch: !createdHere && value.repo == (try? RepositoryInput.parse(initialRepo)) ? initialBranch : "") }
         }
     }
     private func proceed() async {
@@ -40,7 +43,7 @@ struct ReleaseEntryView: View {
             if makeNew {
                 let created = try await api.createRepository(name: name, isPrivate: isPrivate)
                 guard generation == AccountStore.generation, api.isCurrentSession else { throw CancellationError() }
-                repo = created.full_name; makeNew = false
+                repo = created.full_name; makeNew = false; createdHere = true
             }
             let canonical = try RepositoryInput.parse(repo)
             try await api.requireWriteAccess(canonical)
