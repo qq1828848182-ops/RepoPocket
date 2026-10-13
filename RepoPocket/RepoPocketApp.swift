@@ -27,15 +27,46 @@ struct AccountRootView: View {
     @StateObject private var api = GitHub()
     @StateObject private var gitCore = GitCore()
     @StateObject private var updateChecker = UpdateChecker()
+    @EnvironmentObject private var accountPresentation: AccountPresentation
+    @EnvironmentObject private var downloads: DownloadStore
+    @State private var selectedTab = 0
+    @State private var startupSheetVisible = false
+    @State private var startupSheetActive = false
+    private var startupUpdateReady: Bool {
+        updateChecker.startupRelease != nil && api.isCurrentSession && api.message.isEmpty
+            && !accountPresentation.showing && downloads.picker == nil
+    }
     var body: some View {
-            TabView {
-                RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }
-                GitWorkspaceView().environmentObject(gitCore).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }
-                WorkspaceView(api: api).tabItem { Label("本地", systemImage: "folder.badge.gearshape") }
-                UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }
-                SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }
+            TabView(selection: $selectedTab) {
+                RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }.tag(0)
+                GitWorkspaceView().environmentObject(gitCore).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }.tag(1)
+                WorkspaceView(api: api).tabItem { Label("本地", systemImage: "folder.badge.gearshape") }.tag(2)
+                UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }.tag(3)
+                SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.tag(4)
             }
             .task { await updateChecker.automaticCheck(api: api) }
+            .task(id: startupUpdateReady) {
+                guard startupUpdateReady, !startupSheetActive else { return }
+                // Allow an existing system presentation to finish its native dismissal.
+                do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+                guard !Task.isCancelled, startupUpdateReady, !startupSheetActive else { return }
+                startupSheetActive = true
+                startupSheetVisible = true
+            }
+            .onChange(of: updateChecker.startupRelease == nil) { empty in
+                if empty { startupSheetVisible = false }
+            }
+            .sheet(isPresented: $startupSheetVisible, onDismiss: {
+                updateChecker.dismissStartupUpdate()
+                startupSheetActive = false
+            }) {
+                if let release = updateChecker.startupRelease {
+                    StartupUpdateCard(api: api, checker: updateChecker, release: release) {
+                        updateChecker.dismissStartupUpdate()
+                        selectedTab = 4
+                    }
+                }
+            }
             .alert("提示", isPresented: Binding(get: { !api.message.isEmpty }, set: { if !$0 { api.message = "" } })) {
                 Button("好", role: .cancel) { api.message = "" }
             } message: { Text(api.message) }
