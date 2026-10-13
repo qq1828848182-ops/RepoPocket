@@ -191,6 +191,8 @@ struct BrowserView: View {
     @State private var repositoryInfo: Repository?
     @StateObject private var copyFeedback = RepositoryCopyFeedback()
     @StateObject private var forkMenu = RepositoryForkMenuState()
+    @StateObject private var releasePresence = ReleasePresenceState()
+    @State private var creatingRelease = false
     private var canWrite: Bool { RepositoryWriteRules.canWrite(push: repositoryInfo?.permissions?.push, sessionMatches: api.isCurrentSession) }
     @State private var showBranches = false
     @State private var repositoryDeletionTarget: RepositoryDeletionTarget?
@@ -219,6 +221,13 @@ struct BrowserView: View {
                         CompactRepositorySummary(fullName: repo, name: "")
                     }
                 }.textSelection(.enabled).softGroupedRow(top: true, bottom: true)
+            }
+            if path.isEmpty && releasePresence.exists && api.isCurrentSession {
+                Section {
+                    NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: {
+                        Label("发行版", systemImage: "shippingbox")
+                    }.softGroupedRow(top: true, bottom: true)
+                }
             }
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {
@@ -273,6 +282,7 @@ struct BrowserView: View {
                 RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
+                if path.isEmpty && canWrite { Button("新建发行版") { creatingRelease = true } }
                 Button("下载整个仓库 ZIP") { Task { await zip() } }
                 Button("刷新目录") { Task { await load() } }
                 Button("删除远端仓库…", role: .destructive) {
@@ -285,6 +295,18 @@ struct BrowserView: View {
         .repositoryCopyNotice(copyFeedback)
         .repositoryForkConfirmation(forkMenu, api: api)
         .task { if !loaded { await load() } }
+        .task { if path.isEmpty { releasePresence.load(api: api, repo: repo) } }
+        .onDisappear { releasePresence.cancel() }
+        .onReceive(NotificationCenter.default.publisher(for: .githubAccountChanged)) { _ in releasePresence.reset() }
+        .onReceive(NotificationCenter.default.publisher(for: .releaseManagementChanged)) { notice in
+            if path.isEmpty, notice.userInfo?["repo"] as? String == repo,
+               notice.userInfo?["generation"] as? UUID == AccountStore.generation {
+                releasePresence.load(api: api, repo: repo, refresh: true)
+            }
+        }
+        .sheet(isPresented: $creatingRelease, onDismiss: {
+            if path.isEmpty { releasePresence.load(api: api, repo: repo, refresh: true) }
+        }) { if canWrite { ReleaseEditorView(api: api, repo: repo, original: nil) } }
         .sheet(item: $repositoryDeletionTarget) { target in
             RepositoryDeletionView(api: api, repository: target.repository, context: target.context) {
                 entries = []; repositoryInfo = nil; dismiss()
