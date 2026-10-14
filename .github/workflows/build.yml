@@ -133,7 +133,8 @@ jobs:
           mkdir -p probe/Payload
           cp -R build/Build/Products/Release-iphoneos/RepoPocket.app "$APP"
           /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 1.0.3-rc.1' "$APP/Info.plist"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "3"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 4' "$APP/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "4"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
           cd probe
@@ -142,6 +143,7 @@ jobs:
           mkdir verify
           unzip -q RepoPocket-1.0.3-rc.1.ipa -d verify
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' verify/Payload/RepoPocket.app/Info.plist)" = "1.0.3-rc.1"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' verify/Payload/RepoPocket.app/Info.plist)" = "4"
           codesign --verify --deep --strict verify/Payload/RepoPocket.app
           shasum -a 256 RepoPocket-1.0.3-rc.1.ipa > RepoPocket-1.0.3-rc.1.ipa.sha256
           shasum -a 256 -c RepoPocket-1.0.3-rc.1.ipa.sha256

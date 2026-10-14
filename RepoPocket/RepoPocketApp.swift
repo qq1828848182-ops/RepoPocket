@@ -28,7 +28,7 @@ struct AccountRootView: View {
     @StateObject private var gitCore = GitCore()
     @StateObject private var updateChecker = UpdateChecker()
     @EnvironmentObject private var accountPresentation: AccountPresentation
-    @EnvironmentObject private var downloads: DownloadStore
+    @ObservedObject private var downloads = DownloadStore.shared
     @State private var selectedTab = 0
     @State private var startupSheetVisible = false
     @State private var startupSheetActive = false
