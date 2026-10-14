@@ -1,5 +1,7 @@
 import SwiftUI
 
+extension Notification.Name { static let workflowRunDeleted = Notification.Name("workflowRunDeleted") }
+
 struct WorkflowRunsView: View {
     @ObservedObject var api: GitHub
     let repo: String
@@ -29,6 +31,10 @@ struct WorkflowRunsView: View {
         }.navigationTitle("Actions").adaptiveWorkspaceLayout()
         .toolbar { Button("刷新") { load(reset: true) }.disabled(store.busy) }
         .task { if !store.loaded { load() } }.onChange(of: currentBranchOnly) { _ in load(reset: true) }.onDisappear { store.cancel() }
+        .onReceive(NotificationCenter.default.publisher(for: .workflowRunDeleted)) { notice in
+            if notice.userInfo?["repo"] as? String == repo,
+               notice.userInfo?["generation"] as? UUID == AccountStore.generation { load(reset: true) }
+        }
     }
     private func load(reset: Bool = false) { store.load(reset: reset, api: api) { try await api.workflowRuns(repo, branch: currentBranchOnly ? branch : "", page: $0) } }
 }
@@ -42,6 +48,8 @@ struct WorkflowRunView: View {
     @State private var action: CommunityMutation?
     @State private var busy = false
     @State private var message = ""
+    @State private var confirmingDeletion = false
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
         List {
             Section {
@@ -64,6 +72,7 @@ struct WorkflowRunView: View {
                     SoftGroupRows {
                         SoftGroupRow("rerun") { Button("重新运行此工作流") { action = .rerun(run.id) }.disabled(busy) }
                         SoftGroupRow("cancel") { Button("取消正在进行的运行", role: .destructive) { action = .cancelRun(run.id) }.disabled(busy) }
+                        SoftGroupRow("delete") { Button("删除此次运行", role: .destructive) { confirmingDeletion = true }.disabled(busy) }
                         if busy { SoftGroupRow("busy") { ProgressView("提交操作…") } }
                         if !message.isEmpty { SoftGroupRow("result") { Text(message).font(.caption) } }
                     }
@@ -80,13 +89,24 @@ struct WorkflowRunView: View {
             Button("确认") { if let selected = action { action = nil; Task { await perform(selected) } } }
             Button("取消", role: .cancel) { action = nil }
         } message: { Text(repo + " · #\(run.run_number)。重新运行会消耗该仓库的 Actions 配额，取消会终止当前运行。") }
+        .confirmationDialog("永久删除此次运行？", isPresented: $confirmingDeletion, titleVisibility: .visible) {
+            Button("永久删除运行 #\(run.run_number)", role: .destructive) { Task { await perform(.deleteRun(run.id)) } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("\(repo) · #\(run.run_number)\n删除后，本次运行记录及其日志、构建产物将不可再访问，无法撤销。正在进行的运行须先取消。")
+        }
     }
     private func load(reset: Bool = false) { store.load(reset: reset, api: api) { try await api.workflowJobs(repo, run: run.id, page: $0) } }
     private func perform(_ action: CommunityMutation) async {
         guard !busy else { return }; busy = true; message = ""; defer { busy = false }
         do {
             _ = try await api.communityMutate(repo, action: action)
-            guard api.isCurrentSession else { return }; message = "GitHub 已接受操作，请手动刷新运行列表核实新状态。"
+            guard api.isCurrentSession else { return }
+            if case .deleteRun = action {
+                NotificationCenter.default.post(name: .workflowRunDeleted, object: nil,
+                    userInfo: ["repo": repo, "run": run.id, "generation": AccountStore.generation])
+                dismiss()
+            } else { message = "GitHub 已接受操作，请手动刷新运行列表核实新状态。" }
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { message = error.localizedDescription } }
     }
 }

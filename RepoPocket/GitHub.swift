@@ -655,10 +655,20 @@ final class GitHub: ObservableObject {
         let change = try CommunityMutationRules.request(action, title: title, text: text)
         let path = try Self.repoPath(repo) + change.suffix
         if change.requiresPush { try await requireWriteAccess(repo) }
+        if case .deleteRun = action {
+            struct RunStatus: Decodable { let status: String }
+            let current = try JSONDecoder().decode(RunStatus.self, from: await communityRead(path))
+            guard current.status == "completed" else { throw AppError(text: "此运行尚未结束，请先取消，待结束后再删除。") }
+        }
         try ensureActiveAccount(); try Task.checkCancellation()
         let body = try JSONSerialization.data(withJSONObject: change.body)
-        let response = try await session.data(for: request(url(path), method: change.method, body: body), delegate: OfficialUpdateRedirectPolicy())
+        var r = try request(url(path), method: change.method, body: body)
+        if case .deleteRun = action { r.httpBody = nil }
+        let response = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
         try check(response.0, response.1, operation: "仓库协作操作")
+        if case .deleteRun = action, (response.1 as? HTTPURLResponse)?.statusCode != 204 {
+            throw AppError(text: "未收到删除成功确认，请刷新运行列表核实，避免重复操作。")
+        }
         try Task.checkCancellation()
         return response.0
     }

@@ -65,7 +65,7 @@ MUTATE
    let long=String(repeating:"一行\n",count:40);precondition(ReadmePreviewRules.needsExpansion(long))
    precondition(ReadmePreviewRules.preview(long).split(separator:"\n").count==24)
    let wide=String(repeating:"中",count:4000);precondition(ReadmePreviewRules.preview(wide).count==1800)
-   for action in [CommunityMutation.comment(0),.state(1,"bad"),.merge(1,"bad"),.cancelRun(-1),.rerun(0)] {
+   for action in [CommunityMutation.comment(0),.state(1,"bad"),.merge(1,"bad"),.cancelRun(-1),.rerun(0),.deleteRun(0)] {
      do {_ = try CommunityMutationRules.request(action,text:"test");preconditionFailure()}catch{}
    }
    do {_ = try CommunityMutationRules.request(.createIssue,title:" ");preconditionFailure()}catch{}
@@ -81,6 +81,21 @@ MUTATE
    precondition(api.body["sha"] as? String==String(repeating:"b",count:40) && api.method=="PUT")
    _ = try await api.communityMutate("owner/repo",action:.cancelRun(10));precondition(api.pushChecks==3)
    _ = try await api.communityMutate("owner/repo",action:.state(7,"closed"));precondition(api.body["state"] as? String=="closed")
+   let beforeDelete=Fixture.count();api.push=false
+   do {_ = try await api.communityMutate("owner/repo",action:.deleteRun(10));preconditionFailure()}catch{}
+   precondition(Fixture.count()==beforeDelete);api.push=true
+   api.payload=Data(#"{"status":"in_progress"}"#.utf8)
+   do {_ = try await api.communityMutate("owner/repo",action:.deleteRun(10));preconditionFailure()}catch{}
+   precondition(Fixture.count()==beforeDelete)
+   api.payload=Data(#"{"status":"completed"}"#.utf8)
+   Fixture.status=200
+   do {_ = try await api.communityMutate("owner/repo",action:.deleteRun(10));preconditionFailure()}catch{}
+   Fixture.status=204
+   _ = try await api.communityMutate("owner/repo",action:.deleteRun(10))
+   precondition(api.method=="DELETE")
+   Fixture.lock.lock();let deletion=Fixture.seen.last!;Fixture.lock.unlock()
+   precondition(deletion.url!.path=="/repos/owner/repo/actions/runs/10" && deletion.httpBody==nil)
+   Fixture.status=200
    api.active=false;let inactive=Fixture.count()
    do {_ = try await api.communityMutate("owner/repo",action:.comment(7),text:"must not send");preconditionFailure()}catch{}
    precondition(Fixture.count()==inactive);api.active=true

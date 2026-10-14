@@ -1,7 +1,7 @@
 import Foundation
 
 enum CommunityMutation {
-    case createIssue, comment(Int), state(Int, String), merge(Int, String), cancelRun(Int), rerun(Int)
+    case createIssue, comment(Int), state(Int, String), merge(Int, String), cancelRun(Int), rerun(Int), deleteRun(Int)
 }
 struct CommunityMutationRequest {
     let suffix: String
@@ -31,6 +31,8 @@ enum CommunityMutationRules {
             try positive(id); return .init(suffix: "/actions/runs/\(id)/cancel", method: "POST", requiresPush: true, body: [:])
         case .rerun(let id):
             try positive(id); return .init(suffix: "/actions/runs/\(id)/rerun", method: "POST", requiresPush: true, body: [:])
+        case .deleteRun(let id):
+            try positive(id); return .init(suffix: "/actions/runs/\(id)", method: "DELETE", requiresPush: true, body: [:])
         }
     }
 }
