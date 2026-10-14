@@ -40,6 +40,8 @@ struct AccountRootView: View {
                 SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.tag(4)
             }
             .task { await updateChecker.automaticCheck(api: api) }
+            // Ask the system for network access during launch, not mid-Token or mid-check.
+            .task { await NetworkWarmup.runOnceIfNeeded() }
             .onReceive(updateChecker.$startupRelease) { release in
                 guard release != nil, !startupSheetQueued else { return }
                 startupSheetQueued = true
