@@ -67,6 +67,17 @@ class NoticeTests(unittest.TestCase):
                    if name not in injected and not any(owners.get(c) == typ for c in injected)]
         self.assertEqual(missing, [], f'@EnvironmentObject without injection: {missing}')
 
+    def test_first_launch_network_warmup(self):
+        app = (REPO_ROOT / 'RepoPocket/RepoPocketApp.swift').read_text()
+        warm = (REPO_ROOT / 'RepoPocket/NetworkWarmup.swift').read_text()
+        self.assertIn('.task { await NetworkWarmup.runOnceIfNeeded() }', app)
+        self.assertIn('RepoPocket.network.warmed.v1', warm)
+        self.assertIn('httpMethod = "HEAD"', warm)
+        self.assertNotIn('Authorization', warm)
+        self.assertNotIn('CredentialStore', warm)
+        self.assertIn('type: application', (REPO_ROOT / 'project.yml').read_text())
+        self.assertIn('sources: [RepoPocket, Vendor/DebCodecs]', (REPO_ROOT / 'project.yml').read_text())
+
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift available on Actions')
     def test_production_checker_with_mock_api(self):
         checker = feature.split('@MainActor final class UpdateChecker', 1)[1].split('    func download() {', 1)[0]
