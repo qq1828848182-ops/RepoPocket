@@ -272,15 +272,7 @@ struct BrowserView: View {
                 }
             }
             if path.isEmpty {
-                Section("阅读与协作") {
-                    NavigationLink { RepositoryReadmeView(api: api, repo: repo, branch: activeBranch) } label: { Label("README", systemImage: "doc.richtext") }
-                    NavigationLink { CollaborationListView(api: api, repo: repo, kind: .issues) } label: { Label("Issue", systemImage: "exclamationmark.bubble") }
-                    NavigationLink { CollaborationListView(api: api, repo: repo, kind: .pulls) } label: { Label("Pull Requests", systemImage: "arrow.triangle.pull") }
-                    NavigationLink { RepositoryToolsView(api: api, repo: repo) } label: { Label("贡献者、统计与工具", systemImage: "chart.bar") }
-                    if let owner = repo.split(separator: "/").first.map(String.init) {
-                        NavigationLink("仓库作者") { UserRepositoriesView(api: api, user: User(id: nil, login: owner, avatar_url: repositoryInfo?.owner?.avatar_url, name: nil, followers: nil, following: nil)) }
-                    }
-                }
+                RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
             }
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {
