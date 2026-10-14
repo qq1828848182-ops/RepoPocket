@@ -267,7 +267,17 @@ def baseline(name):
 for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
              'RepositoryStar.swift', 'RepositoryStarUI.swift', 'ReleaseManagement.swift',
              'ReleasePublishPlan.swift', 'ReleaseTransfers.swift']:
-    assert source(file) == baseline(file), file
+    current, old = source(file), baseline(file)
+    if file == 'GitHub.swift':
+        # The explicitly requested file-safety repair returns the PUT response SHA.
+        # Only this method is normalized; its real behavior is executed by
+        # test_file_versions.py, including concurrent updates and failed GETs.
+        start = current.index('    @discardableResult\n    func commit(')
+        end = current.index('    func delete(', start)
+        old_start = old.index('    func commit(')
+        old_end = old.index('    func delete(', old_start)
+        current = current[:start] + old[old_start:old_end] + current[end:]
+    assert current == old, file
 for file, marker in [
     ('ReleaseBranchPicker.swift', 'struct ReleaseBranchPicker: View {'),
     ('ReleaseEntryView.swift', '    private func proceed() async {'),
@@ -326,6 +336,21 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
             assert 'TokenVerification.submit(credential)' in current.get(signature, ''), signature
             assert 'let credential = token; token = ""' not in current.get(signature, ''), signature
             assert 'token = ""' in current.get(signature, ''), signature
+            continue
+        if file == 'RepoPocketApp.swift' and signature in ['private func read() async', 'private func save() async', 'private func remove() async']:
+            # Intentional file editor repairs; all other operation bodies retain
+            # their exact historical protection. Save/remove execute against a
+            # concurrent in-memory remote in test_file_versions.py.
+            updated = current.get(signature, '')
+            assert 'api.isCurrentSession' in updated, signature
+            if signature == 'private func read() async':
+                assert updated == body.replace('text = t; currentSHA = f.sha', 'text = t; loadedText = t; currentSHA = f.sha'), signature
+            elif signature == 'private func save() async':
+                assert 'currentSHA = try await api.commit(' in updated, signature
+                assert 'api.file(' not in updated, signature
+            else:
+                assert 'FileVersionRules.requireUnchanged(' in updated, signature
+                assert updated.index('requireUnchanged(') < updated.index('api.delete('), signature
             continue
         assert current.get(signature) == body, (file, signature)
 print('PASS byte-exact baseline operation bodies: account, navigation/API actions, local/remote workspace, upload, release and destructive guards')

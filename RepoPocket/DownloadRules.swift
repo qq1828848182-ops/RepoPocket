@@ -8,8 +8,9 @@ enum DownloadRules {
         return name.isEmpty || name == "File Provider Storage" ? "已选择保存位置" : name
     }
     static func contains(_ file: URL, in parent: URL) -> Bool {
-        let base = parent.standardizedFileURL.pathComponents
-        let path = file.standardizedFileURL.pathComponents
+        // Ignore directory URL trailing separators when comparing path components.
+        let base = parent.standardizedFileURL.path.split(separator: "/")
+        let path = file.standardizedFileURL.path.split(separator: "/")
         return path.count > base.count && Array(path.prefix(base.count)) == base
     }
     static func safeName(_ raw: String) -> String {
