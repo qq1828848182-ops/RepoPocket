@@ -111,8 +111,8 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct RepositoriesView: View {
     @ObservedObject var api: GitHub
     @EnvironmentObject private var accountPresentation: AccountPresentation
-    @State private var ownedExpanded = true
-    @State private var starredExpanded = true
+    @State private var ownedExpanded = false
+    @State private var starredExpanded = false
     @State private var repos: [Repository] = []
     @State private var starred: [Repository] = []
     @State private var showOpen = false
