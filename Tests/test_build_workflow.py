@@ -46,6 +46,7 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn('default: false', self.source)
         self.assertIn('if: ${{ inputs.build_update_probe }}', self.source)
         self.assertIn('Set :CFBundleShortVersionString 1.0.3-rc.1', self.source)
+        self.assertIn("Set :CFBundleVersion 4", self.source)
         self.assertIn('codesign --force --sign - --entitlements Entitlements.plist "$APP"', self.source)
         self.assertIn('codesign --verify --deep --strict verify/Payload/RepoPocket.app', self.source)
         self.assertIn('name: RepoPocket-update-probe', self.source)

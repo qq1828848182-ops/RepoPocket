@@ -41,6 +41,25 @@ class NoticeTests(unittest.TestCase):
         self.assertNotIn('exit(', card)
         self.assertNotIn('UIApplication.shared.open', feature.split('    func download() {', 1)[0])
         self.assertLess(card.index('ScrollView {'), card.index('// The footer does not scroll'))
+        # RC regression: reading an un-injected @EnvironmentObject traps on the first update.
+        self.assertNotIn('@EnvironmentObject private var downloads', app)
+        self.assertIn('@ObservedObject private var downloads = DownloadStore.shared', app)
+
+    def test_environment_objects_resolve(self):
+        import re
+        views = sorted((REPO_ROOT / 'RepoPocket').glob('*.swift'))
+        owners, required, injected = {}, [], set()
+        for path in views:
+            text = path.read_text()
+            for name, annotation, ctor in re.findall(
+                    r'@(?:StateObject|ObservedObject)\s+(?:private\s+)?var\s+(\w+)\s*(?::\s*(\w+))?\s*=\s*(\w+)', text):
+                owners.setdefault(name, annotation or ctor)
+            for name, typ in re.findall(r'@EnvironmentObject\s+(?:private\s+)?var\s+(\w+)\s*:\s*(\w+)', text):
+                required.append((name, typ))
+            injected.update(re.findall(r'\.environmentObject\((\w+)\)', text))
+        missing = [f'{name}: {typ}' for name, typ in required
+                   if name not in injected and not any(owners.get(c) == typ for c in injected)]
+        self.assertEqual(missing, [], f'@EnvironmentObject without injection: {missing}')
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift available on Actions')
     def test_production_checker_with_mock_api(self):
