@@ -13,7 +13,7 @@ class BrowserRollbackTests(unittest.TestCase):
     def test_exact_stable_navigation_and_api(self):
         if subprocess.run(['git', 'cat-file', '-e', BASE+'^{commit}'], cwd=ROOT, capture_output=True).returncode:
             subprocess.run(['git', 'fetch', '--depth=1', 'origin', BASE], cwd=ROOT, check=True)
-        for file in ('RepoPocket/ReleaseAssetRedirectPolicy.swift','RepoPocket/RepositoryStar.swift','RepoPocket/RepositoryStarUI.swift','RepoPocket/RepositoryUI.swift'):
+        for file in ('RepoPocket/ReleaseAssetRedirectPolicy.swift','RepoPocket/RepositoryStar.swift','RepoPocket/RepositoryUI.swift'):
             self.assertEqual((ROOT/file).read_text(), subprocess.check_output(['git','show',f'{BASE}:{file}'],cwd=ROOT,text=True))
         # RepoPocketApp.swift is not compared byte-for-byte: the directory-nav
         # freeze fix intentionally changes BrowserView's destination form. Its
@@ -26,7 +26,9 @@ class BrowserRollbackTests(unittest.TestCase):
             self.assertFalse((ROOT/'RepoPocket'/file).exists())
         self.assertNotIn('/releases',BROWSER)
         self.assertIn('if path.isEmpty {', BROWSER)
-        self.assertEqual(BROWSER.count('ReleaseManagementDestination(api: api, repo: repo)'), 1)
+        self.assertEqual(BROWSER.count('RepositoryHomeHighlights(api: api, repo: repo)'), 1)
+        highlights = (ROOT/'RepoPocket/RepositoryHomeHighlights.swift').read_text()
+        self.assertEqual(highlights.count('ReleaseManagementDestination(api: api, repo: repo)'), 1)
         self.assertNotIn('managedReleases', LOAD)
         api_original = subprocess.check_output(['git','show',f'{BASE}:RepoPocket/GitHub.swift'],cwd=ROOT,text=True)
         api_new = (ROOT/'RepoPocket/GitHub.swift').read_text()
