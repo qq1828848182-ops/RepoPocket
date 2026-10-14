@@ -35,6 +35,9 @@ extension View {
     func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true) -> some View {
         listRowSeparator(.hidden, edges: .top)
             .listRowSeparator(bottom ? .hidden : .visible, edges: .bottom)
+            .alignmentGuide(.listRowSeparatorLeading) { dimensions in
+                max(dimensions[.listRowSeparatorLeading], dimensions[.leading])
+            }
             .listRowBackground(
                 SoftGroupShape(top: top, bottom: bottom)
                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
