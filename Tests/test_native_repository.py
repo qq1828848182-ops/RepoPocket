@@ -42,7 +42,7 @@ final class Fixture: URLProtocol {
  func check(_ data:Data,_ response:URLResponse,operation:String)throws {
    try ensureActiveAccount();guard let h=response as? HTTPURLResponse,(200..<300).contains(h.statusCode) else {throw AppError(text:"server denied")}
  }
- func communityRead(_ path:String,query:[URLQueryItem])async throws->Data {try ensureActiveAccount();queries=query;return payload}
+ func communityRead(_ path:String,query:[URLQueryItem]=[])async throws->Data {try ensureActiveAccount();queries=query;return payload}
  func resolvedBranch(_ repo:String,branch:String)async throws->String {"main"}
  func workspaceHead(_ repo:String,branch:String)async throws->String {String(repeating:"a",count:40)}
  func file(_ repo:String,path:String,branch:String)async throws->Entry {
