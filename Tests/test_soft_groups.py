@@ -282,6 +282,17 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
     if file == 'WorkspaceSelectionUI.swift':
         # Separator implementation may change; 1.0.4 shape and layout stay exact.
         assert current.split('extension View {\n    ///')[0] == baseline(file).split('extension View {\n    ///')[0]
+    elif file == 'RepositoryStarUI.swift':
+        # The home action adds retryable status reads. Preserve the complete
+        # mutation/captured-account branch and the existing statistics view.
+        old = baseline(file)
+        old_prefix = old[old.index('struct RepositoryStarMenuButton'):old.index('            } else {\n                Button { api.message = error')]
+        assert current[current.index('struct RepositoryStarMenuButton'):current.index('            } else {\n                Button { Task')] == old_prefix
+        assert current.split('struct StarAwareRepositoryStatistics')[1] == old.split('struct StarAwareRepositoryStatistics')[1]
+        old_read = old.split('        .task(id: name) {\n')[1].split('        }\n    }\n}')[0]
+        assert old_read in current
+        assert '.task(id: name) { await load() }' in current
+        assert 'Button { Task { await load() } }' in current
     else:
         assert current == baseline(file), file
 for file, marker in [
