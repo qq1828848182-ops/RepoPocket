@@ -68,7 +68,7 @@ struct RepositoryReadmeView: View {
                     else { CommunityMarkdown(text: text, baseURL: webBase, imageBaseURL: imageBase) }
                 } else if error.isEmpty { ProgressView("加载 README…") }
                 if !error.isEmpty { Text(error); Button("重试") { revision += 1 } }
-                if let url = CommunityRules.repositoryURL(repo) { Link("在 GitHub 查看", destination: url) }
+
             }.padding().frame(maxWidth: .infinity, alignment: .leading)
         }.navigationTitle("README").adaptiveWorkspaceLayout()
         .toolbar { Button("刷新") { revision += 1 } }

@@ -24,15 +24,21 @@ struct RepositorySearchView: View {
         NavigationStack {
             List {
                 Section("仓库筛选") {
+                    SoftGroupRows {
+                    SoftGroupRow("language") {
                     Picker("语言", selection: $options.language) {
                         ForEach(RepositorySearchOptions.languages, id: \.self) { Text($0.isEmpty ? "所有语言" : $0).tag($0) }
                     }
+                    }
+                    SoftGroupRow("sort") {
                     Picker("排序", selection: $options.sort) {
                         ForEach(RepositorySearchSort.allCases) { Text($0.title).tag($0) }
                     }
-                    if options.sort != .best { Toggle("升序", isOn: $options.ascending) }
+                    }
+                    if options.sort != .best { SoftGroupRow("direction") { Toggle("升序", isOn: $options.ascending) } }
                     if options != requestedOptions && !submitted.isEmpty && kind == .repositories {
-                        Button("应用筛选并重新搜索") { begin(.repositories) }
+                        SoftGroupRow("apply") { Button("应用筛选并重新搜索") { begin(.repositories) } }
+                    }
                     }
                 }
                 if submitted.isEmpty {

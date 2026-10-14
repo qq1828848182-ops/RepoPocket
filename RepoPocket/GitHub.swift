@@ -648,6 +648,47 @@ final class GitHub: ObservableObject {
         guard bytes.count <= 8 * 1024 * 1024 else { throw AppError(text: "响应过大，请在 GitHub 查看。") }
         return bytes
     }
+    // Native collaboration transport: allowed routes and bodies are constructed
+    // by CommunityMutationRules, never from a user-supplied API path.
+    func communityMutate(_ repo: String, action: CommunityMutation, title: String = "", text: String = "") async throws -> Data {
+        try ensureActiveAccount(); try Task.checkCancellation()
+        let change = try CommunityMutationRules.request(action, title: title, text: text)
+        let path = try Self.repoPath(repo) + change.suffix
+        if change.requiresPush { try await requireWriteAccess(repo) }
+        try ensureActiveAccount(); try Task.checkCancellation()
+        let body = try JSONSerialization.data(withJSONObject: change.body)
+        let response = try await session.data(for: request(url(path), method: change.method, body: body), delegate: OfficialUpdateRedirectPolicy())
+        try check(response.0, response.1, operation: "仓库协作操作")
+        try Task.checkCancellation()
+        return response.0
+    }
+    func communityStarDates(_ repo: String, page: Int) async throws -> [StarTimestamp] {
+        guard page > 0 else { throw AppError(text: "无效页码") }
+        var r = try request(url(Self.repoPath(repo) + "/stargazers", query: [.init(name: "page", value: String(page)), .init(name: "per_page", value: "100")]))
+        r.setValue("application/vnd.github.star+json", forHTTPHeaderField: "Accept")
+        let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
+        try check(bytes, response); try Task.checkCancellation()
+        guard bytes.count < 8 * 1024 * 1024 else { throw AppError(text: "Star 数据过大") }
+        return try JSONDecoder().decode([StarTimestamp].self, from: bytes)
+    }
+    func communityJobLog(_ repo: String, id: Int) async throws -> String {
+        guard id > 0 else { throw AppError(text: "无效任务编号") }
+        let r = try request(url(Self.repoPath(repo) + "/actions/jobs/\(id)/logs"))
+        let (stream, response) = try await session.bytes(for: r, delegate: WorkflowLogRedirectPolicy())
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw AppError(text: "日志尚未就绪、已过期或缺少 Actions 读取权限。") }
+        var bytes = Data(); let limit = 256 * 1024
+        for try await byte in stream {
+            try Task.checkCancellation()
+            if bytes.count == limit { try ensureActiveAccount(); return String(decoding: bytes, as: UTF8.self) + "\n…日志预览已达256 KiB上限。" }
+            bytes.append(byte)
+        }
+        try ensureActiveAccount()
+        return String(decoding: bytes, as: UTF8.self)
+    }
+    func communityArtifact(_ repo: String, id: Int, name: String) async throws -> URL {
+        guard id > 0 else { throw AppError(text: "无效构建产物编号") }
+        return try await download(request(url(Self.repoPath(repo) + "/actions/artifacts/\(id)/zip")), name: DownloadRules.safeName(name) + ".zip", redirect: WorkflowLogRedirectPolicy())
+    }
     func searchUsers(_ query: String, page: Int) async throws -> UserSearchResponse {
         let endpoint = RepositorySearchRules.endpoint(kind: .users, query: query, page: page)
         let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!

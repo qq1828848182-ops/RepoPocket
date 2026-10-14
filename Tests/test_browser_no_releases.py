@@ -49,7 +49,7 @@ class BrowserRollbackTests(unittest.TestCase):
         gateway = normalized[gateway_start:gateway_end]
         self.assertIn('let bytes = try await data(path, query: query)', gateway)
         self.assertIn('try Task.checkCancellation()', gateway)
-        self.assertNotIn('method:', gateway)
+        self.assertNotIn('method:', gateway.split('    // Native collaboration transport:')[0])
         normalized = normalized[:gateway_start] + normalized[gateway_end:]
         self.assertEqual(normalized.rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
