@@ -253,6 +253,7 @@ struct UploadView: View {
             TextField("提交说明", text: $note).softGroupedRow()
             DisclosureGroup("分支") {
                 TextField("留空使用默认分支", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .softGroupedRow()
             }.softGroupedRow()
             Button("检查提交权限") { Task { await checkAccess() } }.disabled(repo.isEmpty).softGroupedRow()
             Button("预览提交") {
@@ -269,9 +270,9 @@ struct UploadView: View {
             TextField("描述（留空使用名字）", text: $trollDescription).softGroupedRow()
             TextField("Bundle ID（选填）", text: $trollBundleID).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow()
             TextField("作者（选填）", text: $trollAuthor).softGroupedRow()
-            DisclosureGroup("分支") { TextField("留空使用默认分支", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled() }.softGroupedRow()
+            DisclosureGroup("分支") { TextField("留空使用默认分支", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow() }.softGroupedRow()
             Text("上传插件并更新索引").font(.caption).softGroupedRow()
-            DisclosureGroup("索引说明") { Text("单次 Git 提交更新 downloads/ 与 trollpackages.json；保留既有条目及外链。section：插件（已有值保留）。").font(.caption) }.softGroupedRow()
+            DisclosureGroup("索引说明") { Text("单次 Git 提交更新 downloads/ 与 trollpackages.json；保留既有条目及外链。section：插件（已有值保留）。").font(.caption).softGroupedRow() }.softGroupedRow()
             Button("预览并发布插件") { trollPreview = true }.disabled(busy || !canWrite || local == nil || repo.isEmpty || trollName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || trollVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).softGroupedRow(bottom: true)
         }.disabled(busy)
     }

@@ -43,6 +43,7 @@ extension View {
                         }
                     }
                     .clipShape(Rectangle())
+                    .background(SoftGroupCellBoundary(top: top, bottom: bottom))
                     .transaction { transaction in
                         if !animateBackground {
                             transaction.animation = nil
