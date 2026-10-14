@@ -121,7 +121,7 @@ struct RepositoriesView: View {
             List {
                 if CredentialStore.read().isEmpty { Button("添加账号") { accountPresentation.showing = true } }
                 Section {
-                    NavigationLink { CommunityDiscoveryView(api: api) } label: { Label("发现与关注动态", systemImage: "safari") }
+                    NavigationLink { CommunityDiscoveryView(api: api) } label: { Label("发现与关注动态", systemImage: "safari") }.softGroupedRow(top: true, bottom: true)
                 }
                 RepositoryInlineSection(api: api, section: .owned, expanded: $ownedExpanded,
                     repositories: repos, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .owned })
@@ -229,6 +229,7 @@ struct BrowserView: View {
     let repo: String
     let path: String
     let branch: String
+    var showFiles = false
     @State private var selectedBranch = ""
     @State private var repositoryInfo: Repository?
     @StateObject private var copyFeedback = RepositoryCopyFeedback()
@@ -264,16 +265,32 @@ struct BrowserView: View {
                     }
                 }.textSelection(.enabled).softGroupedRow(top: true, bottom: true)
             }
-            if path.isEmpty && releasePresence.exists && api.isCurrentSession {
+            if path.isEmpty && !showFiles {
+                RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
+            if path.isEmpty && !showFiles && releasePresence.exists && api.isCurrentSession {
                 Section {
                     NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: {
                         Label("发行版", systemImage: "shippingbox")
                     }.softGroupedRow(top: true, bottom: true)
                 }
             }
-            if path.isEmpty {
-                RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
-            }
+                Section {
+                    SoftGroupRows {
+                        SoftGroupRow("branch") {
+                            Button { showBranches = true } label: {
+                                HStack { Label(activeBranch.isEmpty ? "默认分支" : activeBranch, systemImage: "arrow.triangle.branch"); Spacer(); Text("更改分支").font(.subheadline) }
+                            }
+                        }
+                        SoftGroupRow("code") {
+                            NavigationLink { RepositoryCodeDestination(api: api, repo: repo, branch: activeBranch) } label: { RepositoryFeatureLabel(title: "代码", symbol: "chevron.left.forwardslash.chevron.right", color: .gray) }
+                        }
+                        SoftGroupRow("history") {
+                            NavigationLink { HistoryView(api: api, repo: repo, branch: activeBranch) } label: { RepositoryFeatureLabel(title: "提交", symbol: "clock.arrow.circlepath", color: .gray) }
+                        }
+                    }
+                }
+                RepositoryReadmeSection(api: api, repo: repo, branch: activeBranch, canWrite: canWrite)
+            } else {
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {
                 Label("此目录没有文件", systemImage: "folder").foregroundColor(.secondary).padding(.vertical)
@@ -312,11 +329,12 @@ struct BrowserView: View {
                     }
                 } else { Text(e.name + " (" + e.type + ")").softGroupedRow(top: e.id == entries.first?.id, bottom: e.id == entries.last?.id) }
             }
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(path.isEmpty ? "仓库文件" : (path as NSString).lastPathComponent)
+        .navigationTitle(path.isEmpty ? (showFiles ? "代码" : ((try? RepositoryInput.parse(repo))?.split(separator: "/").last.map(String.init) ?? repo)) : (path as NSString).lastPathComponent)
         .adaptiveWorkspaceLayout()
         .refreshable { refreshing = true; await load(); refreshing = false }
         .toolbar {
@@ -476,10 +494,8 @@ struct FileView: View {
             }
             if editable && !deleted {
                 Section {
-                    NavigationLink("阅读预览 / 代码高亮") { FileReadingView(text: text, path: entry.path, repo: repo, branch: branch) }
-                    if let historyURL = CommunityRules.repositoryURL(repo, suffix: "/commits/" + GitHub.component(branch) + "/" + entry.path.split(separator: "/").map { GitHub.component(String($0)) }.joined(separator: "/")) {
-                        Link("此文件的历史记录", destination: historyURL)
-                    }
+                    NavigationLink("阅读预览 / 代码高亮") { FileReadingView(text: text, path: entry.path, repo: repo, branch: branch) }.softGroupedRow(top: true)
+                    NavigationLink("此文件的历史记录") { NativeFileHistoryView(api: api, repo: repo, path: entry.path, branch: branch) }.softGroupedRow(bottom: true)
                 }
                 if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled).softGroupedRow(top: true, bottom: true) } }
                 else {
@@ -598,8 +614,8 @@ struct SettingsView: View {
                 Section("外观") {
                     Picker("主题", selection: $appearance) {
                         Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark")
-                    }
-                    NavigationLink("开源组件许可") { OpenSourceNoticesView() }
+                    }.softGroupedRow(top: true)
+                    NavigationLink("开源组件许可") { OpenSourceNoticesView() }.softGroupedRow(bottom: true)
                 }
                 CacheSettingsSection(api: api, checker: updateChecker)
                 Section("安全") {

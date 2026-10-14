@@ -30,22 +30,14 @@ struct SoftGroupShape: Shape {
 }
 
 extension View {
-    /// Draws the separator in the row background instead of using List's
-    /// content-inset separator. This keeps the line aligned with the complete
-    /// grouped row while leaving List scrolling, navigation and swipe actions
-    /// native.
+    /// Keep the 1.0.4 outer shape, using the native content-aligned separator.
+    /// Label rows align after the icon; text-only rows align with their text.
     func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true) -> some View {
-        listRowSeparator(.hidden)
+        listRowSeparator(.hidden, edges: .top)
+            .listRowSeparator(bottom ? .hidden : .visible, edges: .bottom)
             .listRowBackground(
                 SoftGroupShape(top: top, bottom: bottom)
                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    .overlay(alignment: .bottom) {
-                        if !bottom {
-                            Rectangle()
-                                .fill(Color(uiColor: .separator))
-                                .frame(height: 0.5)
-                        }
-                    }
                     .clipShape(Rectangle())
                     .transaction { transaction in
                         if !animateBackground {
@@ -54,5 +46,32 @@ extension View {
                         }
                     }
             )
+    }
+}
+
+/// Native sibling rows with one shared boundary calculation, including rows
+/// that appear after loading, permission checks or errors. No clipping of taps.
+struct SoftGroupRow: Identifiable {
+    let id: String
+    let content: AnyView
+    init<Content: View>(_ id: String, @ViewBuilder content: () -> Content) {
+        self.id = id; self.content = AnyView(content())
+    }
+}
+@resultBuilder enum SoftGroupRowsBuilder {
+    static func buildExpression(_ row: SoftGroupRow) -> [SoftGroupRow] { [row] }
+    static func buildBlock(_ groups: [SoftGroupRow]...) -> [SoftGroupRow] { groups.flatMap { $0 } }
+    static func buildOptional(_ rows: [SoftGroupRow]?) -> [SoftGroupRow] { rows ?? [] }
+    static func buildEither(first: [SoftGroupRow]) -> [SoftGroupRow] { first }
+    static func buildEither(second: [SoftGroupRow]) -> [SoftGroupRow] { second }
+    static func buildArray(_ groups: [[SoftGroupRow]]) -> [SoftGroupRow] { groups.flatMap { $0 } }
+}
+struct SoftGroupRows: View {
+    private let rows: [SoftGroupRow]
+    init(@SoftGroupRowsBuilder rows: () -> [SoftGroupRow]) { self.rows = rows() }
+    var body: some View {
+        ForEach(rows) { row in
+            row.content.softGroupedRow(top: row.id == rows.first?.id, bottom: row.id == rows.last?.id)
+        }
     }
 }

@@ -9,9 +9,9 @@ detail = Path(REPO_ROOT, 'RepoPocket/DesktopViews.swift').read_text()
 style = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelectionUI.swift').read_text()
 card = Path(REPO_ROOT, 'RepoPocket/RepositoryUI.swift').read_text().split('struct RepositoryCard:')[1].split('struct LoadingRows:')[0]
 assert '.frame(maxWidth: .infinity, alignment: .leading)' in card
-assert 'listRowSeparator(.hidden)' in style
-assert '.overlay(alignment: .bottom)' in style
-assert '.fill(Color(uiColor: .separator))' in style
+assert 'listRowSeparator(.hidden, edges: .top)' in style
+assert '.listRowSeparator(bottom ? .hidden : .visible, edges: .bottom)' in style
+assert '.overlay(alignment: .bottom)' not in style
 assert 'GitHubAvatar(url: avatarURL, size: 24)' in card
 assert 'cornerRadius: radius, style: .continuous' in style and 'let radius: CGFloat = 22' in style
 assert 'listRowBackground(' in style and 'SoftGroupShape' in style and '.secondarySystemGroupedBackground' in style
@@ -274,11 +274,16 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
         start = current.index('    // Read-only gateway')
         end = current.index('    func searchUsers(', start)
         gateway = current[start:end]
-        assert 'try await data(path, query: query)' in gateway and 'method:' not in gateway
+        read_gateway = gateway.split('    // Native collaboration transport:')[0]
+        assert 'try await data(path, query: query)' in read_gateway and 'method:' not in read_gateway
         current = current[:start] + current[end:]
         current = current.replace('page: Int, options: RepositorySearchOptions = .init()) async throws -> RepositorySearchResponse', 'page: Int) async throws -> RepositorySearchResponse')
         current = current.replace('query: query, page: page, options: options)', 'query: query, page: page)')
-    assert current == baseline(file), file
+    if file == 'WorkspaceSelectionUI.swift':
+        # Separator implementation may change; 1.0.4 shape and layout stay exact.
+        assert current.split('extension View {\n    ///')[0] == baseline(file).split('extension View {\n    ///')[0]
+    else:
+        assert current == baseline(file), file
 for file, marker in [
     ('ReleaseBranchPicker.swift', 'struct ReleaseBranchPicker: View {'),
     ('ReleaseEntryView.swift', '    private func proceed() async {'),

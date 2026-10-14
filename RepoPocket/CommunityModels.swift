@@ -38,7 +38,7 @@ struct CollaborationItem: Decodable, Identifiable {
     let head: BranchReference?
     let base: BranchReference?
     struct PullReference: Decodable { let url: String? }
-    struct BranchReference: Decodable { let ref: String }
+    struct BranchReference: Decodable { let ref: String; let sha: String? }
     struct IssueLabel: Decodable, Identifiable {
         let name: String
         var id: String { name }

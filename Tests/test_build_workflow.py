@@ -24,10 +24,10 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertNotIn('gh release', self.source)
         self.assertNotIn('softprops/action-gh-release', self.source)
         self.assertIn('Print :CFBundleVersion\' "$APP/Info.plist")" = "4"', self.source)
-        self.assertIn('Print :CFBundleShortVersionString\' "$APP/Info.plist")" = "1.1.0"', self.source)
+        self.assertIn('Print :CFBundleShortVersionString\' "$APP/Info.plist")" = "1.1.1"', self.source)
         project = (REPO_ROOT / 'project.yml').read_text()
-        self.assertIn('MARKETING_VERSION: "1.1.0"', project)
-        self.assertIn('CURRENT_PROJECT_VERSION: "4"', project)
+        self.assertIn('MARKETING_VERSION: "1.1.1"', project)
+        self.assertIn('CURRENT_PROJECT_VERSION: "5"', project)
 
     def test_python_scripts_use_organized_existing_paths(self):
         import re
@@ -57,11 +57,11 @@ class BuildWorkflowTests(unittest.TestCase):
         commands = self.source
         for required in ('xcodebuild', 'CODE_SIGNING_ALLOWED=NO',
                          'codesign --verify --deep --strict',
-                         'unzip -t RepoPocket-1.1.0.ipa',
-                         'shasum -a 256 -c RepoPocket-1.1.0.ipa.sha256'):
+                         'unzip -t RepoPocket-1.1.1.ipa',
+                         'shasum -a 256 -c RepoPocket-1.1.1.ipa.sha256'):
             self.assertIn(required, commands)
         self.assertIn('uses: actions/upload-artifact@v4', commands)
-        self.assertIn('name: RepoPocket-1.1.0', commands)
+        self.assertIn('name: RepoPocket-1.1.1', commands)
 
 
 if __name__ == '__main__':
