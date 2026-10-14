@@ -60,12 +60,18 @@ final class DeviceOAuthRedirectPolicy: NSObject, URLSessionTaskDelegate {
     @Published private(set) var message = ""
     private var task: Task<Void, Never>?
     private var operation = UUID()
-    private let session: URLSession = {
+    private let session: URLSession
+    private let wait: (UInt64) async throws -> Void
+    init(session: URLSession? = nil, wait: @escaping (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }) {
+        self.session = session ?? Self.makeSession()
+        self.wait = wait
+    }
+    private static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.httpCookieStorage = nil; config.urlCredentialStorage = nil; config.urlCache = nil
         config.timeoutIntervalForRequest = 30
         return URLSession(configuration: config, delegate: DeviceOAuthRedirectPolicy(), delegateQueue: nil)
-    }()
+    }
     func cancel() {
         operation = UUID(); task?.cancel(); task = nil; busy = false
         userCode = ""; verificationURL = nil
@@ -85,7 +91,7 @@ final class DeviceOAuthRedirectPolicy: NSObject, URLSessionTaskDelegate {
                 let deadline = Date().addingTimeInterval(Double(code.expires_in))
                 var interval = max(5, min(code.interval ?? 5, 60))
                 while Date() < deadline {
-                    try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
+                    try await wait(UInt64(interval) * 1_000_000_000)
                     try Task.checkCancellation()
                     guard Date() < deadline, operation == identifier, api.isCurrentSession else { break }
                     let result: DeviceTokenResponse = try await post("/login/oauth/access_token", fields: [

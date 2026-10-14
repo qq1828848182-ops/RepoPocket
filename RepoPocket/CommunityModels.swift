@@ -125,7 +125,8 @@ enum CommunityRules {
         let directory = (file as NSString).deletingLastPathComponent
         let path = directory.split(separator: "/").map { component(String($0)) }.joined(separator: "/")
         let root = raw ? "https://raw.githubusercontent.com/" + canonical + "/" : "https://github.com/" + canonical + "/blob/"
-        return URL(string: root + component(branch) + "/" + (path.isEmpty ? "" : path + "/"))
+        let relative = raw ? (path.isEmpty ? "" : path + "/") : file.split(separator: "/").map { component(String($0)) }.joined(separator: "/")
+        return URL(string: root + component(branch) + "/" + relative)
     }
     static func readmeText(_ entry: Entry) throws -> String {
         guard (entry.size ?? Int.max) <= markdownByteLimit, entry.encoding == "base64",
