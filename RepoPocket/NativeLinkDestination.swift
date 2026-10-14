@@ -11,12 +11,12 @@ struct ReadingLinkDestination: View {
     let url: URL
     let api: GitHub?
     @Environment(\.dismiss) private var dismiss
-    private var destination: AnyView {
+    private var nativeDestination: AnyView? {
         guard let api, url.host?.lowercased() == "github.com",
-              url.user == nil, url.password == nil else { return AnyView(ContainedWebPage(url: url)) }
+              url.user == nil, url.password == nil else { return nil }
         let parts = url.path.split(separator: "/").map(String.init)
         guard parts.count >= 2, let repo = try? RepositoryInput.parse(parts[0] + "/" + parts[1]) else {
-            return AnyView(ContainedWebPage(url: url))
+            return nil
         }
         if parts.count == 2 { return AnyView(BrowserView(api: api, repo: repo, path: "", branch: "")) }
         if parts.count == 4, let number = Int(parts[3]), number > 0, ["issues", "pull"].contains(parts[2]) {
@@ -29,10 +29,19 @@ struct ReadingLinkDestination: View {
         if parts.count == 3, parts[2] == "actions" {
             return AnyView(WorkflowRunsView(api: api, repo: repo, branch: ""))
         }
-        return AnyView(ContainedWebPage(url: url))
+        return nil
     }
     var body: some View {
-        NavigationStack { destination.toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } } }
+        if let nativeDestination {
+            NavigationStack {
+                nativeDestination.toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } }
+                }
+            }
+        } else {
+            // Safari supplies its own navigation bar and Done button.
+            ContainedWebPage(url: url)
+        }
     }
 }
 
