@@ -146,6 +146,7 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     probe.dismissStartupUpdate()
     await probe.automaticCheck(api: probeAPI)
     precondition(probe.startupRelease == nil && probeAPI.calls == 1)
+    AppUpdateSessionRules.startupPromptOffered = false
     let nextLaunch = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
     await nextLaunch.automaticCheck(api: probeAPI)
     precondition(probeAPI.calls == 2 && nextLaunch.startupRelease != nil)
