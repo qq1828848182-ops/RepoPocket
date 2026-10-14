@@ -274,21 +274,17 @@ struct BrowserView: View {
                     }
                 }.textSelection(.enabled).softGroupedRow(top: true, bottom: !(path.isEmpty && !showFiles))
                 if path.isEmpty && !showFiles {
-                    RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
-                        .buttonStyle(.borderless)
-                        .softGroupedRow(bottom: true)
+                    HStack(spacing: 16) {
+                        RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
+                    }.buttonStyle(.borderless).softGroupedRow(bottom: true)
                 }
             }
     }
     @ViewBuilder private var repositoryOverview: some View {
                 RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
-            if path.isEmpty && !showFiles && releasePresence.exists && api.isCurrentSession {
-                Section {
-                    NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: {
-                        Label("发行版", systemImage: "shippingbox")
-                    }.softGroupedRow(top: true, bottom: true)
-                }
-            }
+                RepositoryHomeHighlights(api: api, repo: repo)
                 Section {
                     SoftGroupRows {
                         SoftGroupRow("branch") {
@@ -361,8 +357,8 @@ struct BrowserView: View {
             if canWrite { Button("上传") { showUpload = true }.disabled(busy) }
             Menu {
                 CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)
-                ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
                 if !path.isEmpty || showFiles {
+                    ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
                     RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                 }
                 Button("切换 / 创建分支") { showBranches = true }
