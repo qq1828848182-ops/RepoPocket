@@ -27,7 +27,7 @@ final class Fixture: URLProtocol {
 @MainActor final class GitHub {
  let session:URLSession
  var active=true; var push=false; var pushChecks=0; var payload=Data(); var queries:[URLQueryItem]=[]
- var body:[String:Any]=[:]; var method="";var files:[String]=[]
+ var body:[String:Any]=[:]; var method="";var files:[String]=[];var invalidContent=false
  init(){let config=URLSessionConfiguration.ephemeral;config.protocolClasses=[Fixture.self];session=URLSession(configuration:config)}
  var isCurrentSession:Bool {active}
  func ensureActiveAccount() throws {guard active else {throw CancellationError()}}
@@ -47,7 +47,7 @@ final class Fixture: URLProtocol {
  func workspaceHead(_ repo:String,branch:String)async throws->String {String(repeating:"a",count:40)}
  func file(_ repo:String,path:String,branch:String)async throws->Entry {
    precondition(branch==String(repeating:"a",count:40));files.append(path)
-   return Entry(name:path,path:path,type:"file",sha:"x",size:4,download_url:nil,content:Data("a\nb\n".utf8).base64EncodedString(),encoding:"base64")
+   return Entry(name:path,path:path,type:"file",sha:"x",size:4,download_url:nil,content:Data(invalidContent ? [0,1,2,3] : Array("a\nb\n".utf8)).base64EncodedString(),encoding:"base64")
  }
 MUTATE
 }
@@ -90,6 +90,10 @@ MUTATE
    api.payload=Data(#"{"tree":[{"path":"a.swift","type":"blob","size":4},{"path":"huge.swift","type":"blob","size":999999}],"truncated":false}"#.utf8)
    let summary=try await api.codeLineSummary("owner/repo",branch:"main",progress:{_ in})
    precondition(summary.files==1 && summary.lines==2 && summary.skipped==1)
+   let many=(0..<50).map { ["path":"invalid\($0).swift","type":"blob","size":4] as [String:Any] }
+   api.payload=try JSONSerialization.data(withJSONObject:["tree":many,"truncated":false]);api.invalidContent=true;api.files=[]
+   let invalid=try await api.codeLineSummary("owner/repo",branch:"main",progress:{_ in})
+   precondition(api.files.count==40 && invalid.files==0 && invalid.skipped==50)
    let policy=WorkflowLogRedirectPolicy()
    let task=api.session.dataTask(with:URL(string:"https://api.github.com/")!)
    defer{task.cancel()}

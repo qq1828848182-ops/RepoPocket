@@ -27,16 +27,17 @@ extension GitHub {
         let bytes = try await communityRead(Self.repoPath(repo) + "/git/trees/" + Self.component(head), query: [.init(name: "recursive", value: "1")])
         let tree = try JSONDecoder().decode(CodeTree.self, from: bytes)
         let files = tree.tree.filter { $0.type == "blob" && NativeStatisticsRules.extensions.contains(($0.path as NSString).pathExtension.lowercased()) }
-        var count = 0, lines = 0, budget = 0
+        var count = 0, lines = 0, budget = 0, attempted = 0
         for file in files {
             try Task.checkCancellation()
-            guard count < 40 else { break }
+            guard attempted < 40 else { break }
             guard let size = file.size, size <= 128 * 1024, budget + size <= 2 * 1024 * 1024 else { continue }
+            attempted += 1; budget += size
             let entry = try await self.file(repo, path: file.path, branch: head)
             guard entry.encoding == "base64", let raw = entry.content,
-                  let data = Data(base64Encoded: raw, options: .ignoreUnknownCharacters), !data.contains(0),
+                  let data = Data(base64Encoded: raw, options: .ignoreUnknownCharacters), data.count <= 128 * 1024, !data.contains(0),
                   let text = String(data: data, encoding: .utf8) else { continue }
-            lines += NativeStatisticsRules.lineCount(text); count += 1; budget += data.count; progress(count)
+            lines += NativeStatisticsRules.lineCount(text); count += 1; progress(count)
         }
         return CodeLineSummary(files: count, lines: lines, skipped: files.count - count, treeTruncated: tree.truncated == true)
     }
