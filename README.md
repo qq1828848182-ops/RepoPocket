@@ -19,15 +19,12 @@ RepoPocket 是一款适用于 iOS 16+、TrollStore 的 GitHub 文件管理工具
 - 管理 `.dylib` 插件的版本、名称、作者等元信息，目前适配 LSP 版 TrollFools 插件源格式，不涉及插件二进制代码修改
 - 管理本地工作区文件
 - 管理你的 `发行版`
-- 内置更新检查，支持跳转 TrollStore 一键安装更新
 
 ## 下载
 
 [下载 RepoPocket](https://github.com/wm0104/RepoPocket/releases/latest)
 
 系统要求：iOS 16 或更高版本。低于 iOS 16 的系统未测试，请自行测试。
-
-> 提示：更新时若提示「跳转 TrollStore 安装需启用 URL Scheme」，请在 TrollStore 设置中开启 URL Scheme。
 
 ## 相关仓库
 
