@@ -59,7 +59,7 @@ struct StartupUpdateCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             // The footer does not scroll; the two buttons have separate >=44pt hit regions.
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("跳转TrollStore安装需启用 URL Scheme")
                     .font(.caption2).foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -100,7 +100,7 @@ struct StartupUpdateCard: View {
     }
     private func close() {
         requestID = UUID()
-        checker.dismissStartupUpdate()
+        checker.skipAndDismissStartupRelease(accountID: api.accountID)
         dismiss()
     }
     private func updateSettings() {
