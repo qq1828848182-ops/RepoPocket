@@ -272,7 +272,12 @@ struct BrowserView: View {
                     } else {
                         CompactRepositorySummary(fullName: repo, name: "")
                     }
-                }.textSelection(.enabled).softGroupedRow(top: true, bottom: true)
+                }.textSelection(.enabled).softGroupedRow(top: true, bottom: !(path.isEmpty && !showFiles))
+                if path.isEmpty && !showFiles {
+                    RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
+                        .buttonStyle(.borderless)
+                        .softGroupedRow(bottom: true)
+                }
             }
     }
     @ViewBuilder private var repositoryOverview: some View {
@@ -357,7 +362,9 @@ struct BrowserView: View {
             Menu {
                 CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)
                 ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
-                RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
+                if !path.isEmpty || showFiles {
+                    RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
+                }
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
                 if path.isEmpty && canWrite { Button("新建发行版") { creatingRelease = true } }
