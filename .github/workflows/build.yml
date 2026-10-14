@@ -2,6 +2,11 @@ name: Build IPA
 on:
   workflow_dispatch:
     inputs:
+      style_preview:
+        description: Render fixed-data simulator style screenshots
+        type: boolean
+        required: false
+        default: false
       build_update_probe:
         description: Build an optional 1.0.3-rc.1 IPA for testing update handoff
         type: boolean
@@ -166,3 +171,38 @@ jobs:
         with:
           name: build-log
           path: build.log
+
+      - name: Build simulator Debug app
+        if: ${{ inputs.style_preview }}
+        run: |
+          set -o pipefail
+          xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath preview-build CODE_SIGNING_ALLOWED=NO build > preview-build.log 2>&1 || { tail -100 preview-build.log; exit 1; }
+      - name: Render fixed-data account and repository screens
+        if: ${{ inputs.style_preview }}
+        run: |
+          set -euo pipefail
+          mkdir -p screenshots
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-17")]; print(r[-1]["identifier"] if r else "")')
+          test -n "$RUNTIME"
+          DEVICE=$(xcrun simctl create RepoPocketStylePreview com.apple.CoreSimulator.SimDeviceType.iPhone-15-Pro "$RUNTIME")
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl status_bar "$DEVICE" override --time 9:41 --batteryState charged --batteryLevel 100
+          xcrun simctl install "$DEVICE" preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
+          xcrun simctl launch "$DEVICE" com.wm0104.RepoPocket -style-preview -account-preview
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot screenshots/account.png
+          xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
+          xcrun simctl launch "$DEVICE" com.wm0104.RepoPocket -style-preview
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot screenshots/repository.png
+          xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
+          xcrun simctl shutdown "$DEVICE"
+          xcrun simctl delete "$DEVICE"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.style_preview }}
+        with:
+          name: simulator-style-preview
+          path: |
+            screenshots/*.png
+            preview-build.log
