@@ -27,7 +27,7 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn('Print :CFBundleShortVersionString\' "$APP/Info.plist")" = "1.1.1"', self.source)
         project = (REPO_ROOT / 'project.yml').read_text()
         self.assertIn('MARKETING_VERSION: "1.1.1"', project)
-        self.assertIn('CURRENT_PROJECT_VERSION: "5"', project)
+        self.assertIn('CURRENT_PROJECT_VERSION: "6"', project)
 
     def test_python_scripts_use_organized_existing_paths(self):
         import re
