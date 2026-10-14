@@ -42,6 +42,7 @@ targets:
     info:
       path: RepoPocket/Info.plist
       properties:
+        CADisableMinimumFrameDurationOnPhone: true
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UIFileSharingEnabled: true

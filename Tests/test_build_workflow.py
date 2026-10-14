@@ -28,6 +28,8 @@ class BuildWorkflowTests(unittest.TestCase):
         project = (REPO_ROOT / 'project.yml').read_text()
         self.assertIn('MARKETING_VERSION: "1.1.1"', project)
         self.assertIn('CURRENT_PROJECT_VERSION: "6"', project)
+        self.assertIn('CADisableMinimumFrameDurationOnPhone: true', project)
+        self.assertIn('Print :CADisableMinimumFrameDurationOnPhone', self.source)
 
     def test_python_scripts_use_organized_existing_paths(self):
         import re
