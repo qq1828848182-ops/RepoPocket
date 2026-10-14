@@ -28,14 +28,9 @@ struct AccountRootView: View {
     @StateObject private var gitCore = GitCore()
     @StateObject private var updateChecker = UpdateChecker()
     @EnvironmentObject private var accountPresentation: AccountPresentation
-    @ObservedObject private var downloads = DownloadStore.shared
     @State private var selectedTab = 0
     @State private var startupSheetVisible = false
-    @State private var startupSheetActive = false
-    private var startupUpdateReady: Bool {
-        updateChecker.startupRelease != nil && api.isCurrentSession && api.message.isEmpty
-            && !accountPresentation.showing && downloads.picker == nil
-    }
+    @State private var startupSheetQueued = false
     var body: some View {
             TabView(selection: $selectedTab) {
                 RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }.tag(0)
@@ -45,20 +40,14 @@ struct AccountRootView: View {
                 SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.tag(4)
             }
             .task { await updateChecker.automaticCheck(api: api) }
-            .task(id: startupUpdateReady) {
-                guard startupUpdateReady, !startupSheetActive else { return }
-                // Allow an existing system presentation to finish its native dismissal.
-                do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
-                guard !Task.isCancelled, startupUpdateReady, !startupSheetActive else { return }
-                startupSheetActive = true
-                startupSheetVisible = true
+            .onReceive(updateChecker.$startupRelease) { release in
+                guard release != nil, !startupSheetQueued else { return }
+                startupSheetQueued = true
             }
-            .onChange(of: updateChecker.startupRelease == nil) { empty in
-                if empty { startupSheetVisible = false }
-            }
+            .task(id: startupSheetQueued) { await queueStartupSheet() }
             .sheet(isPresented: $startupSheetVisible, onDismiss: {
                 updateChecker.dismissStartupUpdate()
-                startupSheetActive = false
+                startupSheetQueued = false
             }) {
                 if let release = updateChecker.startupRelease {
                     StartupUpdateCard(api: api, checker: updateChecker, release: release) {
@@ -70,6 +59,17 @@ struct AccountRootView: View {
             .alert("提示", isPresented: Binding(get: { !api.message.isEmpty }, set: { if !$0 { api.message = "" } })) {
                 Button("好", role: .cancel) { api.message = "" }
             } message: { Text(api.message) }
+
+    // Reads of other observable objects stay out of body: during view evaluation a
+    // missing or mid-transition dependency would trap, and this path must never do that.
+    private func queueStartupSheet() async {
+        guard startupSheetQueued else { return }
+        // Let an existing system presentation finish its native dismissal first.
+        do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
+        guard !Task.isCancelled, startupSheetQueued, updateChecker.startupRelease != nil,
+              api.isCurrentSession, api.message.isEmpty,
+              !accountPresentation.showing, DownloadStore.shared.picker == nil else { return }
+        startupSheetVisible = true
     }
 }
 
