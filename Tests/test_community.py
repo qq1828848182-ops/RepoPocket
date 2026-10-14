@@ -14,7 +14,7 @@ class CommunityTests(unittest.TestCase):
     def test_production_community(self):
         source = (ROOT/'RepoPocket/GitHub.swift').read_text()
         models = source[source.index('struct User: Decodable'):source.index('struct Release: Decodable')]
-        oauth = (ROOT/'RepoPocket/DeviceOAuth.swift').read_text().split('final class DeviceOAuthRedirectPolicy')[0]
+        oauth = (ROOT/'RepoPocket/DeviceOAuth.swift').read_text()
         program = '''import Foundation
 import Combine
 struct AppError: Error { let text: String }
@@ -23,6 +23,8 @@ enum RefreshFailure { static func isCancellation(_ error: Error) -> Bool { error
  var isCurrentSession = true
  var calls: [(String, [URLQueryItem])] = []
  var payload = Data("[]".utf8)
+ var added: [String] = []
+ func addAccount(token: String) async throws { try Task.checkCancellation(); guard isCurrentSession else { throw CancellationError() }; added.append(token) }
  static func component(_ text: String) -> String { text.addingPercentEncoding(withAllowedCharacters: .alphanumerics)! }
  static func repoPath(_ repo: String) throws -> String { "/repos/" + (try RepositoryInput.parse(repo)) }
  func communityRead(_ path: String, query: [URLQueryItem]) async throws -> Data {
@@ -32,8 +34,28 @@ enum RefreshFailure { static func isCancellation(_ error: Error) -> Bool { error
 '''+models+'\n'+(ROOT/'RepoPocket/RepositoryInput.swift').read_text()+'\n'+(ROOT/'RepoPocket/DesktopModels.swift').read_text()+'\n'+(ROOT/'RepoPocket/RepositorySearchRules.swift').read_text()+'\n'+(ROOT/'RepoPocket/CommunityModels.swift').read_text()+'\n'+(ROOT/'RepoPocket/CommunityAPI.swift').read_text()+'\n'+(ROOT/'RepoPocket/CommunityPaging.swift').read_text()+'\n'+oauth+r'''
 struct Row: Identifiable { let id: Int }
 enum SampleError: Error { case offline }
+final class OAuthFixtureProtocol: URLProtocol {
+ private static let lock = NSLock()
+ private static var payloads: [Data] = []
+ private static var recorded: [URLRequest] = []
+ static func reset(_ values: [String]) { lock.lock(); defer { lock.unlock() }; payloads=values.map { Data($0.utf8) }; recorded=[] }
+ static func requests() -> [URLRequest] { lock.lock(); defer { lock.unlock() }; return recorded }
+ private static func next(_ request: URLRequest) -> Data {
+   lock.lock(); defer { lock.unlock() }; recorded.append(request)
+   return payloads.isEmpty ? Data(#"{"error":"access_denied"}"#.utf8) : payloads.removeFirst()
+ }
+ override class func canInit(with request: URLRequest) -> Bool { true }
+ override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+ override func startLoading() {
+   let data=Self.next(request)
+   client?.urlProtocol(self,didReceive:HTTPURLResponse(url:request.url!,statusCode:200,httpVersion:nil,headerFields:["Content-Type":"application/json"])!,cacheStoragePolicy:.notAllowed)
+   client?.urlProtocol(self,didLoad:data); client?.urlProtocolDidFinishLoading(self)
+ }
+ override func stopLoading() {}
+}
 @main struct Run {
  @MainActor static func drain(_ store: CommunityPageStore<Row>) async { while store.busy { await Task.yield() } }
+ @MainActor static func drainOAuth(_ controller: DeviceOAuthController) async { while controller.busy { await Task.yield() } }
  @MainActor static func main() async throws {
    let decoder = JSONDecoder()
    let api = GitHub()
@@ -71,7 +93,8 @@ enum SampleError: Error { case offline }
    let base = CommunityRules.readingBase("o/r",branch:"feature/a",file:"文 档/README.md",raw:true)!
    precondition(base.host == "raw.githubusercontent.com" && base.absoluteString.contains("%20"))
    let rootBase = CommunityRules.readingBase("o/r",branch:"main",file:"README.md",raw:false)!
-   precondition(rootBase.absoluteString == "https://github.com/o/r/blob/main/")
+   precondition(rootBase.absoluteString == "https://github.com/o/r/blob/main/README.md")
+   precondition(URL(string:"#heading",relativeTo:rootBase)!.absoluteURL.absoluteString == "https://github.com/o/r/blob/main/README.md#heading")
    let sample = "let 中文 = \"if 12\" // return 30\nvar n = 42"
    let tokens = SourceLexer.tokens(sample,hashComments:false)
    let words = tokens.map { (sample as NSString).substring(with:$0.range) }
@@ -123,7 +146,36 @@ enum SampleError: Error { case offline }
      await drain(store)
    }
    precondition(store.items.count == 300 && store.limited && !store.more)
+   let config=URLSessionConfiguration.ephemeral; config.protocolClasses=[OAuthFixtureProtocol.self]
+   let session=URLSession(configuration:config)
+   defer { session.invalidateAndCancel() }
+   let device=#"{"device_code":"fixture-device","user_code":"AA-BB","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}"#
+   OAuthFixtureProtocol.reset([device,#"{"error":"authorization_pending"}"#,#"{"error":"slow_down","interval":10}"#,#"{"access_token":"fixture-token","token_type":"bearer"}"#])
+   let oauthAPI=GitHub(); var delays:[UInt64]=[]; var completions=0
+   let controller=DeviceOAuthController(session:session,wait:{ delays.append($0) })
+   controller.start(clientID:"testclient",privateRepositories:false,api:oauthAPI) { completions += 1 }
+   await drainOAuth(controller)
+   precondition(oauthAPI.added == ["fixture-token"] && completions == 1)
+   precondition(delays == [5_000_000_000,5_000_000_000,10_000_000_000])
+   precondition(controller.userCode.isEmpty && controller.verificationURL == nil)
+   let requests=OAuthFixtureProtocol.requests()
+   precondition(requests.map { $0.url!.path } == ["/login/device/code","/login/oauth/access_token","/login/oauth/access_token","/login/oauth/access_token"])
+   precondition(requests.allSatisfy { $0.value(forHTTPHeaderField:"Authorization") == nil && $0.httpMethod == "POST" && $0.url!.host == "github.com" })
+   OAuthFixtureProtocol.reset([device,#"{"error":"access_denied"}"#])
+   controller.start(clientID:"testclient",privateRepositories:true,api:oauthAPI) { completions += 1 }
+   await drainOAuth(controller)
+   precondition(oauthAPI.added.count == 1 && completions == 1 && controller.message.contains("取消"))
+   OAuthFixtureProtocol.reset([device,#"{"access_token":"must-not-save","token_type":"bearer"}"#])
+   var resume:CheckedContinuation<Void,Error>?
+   let cancelController=DeviceOAuthController(session:session,wait:{ _ in try await withCheckedThrowingContinuation { resume=$0 } })
+   cancelController.start(clientID:"testclient",privateRepositories:false,api:oauthAPI) { completions += 1 }
+   while resume == nil { await Task.yield() }
+   cancelController.cancel(); resume!.resume()
+   for _ in 0..<30 { await Task.yield() }
+   precondition(oauthAPI.added.count == 1 && completions == 1 && !cancelController.busy && cancelController.userCode.isEmpty)
+   precondition(OAuthFixtureProtocol.requests().count == 1)
    print("PASS production community API routing, optional payloads, README limits, filter encoding, OAuth validation, pagination retry/dedup/cancel/account isolation/bounds")
+   print("PASS production device OAuth via URLProtocol: pending, slow_down, success, denial, cancellation, no Authorization header or real GitHub traffic")
  }
 }
 '''

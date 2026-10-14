@@ -69,7 +69,7 @@ struct CollaborationDetailView: View {
                     if let head = item.head, let base = item.base { Text(head.ref + " → " + base.ref).font(.caption).textSelection(.enabled) }
                     if let count = item.changed_files { Text("\(count) 个文件 · +\(item.additions ?? 0) / −\(item.deletions ?? 0)").font(.caption) }
                 }
-                Section("正文") { CommunityMarkdown(text: item.body ?? "暂无正文", baseURL: CommunityRules.repositoryURL(repo)) }
+                Section("正文") { CommunityMarkdown(text: item.body ?? "暂无正文", baseURL: CommunityRules.webURL(item.html_url)) }
                 Section {
                     NavigationLink("讨论评论") { DiscussionView(api: api, repo: repo, number: number, stream: .conversation) }
                     if kind == .pulls {
@@ -109,7 +109,7 @@ struct DiscussionView: View {
                     if let state = comment.state { Text(state).font(.caption).foregroundStyle(.secondary) }
                     if let date = comment.created_at { Text(date).font(.caption2).foregroundStyle(.secondary) }
                     if let path = comment.path { Text(path + (comment.line.map { ":\($0)" } ?? "")).font(.caption).textSelection(.enabled) }
-                    CommunityMarkdown(text: comment.body.flatMap { $0.isEmpty ? nil : $0 } ?? "无文字内容", baseURL: CommunityRules.repositoryURL(repo))
+                    CommunityMarkdown(text: comment.body.flatMap { $0.isEmpty ? nil : $0 } ?? "无文字内容", baseURL: CommunityRules.webURL(comment.html_url) ?? CommunityRules.repositoryURL(repo))
                     if let url = CommunityRules.webURL(comment.html_url) { Link("在 GitHub 打开", destination: url) }
                 }
             }
