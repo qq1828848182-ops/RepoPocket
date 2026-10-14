@@ -8,6 +8,14 @@ import ZIPFoundation
     @Published var release: AppUpdateRelease?
     @Published private(set) var startupRelease: AppUpdateRelease?
     func dismissStartupUpdate() { startupRelease = nil }
+    /// Dismissing the startup card by button, close, or swipe remembers the version so the
+    /// same release is not offered again on every launch. Manual checks still show it.
+    func skipAndDismissStartupRelease(accountID: String) {
+        if let version = startupRelease?.tag_name {
+            UserDefaults.standard.set(version, forKey: AppUpdateRules.skippedKey(accountID))
+        }
+        dismissStartupUpdate()
+    }
     private var startupPromptOffered: Bool {
         get { AppUpdateSessionRules.startupPromptOffered }
         set { AppUpdateSessionRules.startupPromptOffered = newValue }
@@ -88,9 +96,12 @@ import ZIPFoundation
             if try AppUpdateRules.isNewer(value, local: local, localBuild: build) {
                 release = value
                 message = ""
-                if automatic && !startupPromptOffered {
+                if automatic, !startupPromptOffered {
                     startupPromptOffered = true
-                    startupRelease = value
+                    let skipped = UserDefaults.standard.string(forKey: AppUpdateRules.skippedKey(api.accountID))
+                    if AppUpdateRules.shouldOfferStartupPrompt(version: value.tag_name, skipped: skipped) {
+                        startupRelease = value
+                    }
                 }
             } else {
                 release = nil; startupRelease = nil

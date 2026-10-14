@@ -48,7 +48,8 @@ struct AccountRootView: View {
             }
             .task(id: startupSheetQueued) { await queueStartupSheet() }
             .sheet(isPresented: $startupSheetVisible, onDismiss: {
-                updateChecker.dismissStartupUpdate()
+                // Swiping the sheet away counts as skipping this version, like 暂不更新.
+                updateChecker.skipAndDismissStartupRelease(accountID: api.accountID)
                 startupSheetQueued = false
             }) {
                 if let release = updateChecker.startupRelease {
@@ -610,7 +611,11 @@ struct SettingsView: View {
     }
     private func verify() async {
         busy = true; defer { busy = false }
-        do { let credential = token; token = ""; try await api.addAccount(token: credential) }
+        let credential = token
+        do {
+            try await TokenVerification.submit(credential) { try await api.addAccount(token: $0) }
+            token = ""
+        }
         catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
 }

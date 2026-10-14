@@ -29,10 +29,11 @@ class NoticeTests(unittest.TestCase):
                       'selectedTab = 4']:
             self.assertIn(token, app)
         for token in ['ScrollView {', 'Text(verbatim: notes)', 'prefix(16_384)',
-                      'VStack(spacing: 8)', 'minHeight: 46', 'minHeight: 44',
+                      'VStack(spacing: 6)', 'minHeight: 46', 'minHeight: 44',
                       '.presentationDetents', '.height(300)', '.presentationDragIndicator(.visible)',
                       '跳转TrollStore安装需启用 URL Scheme', 'TrollStore 安装', '暂不更新',
-                      '关闭更新提示', 'checker.dismissStartupUpdate()', 'TrollStoreInstaller.open(ipaURL: ipa)',
+                      '关闭更新提示', 'checker.skipAndDismissStartupRelease(accountID: api.accountID)',
+                      'TrollStoreInstaller.open(ipaURL: ipa)',
                       'session == AccountStore.generation', 'checker.release?.ipaURL == ipa',
                       'requestID == id', '前往应用更新']:
             self.assertIn(token, card)
@@ -77,6 +78,26 @@ class NoticeTests(unittest.TestCase):
         self.assertNotIn('CredentialStore', warm)
         self.assertIn('type: application', (REPO_ROOT / 'project.yml').read_text())
         self.assertIn('sources: [RepoPocket, Vendor/DebCodecs]', (REPO_ROOT / 'project.yml').read_text())
+
+    def test_pasted_token_survives_failed_verification(self):
+        accounts = (REPO_ROOT / 'RepoPocket/AccountManagement.swift').read_text()
+        app = (REPO_ROOT / 'RepoPocket/RepoPocketApp.swift').read_text()
+        helper = (REPO_ROOT / 'RepoPocket/TokenVerification.swift').read_text()
+        failures = (REPO_ROOT / 'RepoPocket/WorkspaceSelection.swift').read_text()
+        # The old flow cleared the field before the first request, so a permission-prompt
+        # interruption forced the user to paste the Token again.
+        self.assertNotIn('let credential = token; token = ""', accounts)
+        self.assertNotIn('let credential = token; token = ""', app)
+        self.assertIn('TokenVerification.submit(credential)', accounts)
+        self.assertIn('TokenVerification.submit(credential)', app)
+        self.assertIn('token = ""', accounts.split('TokenVerification.submit', 1)[1].split('catch', 1)[0])
+        self.assertIn('token = ""', app.split('TokenVerification.submit', 1)[1].split('catch', 1)[0])
+        self.assertIn('RefreshFailure.isTransient(error)', helper)
+        for code in ['NSURLErrorNotConnectedToInternet', 'NSURLErrorNetworkConnectionLost',
+                     'NSURLErrorTimedOut', 'NSURLErrorDataNotAllowed']:
+            self.assertIn(code, failures)
+        self.assertIn('static func isTransient', failures)
+        self.assertNotIn('Authorization', helper)
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift available on Actions')
     def test_production_checker_with_mock_api(self):
@@ -186,6 +207,19 @@ struct AppError: Error, LocalizedError { let text: String; var errorDescription:
     let nextLaunch = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
     await nextLaunch.automaticCheck(api: probeAPI)
     precondition(probeAPI.calls == 2 && nextLaunch.startupRelease != nil)
+    // Dismissing the card remembers the version: the next cold launch stays quiet.
+    let skippedTag = nextLaunch.startupRelease?.tag_name
+    nextLaunch.skipAndDismissStartupRelease(accountID: probeAPI.accountID)
+    precondition(UserDefaults.standard.string(forKey: AppUpdateRules.skippedKey(probeAPI.accountID)) == skippedTag)
+    AppUpdateSessionRules.startupPromptOffered = false
+    let quietLaunch = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
+    await quietLaunch.automaticCheck(api: probeAPI)
+    precondition(probeAPI.calls == 3 && quietLaunch.startupRelease == nil && quietLaunch.release != nil)
+    UserDefaults.standard.removeObject(forKey: AppUpdateRules.skippedKey(probeAPI.accountID))
+    AppUpdateSessionRules.startupPromptOffered = false
+    let promptedAgain = UpdateChecker(installedVersion: { ("1.0.3-rc.1", "3") })
+    await promptedAgain.automaticCheck(api: probeAPI)
+    precondition(probeAPI.calls == 4 && promptedAgain.startupRelease != nil)
     let officialAPI = GitHub("new"); officialAPI.accountID = probeAPI.accountID
     let official = UpdateChecker(installedVersion: { ("1.0.4", "3") })
     await official.automaticCheck(api: officialAPI)
