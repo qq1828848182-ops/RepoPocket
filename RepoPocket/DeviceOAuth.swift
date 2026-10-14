@@ -99,7 +99,7 @@ final class DeviceOAuthRedirectPolicy: NSObject, URLSessionTaskDelegate {
                     }
                     switch result.error {
                     case "authorization_pending": continue
-                    case "slow_down": interval = max(interval + 5, result.interval ?? 0)
+                    case "slow_down": interval = min(3600, max(interval + 5, result.interval ?? 0))
                     default: throw AppError(text: DeviceOAuthRules.failure(result.error ?? "unknown"))
                     }
                 }
