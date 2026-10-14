@@ -30,9 +30,9 @@ class UpdateGroupTests(unittest.TestCase):
         self.assertIn('.softGroupedRow(bottom: true)', block)
         self.assertNotIn('top: true', block)
         self.assertNotIn('Section', block)
-        self.assertIn('listRowSeparator(.hidden, edges: .top)', style)
-        self.assertIn('.listRowSeparator(bottom ? .hidden : .visible, edges: .bottom)', style)
-        self.assertNotIn('.overlay(alignment: .bottom)', style)
+        self.assertIn('listRowSeparator(.hidden)', style)
+        self.assertIn('.padding(.leading, separatorInset)', style)
+        self.assertIn('.overlay(alignment: .bottom)', style)
         self.assertIn('let radius: CGFloat = 22', style)
         self.assertEqual(style.count('.listRowBackground('), 1)
 

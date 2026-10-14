@@ -9,9 +9,11 @@ detail = Path(REPO_ROOT, 'RepoPocket/DesktopViews.swift').read_text()
 style = Path(REPO_ROOT, 'RepoPocket/WorkspaceSelectionUI.swift').read_text()
 card = Path(REPO_ROOT, 'RepoPocket/RepositoryUI.swift').read_text().split('struct RepositoryCard:')[1].split('struct LoadingRows:')[0]
 assert '.frame(maxWidth: .infinity, alignment: .leading)' in card
-assert 'listRowSeparator(.hidden, edges: .top)' in style
-assert '.listRowSeparator(bottom ? .hidden : .visible, edges: .bottom)' in style
-assert '.overlay(alignment: .bottom)' not in style
+assert 'listRowSeparator(.hidden)' in style
+assert '.padding(.leading, separatorInset)' in style
+assert '.overlay(alignment: .bottom)' in style
+assert 'separatorInset: CGFloat = 20' in style
+assert 'if !bottom {' in style
 assert 'GitHubAvatar(url: avatarURL, size: 24)' in card
 assert 'cornerRadius: radius, style: .continuous' in style and 'let radius: CGFloat = 22' in style
 assert 'listRowBackground(' in style and 'SoftGroupShape' in style and '.secondarySystemGroupedBackground' in style

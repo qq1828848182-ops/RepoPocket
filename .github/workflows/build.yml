@@ -198,6 +198,10 @@ jobs:
           sleep 5
           xcrun simctl io "$DEVICE" screenshot screenshots/repository.png
           xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
+          xcrun simctl launch "$DEVICE" com.wm0104.RepoPocket -style-preview -expanded-style-preview
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot screenshots/repository-expanded.png
+          xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
           xcrun simctl shutdown "$DEVICE"
           xcrun simctl delete "$DEVICE"
       - uses: actions/upload-artifact@v4

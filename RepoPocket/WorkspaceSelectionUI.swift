@@ -30,17 +30,18 @@ struct SoftGroupShape: Shape {
 }
 
 extension View {
-    /// Keep the 1.0.4 outer shape, using the native content-aligned separator.
-    /// Label rows align after the icon; text-only rows align with their text.
-    func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true) -> some View {
-        listRowSeparator(.hidden, edges: .top)
-            .listRowSeparator(bottom ? .hidden : .visible, edges: .bottom)
-            .alignmentGuide(.listRowSeparatorLeading) { dimensions in
-                max(dimensions[.listRowSeparatorLeading], dimensions[.leading])
-            }
+    /// Keep the 1.0.4 shape; paint one inset line without native leading fragments.
+    func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true, separatorInset: CGFloat = 20) -> some View {
+        listRowSeparator(.hidden)
             .listRowBackground(
                 SoftGroupShape(top: top, bottom: bottom)
                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .overlay(alignment: .bottom) {
+                        if !bottom {
+                            Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)
+                                .padding(.leading, separatorInset).allowsHitTesting(false)
+                        }
+                    }
                     .clipShape(Rectangle())
                     .transaction { transaction in
                         if !animateBackground {
@@ -57,8 +58,9 @@ extension View {
 struct SoftGroupRow: Identifiable {
     let id: String
     let content: AnyView
-    init<Content: View>(_ id: String, @ViewBuilder content: () -> Content) {
-        self.id = id; self.content = AnyView(content())
+    let separatorInset: CGFloat
+    init<Content: View>(_ id: String, separatorInset: CGFloat = 20, @ViewBuilder content: () -> Content) {
+        self.id = id; self.separatorInset = separatorInset; self.content = AnyView(content())
     }
 }
 @resultBuilder enum SoftGroupRowsBuilder {
@@ -74,7 +76,7 @@ struct SoftGroupRows: View {
     init(@SoftGroupRowsBuilder rows: () -> [SoftGroupRow]) { self.rows = rows() }
     var body: some View {
         ForEach(rows) { row in
-            row.content.softGroupedRow(top: row.id == rows.first?.id, bottom: row.id == rows.last?.id)
+            row.content.softGroupedRow(top: row.id == rows.first?.id, bottom: row.id == rows.last?.id, separatorInset: row.separatorInset)
         }
     }
 }
