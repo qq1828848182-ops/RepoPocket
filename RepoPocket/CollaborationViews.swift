@@ -23,10 +23,10 @@ struct RepositoryCommunitySection: View {
     var body: some View {
         Section {
             SoftGroupRows {
-            SoftGroupRow("issues") { NavigationLink { CollaborationListView(api: api, repo: repo, kind: .issues) } label: { RepositoryFeatureLabel(title: "议题", symbol: "exclamationmark.circle", color: .green) } }
-            SoftGroupRow("pulls") { NavigationLink { CollaborationListView(api: api, repo: repo, kind: .pulls) } label: { RepositoryFeatureLabel(title: "拉取请求", symbol: "arrow.triangle.branch", color: .blue) } }
-            SoftGroupRow("actions") { NavigationLink { WorkflowRunsView(api: api, repo: repo, branch: branch) } label: { RepositoryFeatureLabel(title: "操作 · Actions", symbol: "play.circle", color: .orange) } }
-            SoftGroupRow("more") {
+            SoftGroupRow("issues", separatorInset: 62) { NavigationLink { CollaborationListView(api: api, repo: repo, kind: .issues) } label: { RepositoryFeatureLabel(title: "议题", symbol: "exclamationmark.circle", color: .green) } }
+            SoftGroupRow("pulls", separatorInset: 62) { NavigationLink { CollaborationListView(api: api, repo: repo, kind: .pulls) } label: { RepositoryFeatureLabel(title: "拉取请求", symbol: "arrow.triangle.branch", color: .blue) } }
+            SoftGroupRow("actions", separatorInset: 62) { NavigationLink { WorkflowRunsView(api: api, repo: repo, branch: branch) } label: { RepositoryFeatureLabel(title: "操作 · Actions", symbol: "play.circle", color: .orange) } }
+            SoftGroupRow("more", separatorInset: 62) {
                 Button { expanded.toggle() } label: {
                     HStack { RepositoryFeatureLabel(title: "更多", symbol: "ellipsis", color: .gray); Spacer(); Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption).foregroundStyle(.secondary) }
                 }.buttonStyle(.plain).accessibilityValue(expanded ? "已展开" : "已折叠")
@@ -39,6 +39,9 @@ struct RepositoryCommunitySection: View {
             }
             }
         }
+#if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-expanded-style-preview") { expanded = true } }
+#endif
     }
 }
 

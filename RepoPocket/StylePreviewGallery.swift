@@ -46,7 +46,7 @@ struct StylePreviewGallery: View {
                         }
                     }
                 }
-            }.navigationTitle(account ? "账号管理" : "RepoPocket").adaptiveWorkspaceLayout()
+            }.onAppear { if ProcessInfo.processInfo.arguments.contains("-expanded-style-preview") { expanded = true } }.navigationTitle(account ? "账号管理" : "RepoPocket").adaptiveWorkspaceLayout()
         }
     }
 }
