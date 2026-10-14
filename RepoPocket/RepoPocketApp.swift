@@ -7,9 +7,11 @@ struct RepoPocketApp: App {
     @StateObject private var selectionStore = WorkspaceSelectionStore()
     @StateObject private var accountPresentation = AccountPresentation()
     @StateObject private var downloads = DownloadStore.shared
+    @AppStorage("appearance.mode") private var appearance = "system"
     var body: some Scene {
         WindowGroup {
             ZStack { AccountRootView().id(accountID) }
+                .preferredColorScheme(appearance == "dark" ? .dark : (appearance == "light" ? .light : nil))
                 .environmentObject(selectionStore)
                 .environmentObject(accountPresentation)
                 .sheet(isPresented: $accountPresentation.showing) { AccountManagementView().environmentObject(accountPresentation) }
@@ -118,6 +120,9 @@ struct RepositoriesView: View {
         NavigationStack {
             List {
                 if CredentialStore.read().isEmpty { Button("添加账号") { accountPresentation.showing = true } }
+                Section {
+                    NavigationLink { CommunityDiscoveryView(api: api) } label: { Label("发现与关注动态", systemImage: "safari") }
+                }
                 RepositoryInlineSection(api: api, section: .owned, expanded: $ownedExpanded,
                     repositories: repos, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .owned })
                 RepositoryInlineSection(api: api, section: .starred, expanded: $starredExpanded,
@@ -264,6 +269,17 @@ struct BrowserView: View {
                     NavigationLink { ReleaseManagementDestination(api: api, repo: repo) } label: {
                         Label("发行版", systemImage: "shippingbox")
                     }.softGroupedRow(top: true, bottom: true)
+                }
+            }
+            if path.isEmpty {
+                Section("阅读与协作") {
+                    NavigationLink { RepositoryReadmeView(api: api, repo: repo, branch: activeBranch) } label: { Label("README", systemImage: "doc.richtext") }
+                    NavigationLink { CollaborationListView(api: api, repo: repo, kind: .issues) } label: { Label("Issue", systemImage: "exclamationmark.bubble") }
+                    NavigationLink { CollaborationListView(api: api, repo: repo, kind: .pulls) } label: { Label("Pull Requests", systemImage: "arrow.triangle.pull") }
+                    NavigationLink { RepositoryToolsView(api: api, repo: repo) } label: { Label("贡献者、统计与工具", systemImage: "chart.bar") }
+                    if let owner = repo.split(separator: "/").first.map(String.init) {
+                        NavigationLink("仓库作者") { UserRepositoriesView(api: api, user: User(id: nil, login: owner, avatar_url: repositoryInfo?.owner?.avatar_url, name: nil, followers: nil, following: nil)) }
+                    }
                 }
             }
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
@@ -467,6 +483,12 @@ struct FileView: View {
                 if busy { ProgressView().softGroupedRow(bottom: true) }
             }
             if editable && !deleted {
+                Section {
+                    NavigationLink("阅读预览 / 代码高亮") { FileReadingView(text: text, path: entry.path, repo: repo, branch: branch) }
+                    if let historyURL = CommunityRules.repositoryURL(repo, suffix: "/commits/" + GitHub.component(branch) + "/" + entry.path.split(separator: "/").map { GitHub.component(String($0)) }.joined(separator: "/")) {
+                        Link("此文件的历史记录", destination: historyURL)
+                    }
+                }
                 if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled).softGroupedRow(top: true, bottom: true) } }
                 else {
                 Section("编辑") { TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 260).softGroupedRow(top: true, bottom: true) }
@@ -543,6 +565,7 @@ struct SettingsView: View {
     @EnvironmentObject private var accountPresentation: AccountPresentation
     @State private var token = ""
     @State private var busy = false
+    @AppStorage("appearance.mode") private var appearance = "system"
     var body: some View {
         NavigationStack {
             Form {
@@ -580,6 +603,12 @@ struct SettingsView: View {
                         .softGroupedRow(bottom: true)
                 }
                 DownloadLocationSection()
+                Section("外观") {
+                    Picker("主题", selection: $appearance) {
+                        Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark")
+                    }
+                    NavigationLink("开源组件许可") { OpenSourceNoticesView() }
+                }
                 CacheSettingsSection(api: api, checker: updateChecker)
                 Section("安全") {
                     Text("每个账号的 Token 独立保存于本机钥匙串。切换账号会关闭旧页面，防止将旧仓库操作提交给新账号。账号资料不含 Token。").softGroupedRow(top: true, bottom: true)

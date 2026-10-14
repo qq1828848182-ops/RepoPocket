@@ -635,10 +635,18 @@ final class GitHub: ObservableObject {
         }
         return result
     }
-    func searchRepositories(_ query: String, page: Int) async throws -> RepositorySearchResponse {
-        let endpoint = RepositorySearchRules.endpoint(kind: .repositories, query: query, page: page)
+    func searchRepositories(_ query: String, page: Int, options: RepositorySearchOptions = .init()) async throws -> RepositorySearchResponse {
+        let endpoint = RepositorySearchRules.endpoint(kind: .repositories, query: query, page: page, options: options)
         let parts = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         return try await decoded(RepositorySearchResponse.self, endpoint.path, query: parts.queryItems ?? [])
+    }
+    // Read-only gateway reuses the existing account checks, credential host guard
+    // and redirect policy. Community modules cannot bypass repository write guards.
+    func communityRead(_ path: String, query: [URLQueryItem] = []) async throws -> Data {
+        let bytes = try await data(path, query: query)
+        try Task.checkCancellation()
+        guard bytes.count <= 8 * 1024 * 1024 else { throw AppError(text: "响应过大，请在 GitHub 查看。") }
+        return bytes
     }
     func searchUsers(_ query: String, page: Int) async throws -> UserSearchResponse {
         let endpoint = RepositorySearchRules.endpoint(kind: .users, query: query, page: page)

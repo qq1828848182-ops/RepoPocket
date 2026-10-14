@@ -37,7 +37,21 @@ class BrowserRollbackTests(unittest.TestCase):
         approved = 'name: binding.repo.replacingOccurrences(of: "/", with: "-") + "-" + binding.branch + "-" + (binding.remoteCommitterDate.map { ISO8601DateFormatter().string(from: $0) } ?? String(binding.head.prefix(8)))'
         historic = 'name: binding.repo.replacingOccurrences(of: "/", with: "-") + (binding.branch == "main" || binding.branch == "master" ? "" : "-" + binding.branch)'
         self.assertEqual(api_new.count(approved), 1)
-        self.assertEqual(api_new[:added_start].replace(approved, historic).rstrip() + '\n}\n', api_original)
+        # Community additions are read-only and still use the original data()
+        # account/host/error guards. Normalize only those exact additions before
+        # comparing the complete historic write/download implementation.
+        normalized = api_new[:added_start].replace(approved, historic)
+        normalized = normalized.replace('page: Int, options: RepositorySearchOptions = .init()) async throws -> RepositorySearchResponse',
+                                        'page: Int) async throws -> RepositorySearchResponse')
+        normalized = normalized.replace('query: query, page: page, options: options)', 'query: query, page: page)')
+        gateway_start = normalized.index('    // Read-only gateway')
+        gateway_end = normalized.index('    func searchUsers(', gateway_start)
+        gateway = normalized[gateway_start:gateway_end]
+        self.assertIn('let bytes = try await data(path, query: query)', gateway)
+        self.assertIn('try Task.checkCancellation()', gateway)
+        self.assertNotIn('method:', gateway)
+        normalized = normalized[:gateway_start] + normalized[gateway_end:]
+        self.assertEqual(normalized.rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
         for menu in ('CopyRepositoryLinkButton','ForkRepositoryMenuButton','RepositoryStarMenuButton'):
             self.assertIn(menu,BROWSER)
