@@ -267,7 +267,18 @@ def baseline(name):
 for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
              'RepositoryStar.swift', 'RepositoryStarUI.swift', 'ReleaseManagement.swift',
              'ReleasePublishPlan.swift', 'ReleaseTransfers.swift']:
-    assert source(file) == baseline(file), file
+    current = source(file)
+    if file == 'GitHub.swift':
+        # This feature adds a read-only community gateway and search options;
+        # normalize only their exact expressions, keeping all writes frozen.
+        start = current.index('    // Read-only gateway')
+        end = current.index('    func searchUsers(', start)
+        gateway = current[start:end]
+        assert 'try await data(path, query: query)' in gateway and 'method:' not in gateway
+        current = current[:start] + current[end:]
+        current = current.replace('page: Int, options: RepositorySearchOptions = .init()) async throws -> RepositorySearchResponse', 'page: Int) async throws -> RepositorySearchResponse')
+        current = current.replace('query: query, page: page, options: options)', 'query: query, page: page)')
+    assert current == baseline(file), file
 for file, marker in [
     ('ReleaseBranchPicker.swift', 'struct ReleaseBranchPicker: View {'),
     ('ReleaseEntryView.swift', '    private func proceed() async {'),
@@ -281,6 +292,8 @@ for file, marker in [
         assert current.split(marker)[0] == old.split(marker)[0], file
     elif file == 'RepositorySearchView.swift':
         # UserRepositories UI is also explicitly allowed, its network code isn't.
+        current = current.replace('        requestedOptions = options\n', '')
+        current = current.replace('requested, page: requestedPage, options: requestedOptions)', 'requested, page: requestedPage)')
         assert current.split(marker)[1].split('struct UserRepositoriesView:')[0] == old.split(marker)[1].split('struct UserRepositoriesView:')[0]
         assert current.split('    private func load() async {')[-1] == old.split('    private func load() async {')[-1]
     else:

@@ -54,13 +54,10 @@ struct RepositoryReadmeView: View {
     @State private var revision = 0
     @State private var raw = false
     private var webBase: URL? {
-        let directory = (entryPath as NSString).deletingLastPathComponent
-        return CommunityRules.repositoryURL(repo, suffix: "/blob/" + GitHub.component(resolved) + "/" + (directory.isEmpty ? "" : directory.split(separator: "/").map { GitHub.component(String($0)) }.joined(separator: "/") + "/"))
+        CommunityRules.readingBase(repo, branch: resolved, file: entryPath, raw: false)
     }
     private var imageBase: URL? {
-        guard let canonical = try? RepositoryInput.parse(repo) else { return nil }
-        let directory = (entryPath as NSString).deletingLastPathComponent
-        return URL(string: "https://raw.githubusercontent.com/" + canonical + "/" + GitHub.component(resolved) + "/" + (directory.isEmpty ? "" : directory.split(separator: "/").map { GitHub.component(String($0)) }.joined(separator: "/") + "/"))
+        CommunityRules.readingBase(repo, branch: resolved, file: entryPath, raw: true)
     }
     var body: some View {
         ScrollView {
@@ -104,8 +101,8 @@ struct FileReadingView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if isMarkdown { Toggle("Markdown 排版", isOn: $markdown) }
                 if isMarkdown && markdown {
-                    CommunityMarkdown(text: text, baseURL: CommunityRules.repositoryURL(repo, suffix: "/blob/" + GitHub.component(branch) + "/" + (path as NSString).deletingLastPathComponent + "/"),
-                        imageBaseURL: URL(string: "https://raw.githubusercontent.com/" + repo + "/" + GitHub.component(branch) + "/" + (path as NSString).deletingLastPathComponent + "/"))
+                    CommunityMarkdown(text: text, baseURL: CommunityRules.readingBase(repo, branch: branch, file: path, raw: false),
+                        imageBaseURL: CommunityRules.readingBase(repo, branch: branch, file: path, raw: true))
                 } else { SourceCodeView(text: text, filename: path) }
             }.padding().frame(maxWidth: .infinity, alignment: .leading)
         }.navigationTitle((path as NSString).lastPathComponent).adaptiveWorkspaceLayout()
