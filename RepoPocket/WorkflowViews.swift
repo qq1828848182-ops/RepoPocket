@@ -2,6 +2,16 @@ import SwiftUI
 
 extension Notification.Name { static let workflowRunDeleted = Notification.Name("workflowRunDeleted") }
 
+struct WorkflowStatusBadge: View {
+    let status: String
+    let conclusion: String?
+    private var value: WorkflowStatusPresentation { .init(status: status, conclusion: conclusion) }
+    private var color: Color {
+        switch value.tone { case "green": return .green; case "red": return .red; case "orange": return .orange; default: return .secondary }
+    }
+    var body: some View { Label(value.title, systemImage: value.symbol).foregroundStyle(color).accessibilityLabel("运行状态：" + value.title) }
+}
+
 struct WorkflowRunsView: View {
     @ObservedObject var api: GitHub
     let repo: String
@@ -18,8 +28,12 @@ struct WorkflowRunsView: View {
                             NavigationLink { WorkflowRunView(api: api, repo: repo, run: run) } label: {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(run.display_title ?? run.name ?? "Workflow").font(.headline)
-                                    Text("#\(run.run_number) · \(run.conclusion ?? run.status) · \(run.head_branch ?? "—")").font(.caption).foregroundStyle(.secondary)
-                                    Text(run.created_at).font(.caption2).foregroundStyle(.secondary)
+                                    WorkflowStatusBadge(status: run.status, conclusion: run.conclusion).font(.subheadline)
+                                    Text((run.name ?? "Workflow") + " #\(run.run_number) · " + WorkflowTime.trigger(run.event)).font(.caption).foregroundStyle(.secondary)
+                                    Label(run.head_branch ?? "分支未知", systemImage: "arrow.triangle.branch").font(.caption)
+                                    WorkflowCreatedText(timestamp: run.created_at).font(.caption).foregroundStyle(.secondary)
+                                    Label { WorkflowElapsedText(start: run.run_started_at, end: run.updated_at, status: run.status, approximate: true) } icon: { Image(systemName: "stopwatch") }
+                                        .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -50,20 +64,34 @@ struct WorkflowRunView: View {
     @State private var message = ""
     @State private var confirmingDeletion = false
     @Environment(\.dismiss) private var dismiss
+    @State private var freshRun: WorkflowRun?
+    @State private var statusRevision = 0
+    @State private var artifactCount: Int?
+    @State private var statusError = ""
+    private var displayedRun: WorkflowRun { freshRun ?? run }
     var body: some View {
         List {
             Section {
+                WorkflowRunHeading(repo: repo, run: displayedRun)
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
+            Section {
                 SoftGroupRows {
-                    SoftGroupRow("name") { Text(run.display_title ?? run.name ?? "Workflow").font(.headline) }
-                    SoftGroupRow("sha") { Text(run.head_sha).font(.caption).textSelection(.enabled) }
-                    SoftGroupRow("artifacts") { NavigationLink("构建产物 / 下载") { WorkflowArtifactsView(api: api, repo: repo, run: run.id) } }
+                    SoftGroupRow("metadata") { WorkflowRunMetadata(run: displayedRun) }
+                    SoftGroupRow("metrics") { WorkflowRunMetrics(api: api, repo: repo, run: displayedRun, artifactCount: artifactCount) }
+                    if !statusError.isEmpty { SoftGroupRow("status-error") { Text(statusError).font(.caption).foregroundStyle(.secondary) } }
+                }
+            } footer: { Text("总耗时按最后更新时间估算；任务与步骤使用各自起止时间。") }
+            Section("任务") {
+                SoftGroupRows {
                     for job in store.items {
                         SoftGroupRow("job-\(job.id)") {
                             NavigationLink { WorkflowJobView(api: api, repo: repo, job: job) } label: {
-                                VStack(alignment: .leading) { Text(job.name); Text(job.conclusion ?? job.status).font(.caption).foregroundStyle(.secondary) }
+                                WorkflowJobRow(job: job)
                             }
                         }
                     }
+                    if store.loaded && store.items.isEmpty { SoftGroupRow("empty") { Text("暂无任务") } }
                 }
             }
             CommunityPageFooter(store: store, next: { load() })
@@ -71,15 +99,30 @@ struct WorkflowRunView: View {
                 Section("运行管理") {
                     SoftGroupRows {
                         SoftGroupRow("rerun") { Button("重新运行此工作流") { action = .rerun(run.id) }.disabled(busy) }
-                        SoftGroupRow("cancel") { Button("取消正在进行的运行", role: .destructive) { action = .cancelRun(run.id) }.disabled(busy) }
-                        SoftGroupRow("delete") { Button("删除此次运行", role: .destructive) { confirmingDeletion = true }.disabled(busy) }
+                        if displayedRun.status != "completed" {
+                            SoftGroupRow("cancel") { Button("取消正在进行的运行", role: .destructive) { action = .cancelRun(run.id) }.disabled(busy) }
+                        }
+                        SoftGroupRow("delete") { Button("删除此次运行", role: .destructive) { confirmingDeletion = true }.disabled(busy || displayedRun.status != "completed") }
                         if busy { SoftGroupRow("busy") { ProgressView("提交操作…") } }
                         if !message.isEmpty { SoftGroupRow("result") { Text(message).font(.caption) } }
                     }
                 }
             }
-        }.navigationTitle("运行 #\(run.run_number)").adaptiveWorkspaceLayout()
-        .toolbar { Button("刷新任务") { load(reset: true) }.disabled(store.busy || busy) }
+        }.navigationTitle("运行 #\(run.run_number)").adaptiveWorkspaceLayout().navigationBarTitleDisplayMode(.inline)
+        .toolbar { Button("刷新") { load(reset: true); statusRevision += 1 }.disabled(store.busy || busy) }
+        .task(id: statusRevision) {
+            statusError = ""
+            do {
+                let bytes = try await api.communityRead(GitHub.repoPath(repo) + "/actions/runs/\(run.id)")
+                let value = try JSONDecoder().decode(WorkflowRun.self, from: bytes)
+                try Task.checkCancellation(); guard api.isCurrentSession else { return }; freshRun = value
+            } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { statusError = "刷新状态失败：" + error.localizedDescription } }
+            do {
+                let bytes = try await api.communityRead(GitHub.repoPath(repo) + "/actions/runs/\(run.id)/artifacts", query: [.init(name: "per_page", value: "1")])
+                let value = try JSONDecoder().decode(WorkflowArtifacts.self, from: bytes)
+                try Task.checkCancellation(); guard api.isCurrentSession else { return }; artifactCount = value.total_count
+            } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { artifactCount = nil } }
+        }
         .task {
             if !store.loaded { load() }
             let access = try? await api.repository(repo)
@@ -106,7 +149,7 @@ struct WorkflowRunView: View {
                 NotificationCenter.default.post(name: .workflowRunDeleted, object: nil,
                     userInfo: ["repo": repo, "run": run.id, "generation": AccountStore.generation])
                 dismiss()
-            } else { message = "GitHub 已接受操作，请手动刷新运行列表核实新状态。" }
+            } else { message = "GitHub 已接受操作，请刷新核实新状态。"; statusRevision += 1; load(reset: true) }
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { message = error.localizedDescription } }
     }
 }
@@ -165,19 +208,41 @@ struct WorkflowJobView: View {
     @ObservedObject var api: GitHub
     let repo: String
     let job: WorkflowJob
+    @State private var freshJob: WorkflowJob?
+    @State private var revision = 0
+    @State private var expandedSteps: Set<Int> = []
+    @State private var error = ""
+    private var displayedJob: WorkflowJob { freshJob ?? job }
     var body: some View {
         List {
             Section {
                 SoftGroupRows {
-                    SoftGroupRow("name") { Text(job.name).font(.headline) }
-                    SoftGroupRow("state") { Text(job.conclusion ?? job.status) }
-                    for step in job.steps ?? [] {
-                        SoftGroupRow("step-\(step.number)") { VStack(alignment: .leading) { Text("\(step.number). " + step.name); Text(step.conclusion ?? step.status).font(.caption).foregroundStyle(.secondary) } }
+                    SoftGroupRow("summary") { WorkflowJobRow(job: displayedJob) }
+                    if !error.isEmpty { SoftGroupRow("error") { Text(error).font(.caption) } }
+                }
+            }
+            Section("步骤") {
+                SoftGroupRows {
+                    for step in displayedJob.steps ?? [] {
+                        SoftGroupRow("step-\(step.number)") {
+                            WorkflowStepRow(step: step, expanded: expandedSteps.contains(step.number)) {
+                                if !expandedSteps.insert(step.number).inserted { expandedSteps.remove(step.number) }
+                            }
+                        }
                     }
                     SoftGroupRow("log") { NavigationLink("查看任务日志") { WorkflowLogView(api: api, repo: repo, id: job.id) } }
                 }
             }
         }.navigationTitle("任务详情").adaptiveWorkspaceLayout()
+        .toolbar { Button("刷新") { revision += 1 } }
+        .task(id: revision) {
+            error = ""
+            do {
+                let bytes = try await api.communityRead(GitHub.repoPath(repo) + "/actions/jobs/\(job.id)")
+                let value = try JSONDecoder().decode(WorkflowJob.self, from: bytes)
+                try Task.checkCancellation(); guard api.isCurrentSession else { return }; freshJob = value
+            } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { self.error = error.localizedDescription } }
+        }
     }
 }
 

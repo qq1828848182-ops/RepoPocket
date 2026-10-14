@@ -19,7 +19,8 @@ class UpdateGroupTests(unittest.TestCase):
         group = body.split('        Group {',1)[1].split('        }.sheet',1)[0]
         rows = [line.strip() for line in group.splitlines()
                 if '.softGroupedRow(' in line]
-        self.assertEqual(len(rows), 12)
+        # The expanded release notes are a concrete child row too.
+        self.assertEqual(len(rows), 13)
         self.assertTrue(all(row.count('.softGroupedRow(') == 1 for row in rows))
         self.assertEqual(group.count('top: true'), 1)
         self.assertNotIn('bottom:', group)

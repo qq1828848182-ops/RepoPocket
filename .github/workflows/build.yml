@@ -202,6 +202,16 @@ jobs:
           sleep 5
           xcrun simctl io "$DEVICE" screenshot screenshots/repository-expanded.png
           xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
+          xcrun simctl launch "$DEVICE" com.wm0104.RepoPocket -style-preview -workflow-style-preview
+          sleep 3
+          xcrun simctl io "$DEVICE" screenshot screenshots/workflow.png
+          xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
+          xcrun simctl launch "$DEVICE" com.wm0104.RepoPocket -style-preview -workflow-style-preview -expanded-style-preview
+          sleep 3
+          xcrun simctl io "$DEVICE" screenshot screenshots/workflow-expanded.png
+          xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
+          xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build -resultBundlePath style-tests.xcresult CODE_SIGNING_ALLOWED=NO -only-testing:RepoPocketStyleUITests test > style-tests.log 2>&1 || { tail -100 style-tests.log; exit 1; }
+          python3 Scripts/export_style_attachments.py style-tests.xcresult screenshots
           xcrun simctl shutdown "$DEVICE"
           xcrun simctl delete "$DEVICE"
       - uses: actions/upload-artifact@v4
@@ -211,3 +221,5 @@ jobs:
           path: |
             screenshots/*.png
             preview-build.log
+            style-tests.log
+            style-tests.xcresult

@@ -6,11 +6,36 @@ struct StylePreviewGallery: View {
     @StateObject private var api = GitHub()
     @State private var expanded = false
     private var account: Bool { ProcessInfo.processInfo.arguments.contains("-account-preview") }
+    private var swipe: Bool { ProcessInfo.processInfo.arguments.contains("-swipe-style-preview") }
+    private var workflow: Bool { ProcessInfo.processInfo.arguments.contains("-workflow-style-preview") }
     private let sample = "# RepoPocket\n\n适用于 iOS 16 的 GitHub 客户端。\n\n- 原生代码浏览\n- Issue 与 PR\n- Actions 与发行版\n\n" + String(repeating: "支持在 App 内浏览与管理仓库。\n\n", count: 30)
     var body: some View {
         NavigationStack {
             List {
-                if account {
+                if swipe {
+                    Section("左滑边界检查 · 固定数据") {
+                        ForEach(["first", "middle", "last"], id: \.self) { id in
+                            Button("文件 · " + id) {}.accessibilityIdentifier("row-" + id)
+                                .swipeActions { Button("删除", role: .destructive) {} }
+                                .softGroupedRow(top: id == "first", bottom: id == "last")
+                        }
+                    }
+                } else if workflow {
+                    Section { WorkflowRunHeading(repo: "wm0104/RepoPocket", run: workflowRun).listRowBackground(Color.clear).listRowSeparator(.hidden) }
+                    Section {
+                        SoftGroupRows {
+                            SoftGroupRow("metadata") { WorkflowRunMetadata(run: workflowRun) }
+                            SoftGroupRow("metrics") { WorkflowRunMetrics(api: api, repo: "wm0104/RepoPocket", run: workflowRun, artifactCount: 2) }
+                        }
+                    }
+                    Section("任务") { WorkflowJobRow(job: workflowJob).softGroupedRow(top: true, bottom: true) }
+                    Section("步骤") {
+                        ForEach(workflowJob.steps ?? []) { step in
+                            WorkflowStepRow(step: step, expanded: expanded) { expanded.toggle() }
+                                .softGroupedRow(top: true, bottom: true)
+                        }
+                    }
+                } else if account {
                     Section("账号") {
                         HStack { Image(systemName: "person.crop.circle.fill").font(.largeTitle); Text("wm0104"); Spacer(); Image(systemName: "checkmark"); Image(systemName: "trash").foregroundStyle(.red) }.softGroupedRow(top: true, bottom: true)
                     }
@@ -48,6 +73,13 @@ struct StylePreviewGallery: View {
                 }
             }.onAppear { if ProcessInfo.processInfo.arguments.contains("-expanded-style-preview") { expanded = true } }.navigationTitle(account ? "账号管理" : "RepoPocket").adaptiveWorkspaceLayout()
         }
+    }
+    private var workflowRun: WorkflowRun {
+        // Fixed fixture; never reaches GitHub or performs mutations.
+        try! JSONDecoder().decode(WorkflowRun.self, from: Data(#"{"id":221,"name":"Build IPA","display_title":"统一分组样式与仓库主页","run_number":221,"head_sha":"38715a198627cc9372c458055f08ed7ed4ef0325","head_branch":"codex/github-client-features","status":"completed","conclusion":"success","created_at":"2026-10-15T00:00:00Z","run_started_at":"2026-10-15T00:00:00Z","updated_at":"2026-10-15T00:11:38Z","actor":{"login":"wm0104"},"event":"workflow_dispatch"}"#.utf8))
+    }
+    private var workflowJob: WorkflowJob {
+        try! JSONDecoder().decode(WorkflowJob.self, from: Data(#"{"id":1,"name":"build","status":"completed","conclusion":"success","started_at":"2026-10-15T00:00:11Z","completed_at":"2026-10-15T00:11:38Z","steps":[{"number":1,"name":"编译 iOS App","status":"completed","conclusion":"success","started_at":"2026-10-15T00:00:11Z","completed_at":"2026-10-15T00:11:38Z"}]}"#.utf8))
     }
 }
 #endif

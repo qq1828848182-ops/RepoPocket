@@ -41,6 +41,7 @@ struct ReadingLinkDestination: View {
         } else {
             // Safari supplies its own navigation bar and Done button.
             ContainedWebPage(url: url)
+                .ignoresSafeArea()
         }
     }
 }

@@ -59,6 +59,21 @@ MUTATE
 @main struct Run {
  @MainActor static func main() async throws {
    precondition(NativeStatisticsRules.lineCount("")==0)
+   precondition(WorkflowStatusPresentation(status:"completed",conclusion:"success").tone=="green")
+   precondition(WorkflowStatusPresentation(status:"completed",conclusion:"failure").title=="失败")
+   precondition(WorkflowStatusPresentation(status:"in_progress",conclusion:nil).title=="运行中")
+   precondition(WorkflowStatusPresentation(status:"completed",conclusion:nil).title=="状态未知")
+   precondition(WorkflowStatusPresentation(status:"queued",conclusion:nil).title=="等待运行")
+   precondition(WorkflowStatusPresentation(status:"in_progress",conclusion:"success").title=="运行中")
+   precondition(WorkflowTime.elapsed(start:"2026-10-15T00:00:00Z",end:"2026-10-15T00:11:38Z",running:false)=="11分38秒")
+   precondition(WorkflowTime.elapsed(start:"2026-10-15T00:00:00.000Z",end:"2026-10-15T00:00:26.000Z",running:false)=="26秒")
+   precondition(WorkflowTime.elapsed(start:nil,end:nil,running:false)==nil)
+   precondition(WorkflowTime.elapsed(start:"2026-10-15T00:01:00Z",end:"2026-10-15T00:00:00Z",running:false)==nil)
+   precondition(WorkflowTime.elapsed(start:"0001-01-01T00:00:00Z",end:nil,running:true)==nil)
+   let now=WorkflowTime.date("2026-10-15T00:02:15Z")!
+   precondition(WorkflowTime.elapsed(start:"2026-10-15T00:00:00Z",end:nil,running:true,now:now)=="2分15秒")
+   let legacy=try JSONDecoder().decode(WorkflowRun.self,from:Data(#"{"id":1,"run_number":1,"head_sha":"abc","status":"completed","created_at":"2026-10-15T00:00:00Z"}"#.utf8))
+   precondition(legacy.run_started_at==nil && legacy.actor==nil && legacy.updated_at==nil)
    precondition(NativeStatisticsRules.lineCount("a\nb\n")==2)
    precondition(NativeStatisticsRules.lineCount("a\nb")==2)
    let short="# 自述\n简介";precondition(!ReadmePreviewRules.needsExpansion(short))

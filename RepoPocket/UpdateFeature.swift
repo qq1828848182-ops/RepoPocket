@@ -213,6 +213,7 @@ struct AppUpdateSection: View {
                 Text("新版本 " + release.displayVersionWithBuild).softGroupedRow()
                 DisclosureGroup("发布说明", isExpanded: $expanded) {
                     Text(String((release.body ?? "暂无发布说明").prefix(16_384))).font(.caption)
+                        .softGroupedRow()
                 }.softGroupedRow()
                 if release.ipaURL != nil {
                     if let ipa = release.ipaURL, TrollStoreInstallRules.installURL(for: ipa) != nil {
