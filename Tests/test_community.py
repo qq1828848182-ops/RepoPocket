@@ -17,7 +17,7 @@ class CommunityTests(unittest.TestCase):
         oauth = (ROOT/'RepoPocket/DeviceOAuth.swift').read_text()
         program = '''import Foundation
 import Combine
-struct AppError: Error { let text: String }
+struct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }
 enum RefreshFailure { static func isCancellation(_ error: Error) -> Bool { error is CancellationError } }
 @MainActor final class GitHub {
  var isCurrentSession = true
