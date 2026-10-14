@@ -3,7 +3,9 @@ import Foundation
 extension GitHub {
     private func communityDecode<T: Decodable>(_ type: T.Type, path: String, query: [URLQueryItem] = []) async throws -> T {
         let bytes = try await communityRead(path, query: query)
-        let result = try await Task.detached(priority: .userInitiated) { try JSONDecoder().decode(type, from: bytes) }.value
+        // GitHub returns 204 for an empty repository's contributors list.
+        let payload = bytes.isEmpty ? Data("[]".utf8) : bytes
+        let result = try await Task.detached(priority: .userInitiated) { try JSONDecoder().decode(type, from: payload) }.value
         try Task.checkCancellation()
         guard isCurrentSession else { throw CancellationError() }
         return result
