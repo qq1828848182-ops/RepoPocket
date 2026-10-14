@@ -7,7 +7,7 @@ enum SourceLexer {
         let strings = #""(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`"#
         // An unterminated block comment consumes to EOF instead of retrying
         // a failing suffix at every subsequent /* in an adversarial file.
-        let comments = hashComments ? #"\#[^\n]*"# : #"//[^\n]*|/\*[\s\S]*?(?:\*/|\z)"#
+        let comments = hashComments ? #"#[^\n]*"# : #"//[^\n]*|/\*[\s\S]*?(?:\*/|\z)"#
         let keywords = #"\b(?:actor|async|await|break|case|catch|class|const|continue|def|defer|delete|do|else|enum|export|extends|false|final|for|from|func|function|guard|if|import|in|init|interface|internal|let|nil|null|override|package|private|protocol|public|return|self|static|struct|super|switch|throw|throws|true|try|type|typeof|var|void|while|yield)\b"#
         let numbers = #"\b(?:0x[0-9a-fA-F]+|\d+(?:\.\d+)?)\b"#
         guard let regex = try? NSRegularExpression(pattern: "(" + strings + ")|(" + comments + ")|(" + keywords + ")|(" + numbers + ")") else { return [] }

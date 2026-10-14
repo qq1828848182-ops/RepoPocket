@@ -119,10 +119,13 @@ enum CommunityRules {
     }
     static func readingBase(_ repo: String, branch: String, file: String, raw: Bool) -> URL? {
         guard let canonical = try? RepositoryInput.parse(repo), !branch.isEmpty else { return nil }
+        func component(_ value: String) -> String {
+            value.addingPercentEncoding(withAllowedCharacters: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""
+        }
         let directory = (file as NSString).deletingLastPathComponent
-        let path = directory.split(separator: "/").map { GitHub.component(String($0)) }.joined(separator: "/")
+        let path = directory.split(separator: "/").map { component(String($0)) }.joined(separator: "/")
         let root = raw ? "https://raw.githubusercontent.com/" + canonical + "/" : "https://github.com/" + canonical + "/blob/"
-        return URL(string: root + GitHub.component(branch) + "/" + (path.isEmpty ? "" : path + "/"))
+        return URL(string: root + component(branch) + "/" + (path.isEmpty ? "" : path + "/"))
     }
     static func readmeText(_ entry: Entry) throws -> String {
         guard (entry.size ?? Int.max) <= markdownByteLimit, entry.encoding == "base64",

@@ -55,6 +55,9 @@ enum SampleError: Error { case offline }
    precondition(api.calls.last!.0 == "/repos/o/r/pulls/2/comments")
    _ = try await api.pullFiles("o/r", number: 2, page: 1)
    precondition(api.calls.last!.0 == "/repos/o/r/pulls/2/files")
+   api.payload = Data()
+   let emptyContributors = try await api.contributors("o/r",page:1)
+   precondition(emptyContributors.isEmpty)
    do { _ = try await api.pullFiles("o/r", number: -1, page:1); preconditionFailure() } catch {}
    let readme = Entry(name:"README.md",path:"docs/README.md",type:"file",sha:"abc",size:3,download_url:nil,content:Data("中文".utf8).base64EncodedString(),encoding:"base64")
    precondition(try CommunityRules.readmeText(readme) == "中文")
