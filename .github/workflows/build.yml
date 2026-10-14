@@ -16,6 +16,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test build workflow entry points
         run: python3 Tests/test_build_workflow.py
+      - name: Test persistent downloads, cache whitelist and account lifecycle mocks
+        run: python3 Tests/test_download_store.py
+      - name: Test editor save and deletion against concurrent remote changes
+        run: python3 Tests/test_file_versions.py
       - name: Test original baseline historic commit and disk download regressions
         run: python3 Tests/test_workspace_baseline.py
       - name: Test production local checkbox and strict commit eligibility
@@ -60,10 +64,6 @@ jobs:
         run: python3 Tests/test_soft_groups.py
       - name: Test always-visible repository list contracts
         run: python3 Tests/test_repository_disclosure.py
-      - name: Test persistent downloads, cache whitelist and account lifecycle mocks
-        run: python3 Tests/test_download_store.py
-      - name: Test editor save and deletion against concurrent remote changes
-        run: python3 Tests/test_file_versions.py
       - name: Test foreground inertness and operation guards
         run: python3 Tests/test_manual_refresh.py
       - name: Test workspace keyboard focus and submit contracts
