@@ -10,7 +10,9 @@ class ReleaseManagementTests(unittest.TestCase):
         ui = (ROOT/'RepoPocket/ReleaseManagementUI.swift').read_text()
         app = (ROOT/'RepoPocket/RepoPocketApp.swift').read_text().split('struct BrowserView:',1)[1].split('struct FileView:',1)[0]
         self.assertIn('if path.isEmpty {', app)
-        self.assertEqual(app.count('ReleaseManagementDestination(api: api, repo: repo)'),1)
+        self.assertEqual(app.count('RepositoryHomeHighlights(api: api, repo: repo)'),1)
+        highlights = (ROOT/'RepoPocket/RepositoryHomeHighlights.swift').read_text()
+        self.assertEqual(highlights.count('ReleaseManagementDestination(api: api, repo: repo)'),1)
         load = app.split('private func load() async',1)[1].split('private func deleteRemote',1)[0]
         self.assertNotIn('managedReleases', load)
         self.assertNotIn('managedAssets', load)
@@ -20,7 +22,8 @@ class ReleaseManagementTests(unittest.TestCase):
         self.assertNotIn('upload_url', added)
         self.assertIn('perPage: 1', added)
         self.assertIn('struct Presence: Decodable { let id: Int }', added)
-        self.assertIn('releasePresence.exists && api.isCurrentSession', app)
+        self.assertIn('if path.isEmpty && !showFiles {', app)
+        self.assertIn('api.isCurrentSession', highlights)
         self.assertIn('if path.isEmpty && canWrite', app)
         self.assertIn('暂无发行版', ui)
         self.assertIn('canWrite = false', ui)
