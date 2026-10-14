@@ -2,6 +2,16 @@ import Foundation
 
 /// File operations are bounded to an explicitly authorized parent. Never overwrite.
 enum DownloadRules {
+    static func locationLabel(_ url: URL, localizedName: String? = nil) -> String {
+        let name = localizedName ?? url.lastPathComponent
+        // A provider's storage root is an implementation detail, not a useful path.
+        return name.isEmpty || name == "File Provider Storage" ? "已选择保存位置" : name
+    }
+    static func contains(_ file: URL, in parent: URL) -> Bool {
+        let base = parent.standardizedFileURL.pathComponents
+        let path = file.standardizedFileURL.pathComponents
+        return path.count > base.count && Array(path.prefix(base.count)) == base
+    }
     static func safeName(_ raw: String) -> String {
         let name = (raw as NSString).lastPathComponent
         let clean = name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) && $0 != ":" && $0 != "\\" }.map(String.init).joined()
@@ -29,13 +39,9 @@ enum DownloadRules {
         let fm = FileManager.default
         guard valid() else { throw CancellationError() }
         try rejectSymlinks(parent)
-        let folder = parent.appendingPathComponent("RepoPocket", isDirectory: true)
-        try rejectSymlinks(folder)
-        if fm.fileExists(atPath: folder.path) {
-            guard (try fm.attributesOfItem(atPath: folder.path)[.type] as? FileAttributeType) == .typeDirectory else { throw NSError(domain: "DownloadStore", code: 3, userInfo: [NSLocalizedDescriptionKey: "保存位置不是文件夹，请重新选择。"]) }
-        } else {
-            try fm.createDirectory(at: folder, withIntermediateDirectories: false)
-        }
+        // The authorized directory is the destination. Never silently add a child.
+        let folder = parent
+        guard (try fm.attributesOfItem(atPath: folder.path)[.type] as? FileAttributeType) == .typeDirectory else { throw NSError(domain: "DownloadStore", code: 3, userInfo: [NSLocalizedDescriptionKey: "保存位置不是文件夹，请重新选择。"]) }
         let name = safeName(source.lastPathComponent)
         let ext = (name as NSString).pathExtension
         let stem = (name as NSString).deletingPathExtension

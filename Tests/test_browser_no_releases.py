@@ -37,7 +37,15 @@ class BrowserRollbackTests(unittest.TestCase):
         approved = 'name: binding.repo.replacingOccurrences(of: "/", with: "-") + "-" + binding.branch + "-" + (binding.remoteCommitterDate.map { ISO8601DateFormatter().string(from: $0) } ?? String(binding.head.prefix(8)))'
         historic = 'name: binding.repo.replacingOccurrences(of: "/", with: "-") + (binding.branch == "main" || binding.branch == "master" ? "" : "-" + binding.branch)'
         self.assertEqual(api_new.count(approved), 1)
-        self.assertEqual(api_new[:added_start].replace(approved, historic).rstrip() + '\n}\n', api_original)
+        # The editor fix returns the PUT response's blob SHA instead of fetching a
+        # potentially newer version. Exercise this production method separately in
+        # test_file_versions; keep the rest of the historic API protected here.
+        commit_start = api_new.index('    @discardableResult\n    func commit(')
+        commit_end = api_new.index('    func delete(', commit_start)
+        old_start = api_original.index('    func commit(')
+        old_end = api_original.index('    func delete(', old_start)
+        normalized = api_new[:added_start].replace(api_new[commit_start:commit_end], api_original[old_start:old_end])
+        self.assertEqual(normalized.replace(approved, historic).rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
         for menu in ('CopyRepositoryLinkButton','ForkRepositoryMenuButton','RepositoryStarMenuButton'):
             self.assertIn(menu,BROWSER)

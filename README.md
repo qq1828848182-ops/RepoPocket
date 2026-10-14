@@ -22,6 +22,10 @@ RepoPocket 是一款适用于 iOS 16+、TrollStore 的 GitHub 文件管理工具
 
 ## 下载
 
+下载的文件直接保存到设置中选定的文件夹，同名文件自动编号，不会覆盖；不再额外创建 `RepoPocket` 子文件夹。旧版本下载的文件保留在原位置。
+
+“文件”App 中的 `RepoPocket` 应用文档入口用于本地工作区，其中的 `Repositories` 与你选择的下载目录用途不同。
+
 [下载 RepoPocket](https://github.com/wm0104/RepoPocket/releases/latest)
 
 系统要求：iOS 16 或更高版本。低于 iOS 16 的系统未测试，请自行测试。

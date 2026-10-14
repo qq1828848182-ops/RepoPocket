@@ -678,13 +678,15 @@ final class GitHub: ObservableObject {
         let endpoint = try Self.repoPath(repo) + "/contents/" + Self.filePath(path)
         return try await decoded(Entry.self, endpoint, query: branch.isEmpty ? [] : [.init(name: "ref", value: branch)])
     }
-    func commit(_ repo: String, path: String, bytes: Data, sha: String?, message: String, branch: String) async throws {
+    @discardableResult
+    func commit(_ repo: String, path: String, bytes: Data, sha: String?, message: String, branch: String) async throws -> String {
         guard bytes.count <= 10 * 1024 * 1024 else { throw AppError(text: "本版普通提交限制为 10 MiB。大文件请使用“新建仓库并发布”。") }
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请填写提交说明") }
         var o: [String: Any] = ["message": message, "content": bytes.base64EncodedString()]
         if let sha = sha { o["sha"] = sha }
         if !branch.isEmpty { o["branch"] = branch }
-        _ = try await data(Self.repoPath(repo) + "/contents/" + Self.filePath(path), method: "PUT", object: o)
+        let response = try await decoded(FileCommitResponse.self, Self.repoPath(repo) + "/contents/" + Self.filePath(path), method: "PUT", object: o)
+        return response.content.sha
     }
     func delete(_ repo: String, entry: Entry, message: String, branch: String) async throws {
         var o: [String: Any] = ["message": message, "sha": entry.sha]

@@ -56,6 +56,8 @@ func fingerprint(_ url: URL) throws -> String { try String(contentsOf: url, enco
 let first = try DownloadRules.save(input, parent: parent, valid: { true }, fingerprint: fingerprint)
 let second = try DownloadRules.save(input, parent: parent, valid: { true }, fingerprint: fingerprint)
 precondition(first.lastPathComponent == "a.zip" && second.lastPathComponent == "a (1).zip")
+precondition(first.deletingLastPathComponent() == parent)
+precondition(!fm.fileExists(atPath: parent.appendingPathComponent("RepoPocket").path))
 precondition(try fingerprint(first) == "fixture")
 var valid = true
 do {
@@ -70,7 +72,27 @@ do {
  _ = try DownloadRules.save(input, parent: parent, valid: { true }, fingerprint: fingerprint, copy: { a,b in try Data("partial".utf8).write(to:b); throw NSError(domain:NSPOSIXErrorDomain,code:28) })
  preconditionFailure("ENOSPC ignored")
 } catch { }
-precondition(try fm.contentsOfDirectory(atPath: parent.appendingPathComponent("RepoPocket").path).sorted() == ["a (1).zip", "a.zip"])
+let outputs = try fm.contentsOfDirectory(atPath: parent.path).sorted()
+precondition(outputs == ["a (1).zip", "a.zip"])
+// Selecting an existing RepoPocket folder must not add another RepoPocket level.
+// Old downloads remain untouched; no migration/deletion of existing user files.
+let oldFolder = parent.appendingPathComponent("RepoPocket")
+try fm.createDirectory(at: oldFolder, withIntermediateDirectories: false)
+let old = oldFolder.appendingPathComponent("old.zip")
+try Data("old download".utf8).write(to: old)
+let third = try DownloadRules.save(input, parent: oldFolder, valid: { true }, fingerprint: fingerprint)
+precondition(third.deletingLastPathComponent() == oldFolder)
+let oldText = try fingerprint(old); precondition(oldText == "old download")
+precondition(!fm.fileExists(atPath: oldFolder.appendingPathComponent("RepoPocket").path))
+precondition(DownloadRules.contains(first, in: parent))
+precondition(DownloadRules.contains(third, in: parent))
+precondition(!DownloadRules.contains(parent, in: parent))
+precondition(!DownloadRules.contains(root.appendingPathComponent("chosen-other/a.zip"), in: parent))
+precondition(!DownloadRules.contains(parent.appendingPathComponent("../escape.zip"), in: parent))
+precondition(DownloadRules.locationLabel(parent, localizedName: "下载") == "下载")
+precondition(DownloadRules.locationLabel(URL(fileURLWithPath: "/File Provider Storage")) == "已选择保存位置")
+// A file selected as the parent must fail without creating any sibling folder.
+do { _ = try DownloadRules.save(input, parent: old, valid: { true }, fingerprint: fingerprint); preconditionFailure("non-directory accepted") } catch { }
 let linked = root.appendingPathComponent("link")
 try fm.createSymbolicLink(at: linked, withDestinationURL: parent)
 do { _ = try DownloadRules.save(input, parent: linked, valid:{true}, fingerprint:fingerprint); preconditionFailure("symlink followed") } catch { }
@@ -89,7 +111,6 @@ print("PASS production pure Swift rules: filename/collision, exclusive save, ses
 '''
   # Throwing expressions are evaluated outside precondition's non-throwing autoclosure.
   source = source.replace('precondition(try fingerprint(first) == "fixture")', 'let firstText = try fingerprint(first); precondition(firstText == "fixture")')
-  source = source.replace('precondition(try fm.contentsOfDirectory(atPath: parent.appendingPathComponent("RepoPocket").path).sorted() == ["a (1).zip", "a.zip"])', 'let outputs = try fm.contentsOfDirectory(atPath: parent.appendingPathComponent("RepoPocket").path).sorted(); precondition(outputs == ["a (1).zip", "a.zip"])')
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'main.swift'; p.write_text(source)
    subprocess.run(['swiftc',str(p),'-o',d+'/test'],check=True)

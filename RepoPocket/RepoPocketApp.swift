@@ -440,6 +440,7 @@ struct FileView: View {
     var canWrite: Bool = false
     private var writable: Bool { canWrite && api.isCurrentSession }
     @State private var text = ""
+    @State private var loadedText = ""
     @State private var currentSHA = ""
     @State private var editable = false
     @State private var busy = false
@@ -449,6 +450,7 @@ struct FileView: View {
     @State private var showDeb = false
     @State private var confirmSave = false
     @State private var confirmDelete = false
+    @State private var confirmReload = false
     @State private var deleted = false
     var body: some View {
         Form {
@@ -463,13 +465,16 @@ struct FileView: View {
                 if writable && entry.name.lowercased().hasSuffix(".deb") { Button("编辑包信息") { showDeb = true }.disabled(busy || deleted).softGroupedRow(top: true) }
                 if writable && entry.name.lowercased().hasSuffix(".dylib") { Button("编辑插件信息") { showMetadata = true }.disabled(busy || deleted).softGroupedRow(top: true) }
                 Button("下载 / 存到文件") { Task { await download() } }.disabled(busy || deleted).softGroupedRow(top: !(writable && (entry.name.lowercased().hasSuffix(".deb") || entry.name.lowercased().hasSuffix(".dylib"))))
-                Button("加载文本（最多 1 MiB）") { Task { await read() } }.disabled(busy || deleted).softGroupedRow(bottom: !busy)
+                Button("加载文本（最多 1 MiB）") {
+                    if editable && text != loadedText { confirmReload = true }
+                    else { Task { await read() } }
+                }.disabled(busy || deleted).softGroupedRow(bottom: !busy)
                 if busy { ProgressView().softGroupedRow(bottom: true) }
             }
             if editable && !deleted {
                 if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled).softGroupedRow(top: true, bottom: true) } }
                 else {
-                Section("编辑") { TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 260).softGroupedRow(top: true, bottom: true) }
+                Section("编辑") { TextEditor(text: $text).font(.system(.body, design: .monospaced)).frame(minHeight: 260).disabled(busy).softGroupedRow(top: true, bottom: true) }
                 Section("提交") {
                     TextField("提交说明", text: $commitMessage).softGroupedRow(top: true)
                     Button("提交文本修改") { confirmSave = true }.disabled(busy).softGroupedRow(bottom: true)
@@ -490,6 +495,9 @@ struct FileView: View {
         .confirmationDialog("永久删除仓库中的 \(entry.name)？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("确认删除", role: .destructive) { Task { await remove() } }
         }
+        .confirmationDialog("重新加载会丢弃尚未提交的文本修改，是否继续？", isPresented: $confirmReload, titleVisibility: .visible) {
+            Button("丢弃修改并重新加载", role: .destructive) { Task { await read() } }
+        }
     }
     private func read() async {
         busy = true; defer { busy = false }
@@ -499,21 +507,24 @@ struct FileView: View {
             guard f.encoding == "base64", let s = f.content,
                   let bytes = Data(base64Encoded: s, options: .ignoreUnknownCharacters), !bytes.contains(0),
                   let t = String(data: bytes, encoding: .utf8) else { throw AppError(text: "不是支持的 UTF-8 文本，不会强行编辑二进制文件。") }
-            text = t; currentSHA = f.sha; editable = true
+            text = t; loadedText = t; currentSHA = f.sha; editable = true
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func save() async {
         busy = true; defer { busy = false }
         do {
-            try await api.commit(repo, path: entry.path, bytes: Data(text.utf8), sha: currentSHA, message: commitMessage, branch: branch)
-            currentSHA = try await api.file(repo, path: entry.path, branch: branch).sha
+            let submittedText = text
+            currentSHA = try await api.commit(repo, path: entry.path, bytes: Data(submittedText.utf8), sha: currentSHA, message: commitMessage, branch: branch)
+            loadedText = submittedText
             api.message = "修改已提交到 GitHub。"
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
     private func remove() async {
         busy = true; defer { busy = false }
         do {
+            let expectedSHA = currentSHA.isEmpty ? entry.sha : currentSHA
             let fresh = try await api.file(repo, path: entry.path, branch: branch)
+            try FileVersionRules.requireUnchanged(expectedSHA: expectedSHA, actualSHA: fresh.sha, isFile: fresh.type == "file")
             try await api.delete(repo, entry: fresh, message: "Delete \(entry.name) via RepoPocket", branch: branch)
             deleted = true; api.message = "删除已提交。"
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
