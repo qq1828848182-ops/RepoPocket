@@ -79,6 +79,9 @@ struct RepositoryHomeHighlights: View {
                 SoftGroupRow("all") { NavigationLink("全部运行") { WorkflowRunsView(api: api, repo: repo, branch: "") } }
                 SoftGroupRow("refresh") { Button(runError.isEmpty ? "刷新运行状态" : "重试读取运行") { runRevision += 1 }.disabled(runLoading) }
             }
+        }.onReceive(NotificationCenter.default.publisher(for: .workflowRunDeleted)) { notice in
+            if notice.userInfo?["repo"] as? String == repo,
+               notice.userInfo?["generation"] as? UUID == AccountStore.generation { runRevision += 1 }
         }.task(id: runRevision) {
             runLoading = true; runError = ""; run = nil
             defer { runLoading = false }
