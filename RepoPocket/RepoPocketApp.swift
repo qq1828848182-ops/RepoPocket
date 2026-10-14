@@ -10,7 +10,17 @@ struct RepoPocketApp: App {
     @AppStorage("appearance.mode") private var appearance = "system"
     var body: some Scene {
         WindowGroup {
+            Group {
+#if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-style-preview") {
+                    StylePreviewGallery()
+                } else {
+                    ZStack { AccountRootView().id(accountID) }
+                }
+#else
             ZStack { AccountRootView().id(accountID) }
+#endif
+            }
                 .preferredColorScheme(appearance == "dark" ? .dark : (appearance == "light" ? .light : nil))
                 .environmentObject(selectionStore)
                 .environmentObject(accountPresentation)
@@ -254,8 +264,7 @@ struct BrowserView: View {
     @State private var deleteAccount = ""
     @State private var deleteGeneration = UUID()
     @State private var deleteBranch = ""
-    var body: some View {
-        List {
+    @ViewBuilder private var repositoryHeader: some View {
             Section {
                 Group {
                     if let repositoryInfo {
@@ -265,7 +274,8 @@ struct BrowserView: View {
                     }
                 }.textSelection(.enabled).softGroupedRow(top: true, bottom: true)
             }
-            if path.isEmpty && !showFiles {
+    }
+    @ViewBuilder private var repositoryOverview: some View {
                 RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
             if path.isEmpty && !showFiles && releasePresence.exists && api.isCurrentSession {
                 Section {
@@ -290,7 +300,8 @@ struct BrowserView: View {
                     }
                 }
                 RepositoryReadmeSection(api: api, repo: repo, branch: activeBranch, canWrite: canWrite)
-            } else {
+    }
+    @ViewBuilder private var directoryRows: some View {
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
             if entries.isEmpty && !busy {
                 Label("此目录没有文件", systemImage: "folder").foregroundColor(.secondary).padding(.vertical)
@@ -329,7 +340,11 @@ struct BrowserView: View {
                     }
                 } else { Text(e.name + " (" + e.type + ")").softGroupedRow(top: e.id == entries.first?.id, bottom: e.id == entries.last?.id) }
             }
-            }
+    }
+    var body: some View {
+        List {
+            repositoryHeader
+            if path.isEmpty && !showFiles { repositoryOverview } else { directoryRows }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -494,7 +509,7 @@ struct FileView: View {
             }
             if editable && !deleted {
                 Section {
-                    NavigationLink("阅读预览 / 代码高亮") { FileReadingView(text: text, path: entry.path, repo: repo, branch: branch) }.softGroupedRow(top: true)
+                    NavigationLink("阅读预览 / 代码高亮") { FileReadingView(text: text, path: entry.path, repo: repo, branch: branch, api: api) }.softGroupedRow(top: true)
                     NavigationLink("此文件的历史记录") { NativeFileHistoryView(api: api, repo: repo, path: entry.path, branch: branch) }.softGroupedRow(bottom: true)
                 }
                 if !writable { Section("文本预览") { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled).softGroupedRow(top: true, bottom: true) } }
