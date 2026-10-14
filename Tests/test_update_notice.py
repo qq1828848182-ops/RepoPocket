@@ -23,8 +23,9 @@ class NoticeTests(unittest.TestCase):
     def test_startup_card_ui_and_safety(self):
         app = (REPO_ROOT / 'RepoPocket/RepoPocketApp.swift').read_text()
         card = (REPO_ROOT / 'RepoPocket/StartupUpdateCard.swift').read_text()
-        for token in ['.sheet(isPresented: $startupSheetVisible', '.task(id: startupUpdateReady)', 'StartupUpdateCard(api: api',
-                      '!accountPresentation.showing', 'downloads.picker == nil', 'api.message.isEmpty',
+        for token in ['.sheet(isPresented: $startupSheetVisible', '.task(id: startupSheetQueued)',
+                      '.onReceive(updateChecker.$startupRelease)', 'StartupUpdateCard(api: api',
+                      'DownloadStore.shared.picker == nil', 'api.message.isEmpty',
                       'selectedTab = 4']:
             self.assertIn(token, app)
         for token in ['ScrollView {', 'Text(verbatim: notes)', 'prefix(16_384)',
@@ -43,7 +44,12 @@ class NoticeTests(unittest.TestCase):
         self.assertLess(card.index('ScrollView {'), card.index('// The footer does not scroll'))
         # RC regression: reading an un-injected @EnvironmentObject traps on the first update.
         self.assertNotIn('@EnvironmentObject private var downloads', app)
-        self.assertIn('@ObservedObject private var downloads = DownloadStore.shared', app)
+        # The startup path must not evaluate other observable objects while SwiftUI runs body.
+        self.assertNotIn('private var startupUpdateReady', app)
+        queue = app.split('.onReceive(updateChecker.$startupRelease)', 1)[1].split('.sheet(isPresented: $startupSheetVisible', 1)[0]
+        for foreign in ['accountPresentation.showing', 'DownloadStore.shared.picker', 'api.message.isEmpty']:
+            self.assertNotIn(foreign, queue)
+        self.assertIn('DownloadStore.shared.picker == nil', app.split('private func queueStartupSheet', 1)[1])
 
     def test_environment_objects_resolve(self):
         import re
