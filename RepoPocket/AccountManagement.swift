@@ -34,6 +34,7 @@ struct AccountManagementView: View {
                     }
                 }
                 Section {
+                    NavigationLink("使用 GitHub 浏览器授权") { DeviceOAuthView(api: api) }.softGroupedRow(top: true)
                     NavigationLink("添加 / 更新 GitHub 账号") {
                         Form {
                             SecureField("粘贴你自己的 Token", text: $token).textInputAutocapitalization(.never).autocorrectionDisabled().softGroupedRow(top: true)
