@@ -62,6 +62,7 @@ struct AccountRootView: View {
             .alert("提示", isPresented: Binding(get: { !api.message.isEmpty }, set: { if !$0 { api.message = "" } })) {
                 Button("好", role: .cancel) { api.message = "" }
             } message: { Text(api.message) }
+    }
 
     // Reads of other observable objects stay out of body: during view evaluation a
     // missing or mid-transition dependency would trap, and this path must never do that.
