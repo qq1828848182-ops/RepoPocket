@@ -18,6 +18,8 @@ struct CommunityMarkdown: View {
     let text: String
     var baseURL: URL? = nil
     var imageBaseURL: URL? = nil
+    var api: GitHub? = nil
+    @State private var readingLink: ReadingLink?
     @State private var content: MarkdownContent?
     private var bounded: String { String(decoding: text.utf8.prefix(CommunityRules.markdownByteLimit), as: UTF8.self) }
     var body: some View {
@@ -30,10 +32,13 @@ struct CommunityMarkdown: View {
                     .markdownTheme(.gitHub)
                     .textSelection(.enabled)
                     .environment(\.openURL, OpenURLAction { url in
-                        CommunityRules.webURL(url.absoluteString) == nil ? .discarded : .systemAction
+                        guard let safe = CommunityRules.webURL(url.absoluteString) else { return .discarded }
+                        readingLink = ReadingLink(url: safe)
+                        return .handled
                     })
             } else { ProgressView("排版中…") }
         }.frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(item: $readingLink) { ReadingLinkDestination(url: $0.url, api: api) }
         .task(id: text) {
             let source = bounded
             let parsed = await Task.detached(priority: .utility) { MarkdownContent(source) }.value
@@ -65,7 +70,7 @@ struct RepositoryReadmeView: View {
                 if let text {
                     Toggle("查看 Markdown 源文", isOn: $raw)
                     if raw { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled) }
-                    else { CommunityMarkdown(text: text, baseURL: webBase, imageBaseURL: imageBase) }
+                    else { CommunityMarkdown(text: text, baseURL: webBase, imageBaseURL: imageBase, api: api) }
                 } else if error.isEmpty { ProgressView("加载 README…") }
                 if !error.isEmpty { Text(error); Button("重试") { revision += 1 } }
 
@@ -94,6 +99,7 @@ struct FileReadingView: View {
     let path: String
     let repo: String
     let branch: String
+    var api: GitHub? = nil
     @State private var markdown = true
     private var isMarkdown: Bool { ["md", "markdown", "mdown"].contains((path as NSString).pathExtension.lowercased()) }
     var body: some View {
@@ -102,7 +108,7 @@ struct FileReadingView: View {
                 if isMarkdown { Toggle("Markdown 排版", isOn: $markdown) }
                 if isMarkdown && markdown {
                     CommunityMarkdown(text: text, baseURL: CommunityRules.readingBase(repo, branch: branch, file: path, raw: false),
-                        imageBaseURL: CommunityRules.readingBase(repo, branch: branch, file: path, raw: true))
+                        imageBaseURL: CommunityRules.readingBase(repo, branch: branch, file: path, raw: true), api: api)
                 } else { SourceCodeView(text: text, filename: path) }
             }.padding().frame(maxWidth: .infinity, alignment: .leading)
         }.navigationTitle((path as NSString).lastPathComponent).adaptiveWorkspaceLayout()

@@ -5,8 +5,10 @@ struct WorkflowRunsView: View {
     let repo: String
     let branch: String
     @StateObject private var store = CommunityPageStore<WorkflowRun>()
+    @State private var currentBranchOnly = false
     var body: some View {
         List {
+            Section { Toggle("仅当前分支", isOn: $currentBranchOnly).disabled(branch.isEmpty).softGroupedRow(top: true, bottom: true) }
             Section {
                 SoftGroupRows {
                     for run in store.items {
@@ -20,15 +22,15 @@ struct WorkflowRunsView: View {
                             }
                         }
                     }
-                    if store.loaded && store.items.isEmpty { SoftGroupRow("empty") { Text("当前分支暂无运行记录") } }
+                    if store.loaded && store.items.isEmpty { SoftGroupRow("empty") { Text("暂无运行记录") } }
                 }
             }
             CommunityPageFooter(store: store, next: { load() })
         }.navigationTitle("Actions").adaptiveWorkspaceLayout()
         .toolbar { Button("刷新") { load(reset: true) }.disabled(store.busy) }
-        .task { if !store.loaded { load() } }.onDisappear { store.cancel() }
+        .task { if !store.loaded { load() } }.onChange(of: currentBranchOnly) { _ in load(reset: true) }.onDisappear { store.cancel() }
     }
-    private func load(reset: Bool = false) { store.load(reset: reset, api: api) { try await api.workflowRuns(repo, branch: branch, page: $0) } }
+    private func load(reset: Bool = false) { store.load(reset: reset, api: api) { try await api.workflowRuns(repo, branch: currentBranchOnly ? branch : "", page: $0) } }
 }
 
 struct WorkflowRunView: View {

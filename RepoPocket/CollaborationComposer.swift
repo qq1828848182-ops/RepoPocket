@@ -23,7 +23,7 @@ struct CollaborationComposer: View {
                         if number == nil { SoftGroupRow("title") { TextField("议题标题", text: $title).disabled(busy) } }
                         SoftGroupRow("body") { TextEditor(text: $text).frame(minHeight: 220).disabled(busy).accessibilityLabel("Markdown 正文") }
                         SoftGroupRow("preview-toggle") { Toggle("预览 Markdown", isOn: $preview) }
-                        if preview { SoftGroupRow("preview") { CommunityMarkdown(text: text) } }
+                        if preview { SoftGroupRow("preview") { CommunityMarkdown(text: text, api: api) } }
                         if !error.isEmpty { SoftGroupRow("error") { Text(error).foregroundStyle(.red) } }
                         if busy { SoftGroupRow("busy") { ProgressView("提交中…") } }
                     }

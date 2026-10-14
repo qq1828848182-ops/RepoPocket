@@ -39,7 +39,7 @@ struct RepositoryReadmeSection: View {
                     SoftGroupRow("body") {
                         CommunityMarkdown(text: expanded ? text : ReadmePreviewRules.preview(text),
                             baseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: false),
-                            imageBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: true))
+                            imageBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: true), api: api)
                     }
                     if ReadmePreviewRules.needsExpansion(text) {
                         SoftGroupRow("expand") { Button(expanded ? "收起自述文件" : "展开完整自述文件") { expanded.toggle() } }

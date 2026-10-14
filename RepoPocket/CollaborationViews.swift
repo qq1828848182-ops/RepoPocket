@@ -131,7 +131,7 @@ struct CollaborationDetailView: View {
                     if let count = item.changed_files { SoftGroupRow("stats") { Text("\(count) 个文件 · +\(item.additions ?? 0) / −\(item.deletions ?? 0)").font(.caption) } }
                     }
                 }
-                Section("正文") { CommunityMarkdown(text: item.body ?? "暂无正文", baseURL: CommunityRules.webURL(item.html_url)).softGroupedRow(top: true, bottom: true) }
+                Section("正文") { CommunityMarkdown(text: item.body ?? "暂无正文", baseURL: CommunityRules.webURL(item.html_url), api: api).softGroupedRow(top: true, bottom: true) }
                 Section {
                     SoftGroupRows {
                     SoftGroupRow("comments") { NavigationLink("讨论评论") { DiscussionView(api: api, repo: repo, number: number, stream: .conversation) } }
@@ -204,7 +204,7 @@ struct DiscussionView: View {
                     if let state = comment.state { SoftGroupRow("state") { Text(state).font(.caption).foregroundStyle(.secondary) } }
                     if let date = comment.created_at { SoftGroupRow("date") { Text(date).font(.caption2).foregroundStyle(.secondary) } }
                     if let path = comment.path { SoftGroupRow("path") { Text(path + (comment.line.map { ":\($0)" } ?? "")).font(.caption).textSelection(.enabled) } }
-                    SoftGroupRow("body") { CommunityMarkdown(text: comment.body.flatMap { $0.isEmpty ? nil : $0 } ?? "无文字内容", baseURL: CommunityRules.webURL(comment.html_url) ?? CommunityRules.repositoryURL(repo)) }
+                    SoftGroupRow("body") { CommunityMarkdown(text: comment.body.flatMap { $0.isEmpty ? nil : $0 } ?? "无文字内容", baseURL: CommunityRules.webURL(comment.html_url) ?? CommunityRules.repositoryURL(repo), api: api) }
                     }
                 }
             }
