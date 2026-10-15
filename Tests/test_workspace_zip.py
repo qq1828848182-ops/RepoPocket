@@ -93,7 +93,7 @@ for name in ["valid", "directory", "literal", "implicit", "real", "dosutf8", "tr
  if name == "dosutf8" {
   let file = output.appendingPathComponent("repo/13 数据容器tuple.py")
   let content = try String(contentsOf: file, encoding: .utf8)
-  precondition(content == #"print("中文")"# + String(UnicodeScalar(10)))
+  precondition(content == #"print("中文")"# + "\n")
   let listing = try fm.contentsOfDirectory(atPath: file.deletingLastPathComponent().path)
   precondition(listing == ["13 数据容器tuple.py"])
   try fm.removeItem(at: file)

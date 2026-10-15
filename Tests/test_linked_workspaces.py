@@ -72,7 +72,12 @@ do { _ = try LinkedWorkspaces.roots() } catch { rejected = true }
 precondition(rejected)
 allowScope = true
 let restored = try LinkedWorkspaces.roots()
-precondition(Set(restored.map(\.path)) == Set([a.path, b.path]))
+precondition(Set(restored.map(\.path)) == Set([a.path, b.path]), "Cold-start bookmark roots must restore both original canonical directories; got \(restored.map(\.path))")
+// Preserve the second selection when the OS bookmark resolves the /var alias
+// to /private/var. This must return the authorized root URL, not a rebuilt URL.
+let aliasB = URL(fileURLWithPath: b.path.replacingOccurrences(of: "/private/var/", with: "/var/"), isDirectory: true)
+let selectedB = LocalStore.matchingRoot(aliasB, in: restored)
+precondition(selectedB?.path == b.path, "Canonical path aliases must retain selected B rather than falling back to first A")
 rejected = false
 do { _ = try LocalStore.renameWorkspace(a, to: "moved") } catch { rejected = true }
 precondition(rejected && fm.fileExists(atPath: a.path))
@@ -96,7 +101,7 @@ precondition(fm.fileExists(atPath: a.deletingLastPathComponent().path))
 let neighbor = try String(contentsOf: b.appendingPathComponent("keep.txt"), encoding: .utf8)
 precondition(neighbor == "neighbor")
 let remaining = try LinkedWorkspaces.roots()
-precondition(remaining.map(\.path) == [b.path])
+precondition(remaining.map(\.path) == [b.path], "Removing A must retain precisely registered B")
 let survivor = fixture.appendingPathComponent("survivor", isDirectory: true)
 try fm.createDirectory(at: survivor, withIntermediateDirectories: true)
 _ = try LinkedWorkspaces.register(survivor)
@@ -107,13 +112,13 @@ do { _ = try LinkedWorkspaces.roots() } catch { rejected = true }
 precondition(rejected)
 try LinkedWorkspaces.detach(b) // Recover without permission to access the lost root.
 let recovered = try LinkedWorkspaces.roots()
-precondition(recovered.map(\.path) == [survivor.path])
+precondition(recovered.map(\.path) == [survivor.path], "Detaching lost B must recover the survivor root")
 try LinkedWorkspaces.detach(survivor)
 precondition(fm.fileExists(atPath: survivor.path))
 print("PASS linked original changes, persistent bookmarks, same-name isolation, preserved baseline, exact deletion and unavailable-root refusal")
 '''
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / 'test.swift'
-        prefix = 'import Foundation\nimport CryptoKit\nstruct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }\nlet fixture = URL(fileURLWithPath: "' + d.replace('\\', '\\\\') + '")\nvar allowScope = true\nfunc fixtureRelease() {}\n'
+        prefix = 'import Foundation\nimport CryptoKit\nstruct AppError: LocalizedError { let text: String; var errorDescription: String? { text } }\nlet fixture = URL(fileURLWithPath: "' + d.replace('\\', '\\\\') + '").resolvingSymlinksInPath().standardizedFileURL\nvar allowScope = true\nfunc fixtureRelease() {}\n'
         path.write_text(prefix + core + remote + tests, encoding='utf-8')
         subprocess.run(['swift', str(path)], check=True)
