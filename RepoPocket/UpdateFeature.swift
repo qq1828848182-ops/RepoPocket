@@ -148,7 +148,7 @@ import ZIPFoundation
                             self.message = "下载完成，请选择应用安装"
                         } else { self.message = "下载完成，请选择应用安装" }
                         guard self.generation == token, accountSession == AccountStore.generation else { throw CancellationError() }
-                        let saved = try DownloadStore.shared.persist(file, session: accountSession)
+                        let saved = try await DownloadStore.shared.persist(file, session: accountSession)
                         try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
                         self.message = "已保存到 " + DownloadStore.shared.label + "，请选择应用安装"
                         self.downloaded = saved

@@ -50,6 +50,7 @@ enum DownloadRules {
         try copy(source, staging)
         guard valid() else { throw CancellationError() }
         guard try fingerprint(staging) == expected else { throw NSError(domain: "DownloadStore", code: 2, userInfo: [NSLocalizedDescriptionKey: "保存校验失败，请重试。"]) }
+        guard valid() else { throw CancellationError() }
         // moveItem is exclusive (throws on an existing destination), not a replace.
         try fm.moveItem(at: staging, to: target)
         return target

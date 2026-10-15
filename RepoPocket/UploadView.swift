@@ -59,7 +59,7 @@ struct UploadView: View {
     @State private var trollAuthor = ""
     @State private var trollPreview = false
     @State private var releases: [Release] = []
-    @State private var savedAsset: SharedFile?
+    @State private var downloadNotice = ""
     var body: some View {
         NavigationStack {
             Form {
@@ -84,6 +84,7 @@ struct UploadView: View {
                         if let a = asset {
                             Text("附件：" + a.name).softGroupedRow()
                             Button("保存附件") { Task { await saveAsset(a, repo: releaseRepo) } }.disabled(busy).softGroupedRow()
+                            if !downloadNotice.isEmpty { Text(downloadNotice).font(.caption).foregroundStyle(.secondary).softGroupedRow() }
                             if r.draft {
                                 Button("公开此 Release") { Task { await publish() } }.disabled(busy).softGroupedRow()
                             } else if let url = URL(string: a.browser_download_url) {
@@ -105,7 +106,6 @@ struct UploadView: View {
 
             }
             .sheet(isPresented: $sharedReleaseEntry) { ReleaseEntryView(api: api, initialRepo: repo, initialBranch: branch) }
-            .sheet(item: $savedAsset) { ShareSheet(url: $0.url) }
             .interactiveDismissDisabled(busy)
             .alert("提示", isPresented: Binding(get: { !alertText.isEmpty }, set: { if !$0 { alertText = "" } })) {
                 Button("好", role: .cancel) { alertText = "" }
@@ -393,8 +393,12 @@ struct UploadView: View {
                 let attrs = try FileManager.default.attributesOfItem(atPath: source.path)
                 guard attrs[.type] as? FileAttributeType == .typeRegular else { throw AppError(text: "请选择单个普通文件，不是文件夹。") }
                 if trollMode && !source.lastPathComponent.lowercased().hasSuffix(".dylib") { throw AppError(text: "TrollFools 发布只能选择 .dylib 文件。") }
-                let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-                guard size < 2 * 1024 * 1024 * 1024 else { throw AppError(text: "Release 单附件必须小于 2 GiB。") }
+                let size = (attrs[.size] as? NSNumber)?.int64Value ?? Int64.max
+                if trollMode {
+                    guard size > 0, size <= RepoQueue.maximumTrollPluginBytes else { throw AppError(text: "TrollFools 插件必须大于 0 且不超过 20 MiB。") }
+                } else {
+                    guard size > 0, size < 2 * 1024 * 1024 * 1024 else { throw AppError(text: "Release 单附件必须大于 0 且小于 2 GiB。") }
+                }
                 let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let target = folder.appendingPathComponent(source.lastPathComponent)
@@ -405,7 +409,11 @@ struct UploadView: View {
                     defer { if checked.file != target { try? FileManager.default.removeItem(at: checked.file.deletingLastPathComponent()) } }
                     if checked.file != target { try FileManager.default.removeItem(at: target); try FileManager.default.copyItem(at: checked.file, to: target) }
                     let actual = (try FileManager.default.attributesOfItem(atPath: target.path)[.size] as? NSNumber)?.int64Value ?? Int64.max
-                    guard actual < 2 * 1024 * 1024 * 1024 else { throw AppError(text: "Release 附件过大") }
+                    if trollMode {
+                        guard actual > 0, actual <= RepoQueue.maximumTrollPluginBytes else { throw AppError(text: "修复后的插件超过 20 MiB。") }
+                    } else {
+                        guard actual > 0, actual < 2 * 1024 * 1024 * 1024 else { throw AppError(text: "Release 附件过大") }
+                    }
                     return (target, actual, checked.notice)
                 } catch { try? FileManager.default.removeItem(at: folder); throw error }
             }.value
@@ -472,6 +480,7 @@ struct UploadView: View {
     }
     private func saveAsset(_ asset: Asset, repo: String) async {
         guard !busy, api.isCurrentSession else { return }
+        downloadNotice = ""
         let generation = AccountStore.generation
         busy = true; defer { busy = false }
         do {
@@ -481,10 +490,9 @@ struct UploadView: View {
             let temporary = try await api.downloadAsset(repo, asset: asset)
             defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
             guard (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.intValue == asset.size else { throw AppError(text: "附件大小不符，请重试。") }
-            let saved = try DownloadStore.shared.persist(temporary, session: generation)
+            _ = try await DownloadStore.shared.persist(temporary, session: generation)
             guard api.isCurrentSession else { throw CancellationError() }
-            alertText = "已保存到 " + DownloadStore.shared.label
-            savedAsset = SharedFile(url: saved)
+            downloadNotice = "已下载并保存到 " + DownloadStore.shared.label
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { alertText = error.localizedDescription } }
     }
     private func publish() async {

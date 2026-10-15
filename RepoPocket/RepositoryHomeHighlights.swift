@@ -3,6 +3,7 @@ import SwiftUI
 struct RepositoryHomeHighlights: View {
     @ObservedObject var api: GitHub
     let repo: String
+    var refreshID = 0
     @State private var release: ManagedRelease?
     @State private var run: WorkflowRun?
     @State private var releaseLoading = true
@@ -46,7 +47,7 @@ struct RepositoryHomeHighlights: View {
         }.onReceive(NotificationCenter.default.publisher(for: .releaseManagementChanged)) { notice in
             if notice.userInfo?["repo"] as? String == repo,
                notice.userInfo?["generation"] as? UUID == AccountStore.generation { releaseRevision += 1 }
-        }.task(id: releaseRevision) {
+        }.task(id: "\(refreshID):release:\(releaseRevision)") {
             releaseLoading = true; releaseError = ""; release = nil
             defer { releaseLoading = false }
             do {
@@ -81,7 +82,7 @@ struct RepositoryHomeHighlights: View {
         }.onReceive(NotificationCenter.default.publisher(for: .workflowRunDeleted)) { notice in
             if notice.userInfo?["repo"] as? String == repo,
                notice.userInfo?["generation"] as? UUID == AccountStore.generation { runRevision += 1 }
-        }.task(id: runRevision) {
+        }.task(id: "\(refreshID):run:\(runRevision)") {
             runLoading = true; runError = ""; run = nil
             defer { runLoading = false }
             do {

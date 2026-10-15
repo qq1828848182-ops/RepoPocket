@@ -1,4 +1,4 @@
-import subprocess, tempfile, hashlib
+import subprocess, tempfile, hashlib, shutil
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +40,8 @@ refuse([d], files:["gone":"changed"])
 refuse([a], files:["two":"s"])
 refuse([a], dirs:["two/a"])
 refuse([PendingRepoItem(local: b.local, size: 11*1024*1024, path:"b", head:"h")])
+let overBudget = (0..<6).map { PendingRepoItem(local: URL(fileURLWithPath:"/tmp/file-\($0)"), size: 10*1024*1024, path:"f\($0)", head:"h") }
+refuse(overBudget)
 refuse([PendingRepoItem(local:b.local,size:1,path:"../b",head:"h")])
 refuse([a,PendingRepoItem(local:b.local,size:1,path:"two/a/child",head:"h")])
 refuse([a,PendingRepoItem(local:b.local,size:1,path:"TWO/A",head:"h")])
@@ -62,13 +64,16 @@ precondition(failed)
 failed = false
 do { try bad.update(Data([0])) } catch { failed = true }
 precondition(failed)
-print("PASS: queue targets/reselection, atomic multi-folder tree/delete, conflicts, 11MiB streamed disk SHA1/SHA256, corruption/overflow")
+print("PASS: queue targets/reselection, 50MiB aggregate cap, atomic multi-folder tree/delete, conflicts, 11MiB streamed disk SHA1/SHA256, corruption/overflow")
 '''.replace('SIZE',str(len(payload))).replace('"GIT"','"'+git+'"').replace('"SHA"','"'+sha+'"')
 # Throwing expressions must be evaluated outside precondition's nonthrowing autoclosure.
 tests = tests.replace('precondition(try hash.finish(expectedGit:', 'let verified = try hash.finish(expectedGit:').replace('"'+git+'") == "'+sha+'")','"'+git+'")\nprecondition(verified == "'+sha+'")')
 tests = tests.replace('precondition(try LocalStore.snapshotFileSHA256(file) == "'+sha+'")','let diskHash = try LocalStore.snapshotFileSHA256(file)\nprecondition(diskHash == "'+sha+'")')
 source = 'import Foundation\nimport CryptoKit\nstruct AppError: Error { let text: String }\nenum LocalStore {}\n' + Path(REPO_ROOT, 'RepoPocket/RepoQueue.swift').read_text() + tests
-with tempfile.TemporaryDirectory() as d:
-    f=Path(d)/'main.swift'; f.write_text(source)
-    subprocess.run(['swiftc', str(f), '-o',d+'/test'],check=True)
-    subprocess.run([d+'/test'],check=True)
+if shutil.which('swiftc'):
+    with tempfile.TemporaryDirectory() as d:
+        f=Path(d)/'main.swift'; f.write_text(source)
+        subprocess.run(['swiftc', str(f), '-o',d+'/test'],check=True)
+        subprocess.run([d+'/test'],check=True)
+else:
+    print('SKIP native Swift queue harness: swiftc is available on the macOS CI runner.', flush=True)

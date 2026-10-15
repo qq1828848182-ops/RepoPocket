@@ -7,6 +7,14 @@ store = Path(REPO_ROOT, 'RepoPocket/DownloadStore.swift').read_text()
 app = Path(REPO_ROOT, 'RepoPocket/RepoPocketApp.swift').read_text()
 account = Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text()
 class DownloadTests(unittest.TestCase):
+ def test_large_file_transaction_runs_off_main_and_can_be_cancelled(self):
+  self.assertIn('func persist(_ temporary: URL, session: UUID) async throws -> URL', store)
+  self.assertIn('Task.detached(priority: .utility)', store)
+  self.assertIn('withTaskCancellationHandler', store)
+  self.assertIn('Task.isCancelled', store)
+  for name in ['RepoPocketApp.swift', 'UploadView.swift', 'UpdateFeature.swift', 'WorkflowViews.swift', 'ReleaseManagementUI.swift']:
+   self.assertIn('try await DownloadStore.shared.persist(', Path(REPO_ROOT, 'RepoPocket', name).read_text())
+
  def test_real_callsites_and_lifecycle(self):
   for text in ['resolvingBookmarkData', 'bookmarkDataIsStale', 'startAccessingSecurityScopedResource', 'stopAccessingSecurityScopedResource', 'NSFileCoordinator', 'volumeAvailableCapacityForImportantUsageKey', 'LocalStore.snapshotFileSHA256', 'AccountStore.generation']:
    self.assertIn(text, store)

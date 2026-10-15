@@ -45,6 +45,14 @@ class WorkspaceTrollStaticTests(unittest.TestCase):
         self.assertIn('"force": false', self.github)
         self.assertIn('"parents": [head]', self.github)
 
+    def test_troll_upload_is_bounded_and_streamed(self):
+        self.assertIn('maximumTrollPluginBytes', self.upload)
+        self.assertIn('if trollMode {', self.upload)
+        troll = self.github.split('func trollPublish(', 1)[1].split('func metadataSnapshot(', 1)[0]
+        self.assertNotIn('Data(contentsOf: file', troll)
+        self.assertIn('uploadGitBlobFile(', troll)
+        self.assertIn('session.upload(for: uploadRequest, fromFile: bodyFile)', self.github)
+
 
 if __name__ == "__main__":
     unittest.main()

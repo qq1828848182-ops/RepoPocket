@@ -142,8 +142,7 @@ enum ReadmeDocumentRules {
 extension GitHub {
     func repositoryReadmeDocument(_ repo: String, branch: String) async throws -> ReadmeDocument {
         let entry = try await repositoryReadme(repo, branch: branch)
-        guard (entry.size ?? 0) <= ReadmeDocumentRules.sourceByteLimit else { throw AppError(text: "自述文件超过 1 MiB，无法在此预览。") }
-        let source = try? ReadmeDocumentRules.source(entry)
+        let source = (entry.size ?? 0) <= ReadmeDocumentRules.sourceByteLimit ? try? ReadmeDocumentRules.source(entry) : nil
         do {
             let html = try await communityReadmeHTML(repo, branch: branch)
             return ReadmeDocument(entry: entry, source: source, html: html)

@@ -404,6 +404,56 @@ final class GitHub: ObservableObject {
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(type, from: await data(path, method: method, object: object, query: query))
     }
+    private func uploadGitBlobFile(_ file: URL, path: String, maximumBytes: Int64, expectedSize: Int64? = nil) async throws -> GitObject {
+        try ensureActiveAccount()
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let number = attributes[.size] as? NSNumber else { throw AppError(text: "请选择有效的普通文件。") }
+        let sourceSize = number.int64Value
+        guard sourceSize > 0, sourceSize <= maximumBytes,
+              expectedSize == nil || expectedSize == sourceSize else { throw AppError(text: "文件为空、已变化或超过上传大小限制。") }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RepoPocket-GitBlob-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bodyFile = directory.appendingPathComponent("request.json")
+        guard FileManager.default.createFile(atPath: bodyFile.path, contents: nil) else { throw AppError(text: "无法准备上传请求。") }
+        let writer = Task.detached(priority: .utility) { () throws -> Void in
+            let input = try FileHandle(forReadingFrom: file)
+            let output = try FileHandle(forWritingTo: bodyFile)
+            defer { try? input.close(); try? output.close() }
+            try output.write(contentsOf: Data("{\"content\":\"".utf8))
+            var carry = Data()
+            var totalBytes: Int64 = 0
+            while let chunk = try input.read(upToCount: 192 * 1024), !chunk.isEmpty {
+                try Task.checkCancellation()
+                let count = Int64(chunk.count)
+                guard totalBytes <= maximumBytes - count else { throw AppError(text: "文件超过上传大小限制。") }
+                totalBytes += count
+                carry.append(chunk)
+                let completeCount = (carry.count / 3) * 3
+                if completeCount > 0 {
+                    try output.write(contentsOf: Data(carry.prefix(completeCount)).base64EncodedData())
+                    carry = Data(carry.dropFirst(completeCount))
+                }
+            }
+            if !carry.isEmpty { try output.write(contentsOf: carry.base64EncodedData()) }
+            guard totalBytes == sourceSize else { throw AppError(text: "文件在上传准备期间发生变化，请重新选择。") }
+            try output.write(contentsOf: Data("\",\"encoding\":\"base64\"}".utf8))
+            try output.synchronize()
+        }
+        try await withTaskCancellationHandler {
+            try await writer.value
+        } onCancel: {
+            writer.cancel()
+        }
+        try ensureActiveAccount()
+        var uploadRequest = try request(url(path), method: "POST")
+        uploadRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (bytes, response) = try await session.upload(for: uploadRequest, fromFile: bodyFile)
+        try check(bytes, response, operation: "上传 Git 文件")
+        try ensureActiveAccount()
+        return try JSONDecoder().decode(GitObject.self, from: bytes)
+    }
     func history(_ repo: String, branch: String, page: Int) async throws -> [DesktopCommit] {
         try await decoded([DesktopCommit].self, Self.repoPath(repo) + "/commits", query: [
             .init(name: "sha", value: branch), .init(name: "per_page", value: "30"), .init(name: "page", value: String(page))])
@@ -575,18 +625,33 @@ final class GitHub: ObservableObject {
         guard !tree.truncated, tree.tree.count <= 20000, tree.tree.allSatisfy({ $0.type == "tree" || ($0.type == "blob" && ["100644", "100755"].contains($0.mode)) }) else { throw AppError(text: "不安全或截断的远端树") }
         let files = Dictionary(uniqueKeysWithValues: tree.tree.filter { $0.type == "blob" }.map { ($0.path, $0.sha) })
         try RepoQueue.validate(items, head: head, files: files, directories: Set(tree.tree.filter { $0.type == "tree" }.map(\.path)))
-        let writes = try items.map { item -> WorkspaceWrite in
-            let data = try item.local.map { file -> Data in
-                let prepared = try DebControlEditor.prepareForUpload(file)
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AppError(text: "请填写提交说明") }
+        guard try await workspaceHead(repo, branch: branch) == head else { throw AppError(text: "远端分支已变化，请重新加载后再提交。") }
+        var entries: [[String: Any]] = []
+        var totalBytes: Int64 = 0
+        let modes = Dictionary(uniqueKeysWithValues: tree.tree.filter { $0.type == "blob" }.map { ($0.path, $0.mode) })
+        for item in items {
+            guard let path = item.path else { throw AppError(text: "请选择每项的仓库目标。") }
+            _ = try Self.filePath(path)
+            let mode = modes[path] ?? "100644"
+            if let file = item.local {
+                let prepared = try await Task.detached(priority: .utility) { try DebControlEditor.prepareForUpload(file) }.value
                 defer { if prepared.file != file { try? FileManager.default.removeItem(at: prepared.file.deletingLastPathComponent()) } }
                 if let notice = prepared.notice { self.message = notice }
-                return try Data(contentsOf: prepared.file)
+                let size = (try FileManager.default.attributesOfItem(atPath: prepared.file.path)[.size] as? NSNumber)?.int64Value ?? Int64.max
+                guard size >= 0, size <= RepoQueue.maximumFileBytes else { throw AppError(text: path + " 超过上传 10 MiB，请使用 Release") }
+                guard totalBytes <= RepoQueue.maximumTotalUploadBytes - size else { throw AppError(text: "普通提交总大小不能超过 50 MiB，请使用 Release") }
+                totalBytes += size
+                let blob = try await uploadGitBlobFile(prepared.file, path: endpoint + "/git/blobs", maximumBytes: RepoQueue.maximumFileBytes, expectedSize: size)
+                entries += RepoQueue.treeEntries([(path, blob.sha, mode)])
+            } else {
+                entries += RepoQueue.treeEntries([(path, nil, mode)])
             }
-            guard data == nil || data!.count <= 10 * 1024 * 1024 else { throw AppError(text: item.path! + " 超过上传限制") }
-            return WorkspaceWrite(path: item.path!, bytes: data)
         }
-        let binding = WorkspaceBinding(repo: repo, branch: branch, head: head, tree: commit.tree.sha, modes: Dictionary(uniqueKeysWithValues: tree.tree.filter { $0.type == "blob" }.map { ($0.path, $0.mode) }), snapshot: LocalSnapshot())
-        _ = try await commitWorkspace(binding, writes: writes, message: message)
+        let newTree = try await decoded(GitObject.self, endpoint + "/git/trees", method: "POST", object: ["base_tree": commit.tree.sha, "tree": entries])
+        let newCommit = try await decoded(GitCommitInfo.self, endpoint + "/git/commits", method: "POST", object: ["message": message, "tree": newTree.sha, "parents": [head]])
+        guard try await workspaceHead(repo, branch: branch) == head else { throw AppError(text: "提交准备期间远端已变化，拒绝更新分支") }
+        _ = try await data(endpoint + "/git/refs/heads/" + Self.filePath(branch), method: "PATCH", object: ["sha": newCommit.sha, "force": false])
     }
     func identify() async throws {
         let user = try await decoded(User.self, "/user")
@@ -657,7 +722,7 @@ final class GitHub: ObservableObject {
         try ensureActiveAccount(); try Task.checkCancellation()
         var r = try request(url(Self.repoPath(repo) + "/readme", query: [.init(name: "ref", value: branch)]))
         r.setValue("application/vnd.github.html+json", forHTTPHeaderField: "Accept")
-        let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
+        let (bytes, response) = try await session.data(for: r, delegate: GitHubAPIRedirectPolicy())
         try check(bytes, response); try Task.checkCancellation()
         return try ReadmeDocumentRules.renderedHTML(bytes)
     }
@@ -768,8 +833,11 @@ final class GitHub: ObservableObject {
         try requireStarSession()
         let name = try RepositoryInput.parse(input), key = name.lowercased()
         guard !RepositoryGroupRules.isOwned(name, login: login), !login.isEmpty else { return nil }
-        if let known = forkNames[key] { return known }
-        if let date = forkCheckedAt[key], Date().timeIntervalSince(date) < 300 { return nil }
+        if let date = forkCheckedAt[key] {
+            if Date().timeIntervalSince(date) < 300 { return forkNames[key] }
+            forkNames[key] = nil
+            forkCheckedAt[key] = nil
+        }
         let task: Task<String?, Error>, requestID: UUID
         if let pending = forkChecks[key], let pendingID = forkCheckIDs[key] {
             task = pending; requestID = pendingID
@@ -787,8 +855,8 @@ final class GitHub: ObservableObject {
         try Task.checkCancellation()
         try requireStarSession()
         // A concurrent successful POST takes precedence over an earlier empty lookup.
-        if let known = forkNames[key] { return known }
-        if let result { forkNames[key] = result }
+        if let date = forkCheckedAt[key], Date().timeIntervalSince(date) < 300 { return forkNames[key] }
+        forkNames[key] = result
         forkCheckedAt[key] = Date()
         return result
     }
@@ -849,7 +917,9 @@ final class GitHub: ObservableObject {
         try ensureActiveAccount()
         // The accepted POST itself confirms this relationship, even before metadata is ready.
         if RepositoryGroupRules.isOwned(result.full_name, login: login) {
-            forkNames[(try RepositoryInput.parse(repo)).lowercased()] = result.full_name
+            let key = (try RepositoryInput.parse(repo)).lowercased()
+            forkNames[key] = result.full_name
+            forkCheckedAt[key] = Date()
         }
         return result
     }
@@ -897,8 +967,12 @@ final class GitHub: ObservableObject {
         let filename = file.lastPathComponent
         guard filename.lowercased().hasSuffix(".dylib"), !filename.contains("/") else { throw AppError(text: "请选择 .dylib 文件") }
         guard !name.isEmpty else { throw AppError(text: "请填写插件名字") }
-        let bytes = try Data(contentsOf: file, options: .mappedIfSafe)
-        guard !bytes.isEmpty else { throw AppError(text: "dylib 不能为空") }
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let fileSize = attributes[.size] as? NSNumber else { throw AppError(text: "请选择有效的 dylib 文件") }
+        let size = fileSize.int64Value
+        guard size > 0 else { throw AppError(text: "dylib 不能为空") }
+        guard size <= RepoQueue.maximumTrollPluginBytes else { throw AppError(text: "TrollFools 插件不能超过 20 MiB") }
         let resolved = try await resolvedBranch(repo, branch: branch)
         let endpoint = try Self.repoPath(repo)
         let head = try await workspaceHead(repo, branch: resolved)
@@ -921,7 +995,7 @@ final class GitHub: ObservableObject {
         let dylibURL = pagesBase + Self.component(filename)
         let normalizedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedVersion.isEmpty else { throw AppError(text: "请填写版本") }
-        var package: [String: Any] = ["name": name, "version": normalizedVersion, "description": (description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? description! : name), "dylib": dylibURL, "section": "插件", "size": Self.trollSize(bytes.count)]
+        var package: [String: Any] = ["name": name, "version": normalizedVersion, "description": (description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? description! : name), "dylib": dylibURL, "section": "插件", "size": Self.trollSize(Int(size))]
         if let bundleID, !bundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { package["bundle"] = bundleID }
         if let author, !author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { package["author"] = author }
         // Match by URL path, not host or string formatting, preserving other metadata and links.
@@ -935,7 +1009,7 @@ final class GitHub: ObservableObject {
         } else { packages.append(package) }
         index["packages"] = packages
         let json = try JSONSerialization.data(withJSONObject: index, options: [.prettyPrinted, .sortedKeys])
-        let dylibBlob = try await decoded(GitObject.self, endpoint + "/git/blobs", method: "POST", object: ["content": bytes.base64EncodedString(), "encoding": "base64"])
+        let dylibBlob = try await uploadGitBlobFile(file, path: endpoint + "/git/blobs", maximumBytes: RepoQueue.maximumTrollPluginBytes, expectedSize: size)
         let indexBlob = try await decoded(GitObject.self, endpoint + "/git/blobs", method: "POST", object: ["content": json.base64EncodedString(), "encoding": "base64"])
         let newTree = try await decoded(GitObject.self, endpoint + "/git/trees", method: "POST", object: ["base_tree": commit.tree.sha, "tree": [["path": dylibPath, "mode": "100644", "type": "blob", "sha": dylibBlob.sha], ["path": indexPath, "mode": "100644", "type": "blob", "sha": indexBlob.sha]]])
         let newCommit = try await decoded(GitCommitInfo.self, endpoint + "/git/commits", method: "POST", object: ["message": "Publish TrollFools plugin: \(name)", "tree": newTree.sha, "parents": [head]])
