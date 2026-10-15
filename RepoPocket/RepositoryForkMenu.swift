@@ -54,7 +54,7 @@ final class RepositoryForkMenuState: ObservableObject {
             checked.insert(key); failed.remove(key)
         } catch {
             guard !Task.isCancelled, api.isCurrentSession, generation == AccountStore.generation else { return }
-            failed.insert(key)
+            checked.remove(key); failed.insert(key)
         }
     }
 
@@ -64,6 +64,8 @@ final class RepositoryForkMenuState: ObservableObject {
               !CredentialStore.read(account: api.accountID).isEmpty,
               let name = try? RepositoryInput.parse(input),
               !RepositoryGroupRules.isOwned(name, login: api.login),
+              checked.contains(name.lowercased()), !failed.contains(name.lowercased()),
+              !checking.contains(name.lowercased()),
               api.forkNames[name.lowercased()] == nil else { return }
         target = RepositoryForkTarget(fullName: name, accountID: api.accountID,
                                       generation: AccountStore.generation)
@@ -73,16 +75,22 @@ final class RepositoryForkMenuState: ObservableObject {
         guard !busy, api.isCurrentSession,
               fixed.accountID == api.accountID,
               fixed.generation == AccountStore.generation,
+              checked.contains(fixed.fullName.lowercased()), !failed.contains(fixed.fullName.lowercased()),
+              !checking.contains(fixed.fullName.lowercased()),
               api.forkNames[fixed.fullName.lowercased()] == nil else { return }
         busy = true
         defer { busy = false }
         do {
+            let existing = try await api.existingFork(fixed.fullName, forceRefresh: true)
+            guard api.isCurrentSession, fixed.accountID == api.accountID,
+                  fixed.generation == AccountStore.generation, existing == nil else { return }
             let result = try await api.fork(fixed.fullName)
             guard api.isCurrentSession, fixed.generation == AccountStore.generation else { return }
             api.message = "复刻请求已接受：\(result.full_name)，正在准备，请稍后刷新。"
         } catch {
             guard api.isCurrentSession, fixed.generation == AccountStore.generation,
                   !RefreshFailure.isCancellation(error) else { return }
+            checked.remove(fixed.fullName.lowercased()); failed.insert(fixed.fullName.lowercased())
             api.message = error.localizedDescription
         }
     }
@@ -104,18 +112,11 @@ struct ForkRepositoryMenuButton: View {
                 if failed { Task { await state.check(name, api: api) } }
                 else { state.prepare(name, api: api) }
             } label: {
-                Label(existing ? "已复刻" : (checking ? "正在查询复刻" : (failed ? "复刻状态未确认，重试" : "复刻到我的仓库")), systemImage: "tuningfork")
+                Label(existing ? "已复刻" : (checking ? "正在查询复刻" : (failed ? "重试查询复刻" : "复刻到我的仓库")), systemImage: "tuningfork")
             }
             .disabled(existing || checking || (!failed && !state.checked.contains(key)) || state.busy || !api.isCurrentSession || api.login.isEmpty ||
                       CredentialStore.read(account: api.accountID).isEmpty)
             .task(id: name + "\n" + String(refreshID)) { await state.check(name, api: api) }
-            if failed && !existing {
-                Button { state.prepare(name, api: api) } label: {
-                    Label("复刻或定位已有复刻", systemImage: "tuningfork")
-                }
-                .disabled(checking || state.busy || !api.isCurrentSession || api.login.isEmpty ||
-                          CredentialStore.read(account: api.accountID).isEmpty)
-            }
         }
     }
 }
@@ -133,7 +134,7 @@ private struct RepositoryForkConfirmation: ViewModifier {
                 }
                 Button("取消", role: .cancel) { state.target = nil }
             } message: { fixed in
-                Text(fixed.fullName + "\nGitHub 将创建复刻；如果已有复刻，会返回已有仓库。")
+                Text(fixed.fullName + "\n确认尚未复刻后，GitHub 将创建复刻。")
             }
             .onDisappear { state.target = nil }
     }

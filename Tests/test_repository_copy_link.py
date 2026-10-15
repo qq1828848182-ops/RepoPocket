@@ -81,7 +81,7 @@ struct RepositoryReference { let full_name: String }
     var failCheck = false
     var switchDuringCheck = false
     var checks = 0
-    func existingFork(_ name: String) async throws -> String? {
+    func existingFork(_ name: String, forceRefresh: Bool = false) async throws -> String? {
         checks += 1
         await Task.yield()
         if switchDuringCheck { AccountStore.generation = UUID() }
@@ -105,6 +105,11 @@ struct RepositoryReference { let full_name: String }
         api.failCheck = true
         await state.check("other/repo", api: api)
         precondition(state.failed.contains("other/repo") && !state.checked.contains("other/repo"))
+        state.prepare("other/repo", api: api)
+        precondition(state.target == nil && api.calls.isEmpty)
+        let unverified = RepositoryForkTarget(fullName: "other/repo", accountID: api.accountID, generation: AccountStore.generation)
+        await state.confirm(unverified, api: api)
+        precondition(api.calls.isEmpty)
         api.failCheck = false
         await state.check("other/repo", api: api)
         precondition(state.checked.contains("other/repo") && !state.failed.contains("other/repo"))
@@ -127,10 +132,23 @@ struct RepositoryReference { let full_name: String }
         precondition(api.calls.isEmpty)
         state.prepare("other/repo", api: api)
         let current = state.target!
+        state.target = nil // the confirmation dialog dismisses before its task runs
         async let first: Void = state.confirm(current, api: api)
         async let duplicate: Void = state.confirm(current, api: api)
         _ = await (first, duplicate)
         precondition(api.calls == ["other/repo"] && !state.busy)
+        // The dialog may outlive a successful lookup; a failed revalidation cannot write.
+        api.failCheck = true
+        await state.confirm(current, api: api)
+        precondition(api.calls.count == 1 && state.failed.contains("other/repo"))
+        state.prepare("other/repo", api: api)
+        precondition(state.target == nil)
+        api.failCheck = false
+        await state.check("other/repo", api: api)
+        api.forkNames["other/repo"] = "me/renamed"
+        await state.confirm(current, api: api)
+        precondition(api.calls.count == 1)
+        api.forkNames["other/repo"] = nil
         api.isCurrentSession = false
         await state.confirm(current, api: api)
         precondition(api.calls.count == 1)

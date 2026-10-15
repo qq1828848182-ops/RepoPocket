@@ -118,7 +118,7 @@ enum ReadmeDocumentRules {
         :root { color-scheme: light dark; } * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; background: transparent; }
         #repopocket-readme { display: flow-root; }
-        body { font: -apple-system-body; font-size: 17px; line-height: 1.5; overflow-wrap: anywhere; color: #1f2328; }
+        body { font: -apple-system-body; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; color: #1f2328; }
         h1 { font-size: 1.85em; } h2 { font-size: 1.45em; } h3 { font-size: 1.2em; }
         h1, h2 { border-bottom: 1px solid #d1d9e0; padding-bottom: .25em; }
         p, ul, ol, pre, blockquote, table { margin: 0 0 1em; } ul, ol { padding-left: 1.6em; }

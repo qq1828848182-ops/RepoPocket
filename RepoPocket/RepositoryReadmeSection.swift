@@ -15,23 +15,18 @@ struct RepositoryReadmeSection: View {
     let repo: String
     let branch: String
     let canWrite: Bool
-    var refreshID = 0
-    @State private var entry: Entry?
-    @State private var document: ReadmeDocument?
-    @State private var bodyHeight: CGFloat = 180
-    @State private var error = ""
-    @State private var resolved = ""
-    @State private var expanded = false
-    @State private var revision = 0
-    private var requestID: String { repo + "\n" + branch + "\n" + String(refreshID) + "\n" + String(revision) }
+    @ObservedObject var state: RepositoryReadmeState
+    private var document: ReadmeDocument? { state.value?.document }
+    private var resolved: String { state.value?.branch ?? branch }
+    private var requestKey: String { api.accountID + "\n" + AccountStore.generation.uuidString + "\n" + repo.lowercased() + "\n" + branch }
     var body: some View {
         Section {
             SoftGroupRows {
                 SoftGroupRow("heading") {
                     HStack {
-                        Label(entry?.name ?? "README", systemImage: "info.circle").font(.subheadline).foregroundStyle(.secondary)
+                        Label(document?.entry.name ?? "README", systemImage: "info.circle").font(.subheadline).foregroundStyle(.secondary)
                         Spacer()
-                        if let entry, canWrite {
+                        if let entry = document?.entry, canWrite {
                             NavigationLink("编辑") { FileView(api: api, repo: repo, entry: entry, branch: resolved, canWrite: canWrite) }
                                 .buttonStyle(.borderless)
                         }
@@ -40,37 +35,38 @@ struct RepositoryReadmeSection: View {
                 if let document {
                     SoftGroupRow("body") {
                         ReadmeDocumentBody(document: document,
-                            baseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: false),
-                            mediaBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: true),
-                            api: api, expanded: expanded, height: $bodyHeight)
+                            baseURL: CommunityRules.readingBase(repo, branch: resolved, file: document.entry.path, raw: false),
+                            mediaBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: document.entry.path, raw: true),
+                            api: api, expanded: state.expanded, height: $state.bodyHeight)
                     }
-                    if bodyHeight > ReadmeDocumentRules.collapsedHeight || ReadmePreviewRules.needsExpansion(document.source ?? "") {
-                        SoftGroupRow("expand") { Button(expanded ? "收起自述文件" : "展开完整自述文件") { expanded.toggle() } }
+                    if state.bodyHeight > ReadmeDocumentRules.collapsedHeight || ReadmePreviewRules.needsExpansion(document.source ?? "") {
+                        SoftGroupRow("expand") { Button(state.expanded ? "收起自述文件" : "展开完整自述文件") { state.expanded.toggle() } }
                     }
-                    if expanded && bodyHeight >= ReadmeDocumentRules.inlineHeightLimit {
+                    if state.expanded && state.bodyHeight >= ReadmeDocumentRules.inlineHeightLimit {
                         SoftGroupRow("limit") { Text("正文较长，可使用全屏阅读继续查看。").font(.caption).foregroundStyle(.secondary) }
                     }
                     SoftGroupRow("reader") { NavigationLink("全屏阅读") { RepositoryReadmeView(api: api, repo: repo, branch: resolved) } }
-                } else if error.isEmpty {
+                } else if state.error.isEmpty {
                     SoftGroupRow("loading") { ProgressView("加载自述文件…") }
                 }
-                if !error.isEmpty {
-                    SoftGroupRow("error") { Text(error).font(.caption).foregroundStyle(.secondary) }
-                    SoftGroupRow("retry") { Button("重新加载") { revision += 1 } }
+                if !state.error.isEmpty {
+                    SoftGroupRow("error") { Text(state.error).font(.caption).foregroundStyle(.secondary) }
+                }
+                SoftGroupRow("refresh") {
+                    Button(state.error.isEmpty ? "刷新自述文件" : "重新加载") { Task { await load(refresh: true) } }
+                        .disabled(state.loading || branch.isEmpty)
                 }
             }
-        }.task(id: requestID) {
-            entry = nil; document = nil; bodyHeight = 180; expanded = false; error = ""
-            do {
-                let selected = try await api.resolvedBranch(repo, branch: branch)
-                let loaded = try await api.repositoryReadmeDocument(repo, branch: selected)
-                try Task.checkCancellation(); guard api.isCurrentSession else { return }
-                resolved = selected; entry = loaded.entry; document = loaded
-            } catch {
-                if api.isCurrentSession, !RefreshFailure.isCancellation(error) {
-                    self.error = (error as? GitHubAPIError)?.status == 404 ? "此分支没有自述文件，或账号没有读取权限。" : error.localizedDescription
-                }
-            }
-        }
+        }.task(id: requestKey) { await load() }
+    }
+    private func load(refresh: Bool = false) async {
+        guard !branch.isEmpty else { return } // Wait for the page to resolve its initial branch once.
+        let api = api, repo = repo, branch = branch, generation = AccountStore.generation
+        await state.load(key: requestKey, refresh: refresh, operation: {
+            let document = try await api.repositoryReadmeDocument(repo, branch: branch)
+            return RepositoryReadmeContent(branch: branch, document: document)
+        }, isValid: { api.isCurrentSession && AccountStore.generation == generation }, errorText: {
+            ($0 as? GitHubAPIError)?.status == 404 ? "此分支没有自述文件，或账号没有读取权限。" : $0.localizedDescription
+        })
     }
 }

@@ -26,7 +26,7 @@ class BrowserRollbackTests(unittest.TestCase):
             self.assertFalse((ROOT/'RepoPocket'/file).exists())
         self.assertNotIn('/releases',BROWSER)
         self.assertIn('if path.isEmpty && !showFiles { repositoryOverview } else { directoryRows }', BROWSER)
-        self.assertEqual(BROWSER.count('RepositoryHomeHighlights(api: api, repo: repo, refreshID: homeRefreshRevision)'), 1)
+        self.assertEqual(BROWSER.count('RepositoryHomeHighlights(api: api, repo: repo, releaseState: homeRelease, runState: homeRuns)'), 1)
         highlights = (ROOT/'RepoPocket/RepositoryHomeHighlights.swift').read_text()
         self.assertEqual(highlights.count('ReleaseManagementDestination(api: api, repo: repo)'), 1)
         self.assertNotIn('managedReleases', LOAD)
@@ -75,6 +75,10 @@ class BrowserRollbackTests(unittest.TestCase):
         return result'''
         assert normalized.count(accepted_post) == 1
         normalized = normalized.replace(accepted_post, '        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])')
+        # Explicit fork-write revalidation is covered by production fork fixtures.
+        revalidation = '        guard try await existingFork(repo) == nil else { throw AppError(text: "此仓库已复刻。") }\n        try ensureActiveAccount()\n'
+        assert normalized.count(revalidation) == 1
+        normalized = normalized.replace(revalidation, '')
         # The bounded file-backed upload path and its two consumers are covered
         # by focused queue/Troll tests. Normalize those complete methods here so
         # this exact comparison still protects every unrelated historic API.

@@ -27,7 +27,7 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn('Print :CFBundleShortVersionString\' "$APP/Info.plist")" = "1.1.1"', self.source)
         project = (REPO_ROOT / 'project.yml').read_text()
         self.assertIn('MARKETING_VERSION: "1.1.1"', project)
-        self.assertIn('CURRENT_PROJECT_VERSION: "8"', project)
+        self.assertIn('CURRENT_PROJECT_VERSION: "9"', project)
 
     def test_system_default_refresh_rate(self):
         project = (REPO_ROOT / 'project.yml').read_text()
@@ -55,7 +55,7 @@ class BuildWorkflowTests(unittest.TestCase):
     def test_optional_update_probe_keeps_release_artifact_separate(self):
         self.assertIn('build_update_probe:', self.source)
         self.assertIn('default: false', self.source)
-        self.assertIn('if: ${{ inputs.build_update_probe }}', self.source)
+        self.assertIn('if: ${{ inputs.build_update_probe && !inputs.validate_only }}', self.source)
         self.assertIn('Set :CFBundleShortVersionString 1.0.3-rc.1', self.source)
         self.assertIn("Set :CFBundleVersion 4", self.source)
         self.assertIn('codesign --force --sign - --entitlements Entitlements.plist "$APP"', self.source)
@@ -63,6 +63,15 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn('name: RepoPocket-update-probe', self.source)
         self.assertIn('probe/RepoPocket-1.0.3-rc.1.ipa.sha256', self.source)
         self.assertNotIn('gh release', self.source)
+
+    def test_validation_only_never_packages_or_uploads_an_ipa(self):
+        self.assertIn('validate_only:', self.source)
+        package = self.source.split('      - name: Ad-hoc sign and package IPA', 1)[1]
+        package = package.split('      - name: Package optional update probe', 1)[0]
+        self.assertEqual(package.count('if: ${{ !inputs.validate_only }}'), 2)
+        self.assertEqual(self.source.count('if: ${{ inputs.build_update_probe && !inputs.validate_only }}'), 2)
+        compile_step = self.source.split('      - name: Compile iOS app', 1)[1].split('      - name: Ad-hoc sign', 1)[0]
+        self.assertNotIn('if:', compile_step)
 
     def test_compile_and_package_verification_remain_enabled(self):
         commands = self.source
