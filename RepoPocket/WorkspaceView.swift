@@ -165,6 +165,13 @@ enum LinkedWorkspaces {
 }
 
 enum LocalStore {
+    static func matchingRoot(_ selected: URL?, in roots: [URL]) -> URL? {
+        guard let selected else { return nil }
+        let path = selected.resolvingSymlinksInPath().standardizedFileURL.path
+        // Compare filesystem identity paths while retaining the bookmark URL and
+        // its scope; /var and /private/var may describe the same iOS/macOS folder.
+        return roots.first { $0.resolvingSymlinksInPath().standardizedFileURL.path == path }
+    }
     static func root() throws -> URL {
         let fm = FileManager.default
         let url = try fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("Repositories", isDirectory: true)
@@ -849,7 +856,7 @@ Section("本地变更预览 / 勾选提交") {
                 let roots = try FileManager.default.contentsOfDirectory(at: LocalStore.root(), includingPropertiesForKeys: [.isDirectoryKey]).filter {
                     (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true && FileManager.default.fileExists(atPath: (try? LocalStore.metadata($0).path) ?? "")
                 } + (try LinkedWorkspaces.roots())
-                let target = requestedFolder.flatMap { roots.contains($0) ? $0 : nil } ?? roots.first
+                let target = LocalStore.matchingRoot(requestedFolder, in: roots) ?? roots.first
                 guard let target else { return (roots, nil, nil, [], nil) }
                 let binding = try? LocalStore.binding(target)
                 let before = try LocalStore.snapshot(target)
