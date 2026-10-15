@@ -43,6 +43,11 @@ class BrowserRollbackTests(unittest.TestCase):
         # account/host/error guards. Normalize only those exact additions before
         # comparing the complete historic write/download implementation.
         normalized = api_new[:added_start].replace(approved, historic)
+        # Authorized description-only PATCH is verified by its dedicated owner,
+        # permission and account-race fixtures; freeze all unrelated transport.
+        description_start = normalized.index('    func descriptionContext(')
+        description_end = normalized.index('    func deletionContext(', description_start)
+        normalized = normalized[:description_start] + normalized[description_end:]
         normalized = normalized.replace('page: Int, options: RepositorySearchOptions = .init()) async throws -> RepositorySearchResponse',
                                         'page: Int) async throws -> RepositorySearchResponse')
         normalized = normalized.replace('query: query, page: page, options: options)', 'query: query, page: page)')

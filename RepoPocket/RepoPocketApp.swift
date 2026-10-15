@@ -246,6 +246,7 @@ struct BrowserView: View {
     @State private var creatingRelease = false
     private var canWrite: Bool { RepositoryWriteRules.canWrite(push: repositoryInfo?.permissions?.push, sessionMatches: api.isCurrentSession) }
     @State private var showBranches = false
+    @State private var repositoryDescriptionTarget: RepositoryDescriptionTarget?
     @State private var repositoryDeletionTarget: RepositoryDeletionTarget?
     @Environment(\.dismiss) private var dismiss
     private var activeBranch: String { selectedBranch.isEmpty ? branch : selectedBranch }
@@ -269,7 +270,18 @@ struct BrowserView: View {
             Section {
                 Group {
                     if let repositoryInfo {
-                        RepositoryCard(repository: repositoryInfo, account: api.login, api: api, descriptionLineLimit: nil, copyLinkContextMenu: false)
+                        HStack(alignment: .top, spacing: 8) {
+                            RepositoryCard(repository: repositoryInfo, account: api.login, api: api, descriptionLineLimit: nil, copyLinkContextMenu: false)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if RepositoryDescriptionRules.canEdit(repositoryInfo, login: api.login, sessionMatches: api.isCurrentSession) {
+                                Menu {
+                                    Button {
+                                        repositoryDescriptionTarget = RepositoryDescriptionTarget(repository: repositoryInfo, context: api.descriptionContext(repositoryInfo))
+                                    } label: { Label("编辑描述", systemImage: "pencil") }
+                                } label: { Image(systemName: "ellipsis.circle").frame(width: 44, height: 44) }
+                                .buttonStyle(.borderless).accessibilityLabel("仓库描述操作").disabled(busy)
+                            }
+                        }
                     } else {
                         CompactRepositorySummary(fullName: repo, name: "")
                     }
@@ -384,6 +396,13 @@ struct BrowserView: View {
         .repositoryForkConfirmation(forkMenu, api: api)
         .task { if !loaded { await load() } }
         .sheet(isPresented: $creatingRelease) { if canWrite { ReleaseEditorView(api: api, repo: repo, original: nil) } }
+        .sheet(item: $repositoryDescriptionTarget) { target in
+            RepositoryDescriptionView(api: api, target: target) { updated in
+                guard api.isCurrentSession, updated.id == target.repository.id,
+                      updated.full_name.caseInsensitiveCompare(repo) == .orderedSame else { return }
+                repositoryInfo = updated
+            }
+        }
         .sheet(item: $repositoryDeletionTarget) { target in
             RepositoryDeletionView(api: api, repository: target.repository, context: target.context) {
                 entries = []; repositoryInfo = nil; dismiss()
@@ -637,7 +656,7 @@ struct SettingsView: View {
                 Section {
                     AppUpdateSection(api: api, checker: updateChecker)
                     // The version is the stable final row of the update group in every state.
-                    Text("RepoPocket " + AppUpdateSessionRules.version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—", build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—") + " · iOS 16+").foregroundColor(.secondary).softGroupedRow(bottom: true)
+                    Text("RepoPocket " + AppUpdateSessionRules.version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—", build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—")).foregroundColor(.secondary).softGroupedRow(bottom: true)
                 }
             }.formStyle(.grouped).navigationTitle("设置").adaptiveWorkspaceLayout()
             .task { if !CredentialStore.read().isEmpty { try? await api.identify() } }

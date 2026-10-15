@@ -52,6 +52,8 @@ jobs:
         run: python3 Tests/test_repo_queue.py
       - name: Test metadata-only plugin editing
         run: python3 Tests/test_troll_metadata.py
+      - name: Test owned repository description editing and inert scroll behavior
+        run: python3 Tests/test_repository_description.py
       - name: Test repository deletion with network-free mocks and account management
         run: python3 Tests/test_repository_deletion.py
       - name: Test manual update SemVer and transient notice contracts
@@ -130,11 +132,11 @@ jobs:
             echo 'Unexpected high refresh-rate opt-in in packaged app'
             exit 1
           fi
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.1.1"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" = "1.0.5"
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "9"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "10"
           test "$(lipo -archs "$APP/RepoPocket")" = "arm64"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
@@ -142,20 +144,20 @@ jobs:
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           cd dist
-          zip -qry RepoPocket-1.1.1.ipa Payload
-          unzip -t RepoPocket-1.1.1.ipa
+          zip -qry RepoPocket.ipa Payload
+          unzip -t RepoPocket.ipa
           mkdir verify
-          unzip -q RepoPocket-1.1.1.ipa -d verify
+          unzip -q RepoPocket.ipa -d verify
           codesign --verify --deep --strict verify/Payload/RepoPocket.app
-          shasum -a 256 RepoPocket-1.1.1.ipa > RepoPocket-1.1.1.ipa.sha256
-          shasum -a 256 -c RepoPocket-1.1.1.ipa.sha256
+          shasum -a 256 RepoPocket.ipa > RepoPocket.ipa.sha256
+          shasum -a 256 -c RepoPocket.ipa.sha256
       - uses: actions/upload-artifact@v4
         if: ${{ !inputs.validate_only }}
         with:
-          name: RepoPocket-1.1.1
+          name: RepoPocket
           path: |
-            dist/RepoPocket-1.1.1.ipa
-            dist/RepoPocket-1.1.1.ipa.sha256
+            dist/RepoPocket.ipa
+            dist/RepoPocket.ipa.sha256
           retention-days: 30
       - name: Package optional update probe
         if: ${{ inputs.build_update_probe && !inputs.validate_only }}

@@ -320,6 +320,47 @@ final class GitHub: ObservableObject {
         }
         return bytes
     }
+    func descriptionContext(_ repository: Repository) -> RepositoryDescriptionContext {
+        RepositoryDescriptionContext(accountID: accountID, generation: accountGeneration, login: login,
+                                     repositoryID: repository.id, fullName: repository.full_name)
+    }
+    func updateRepositoryDescription(_ repository: Repository, context: RepositoryDescriptionContext,
+                                     description: String) async throws -> Repository {
+        try ensureActiveAccount()
+        guard context == descriptionContext(repository),
+              RepositoryDescriptionRules.canEdit(repository, login: login, sessionMatches: isCurrentSession) else {
+            throw AppError(text: RepositoryDescriptionRules.permissionHelp)
+        }
+        let updated = try await RepositoryDescriptionRules.execute(context: context, description: description,
+            current: { RepositoryDescriptionContext(accountID: AccountStore.activeID,
+                generation: AccountStore.generation, login: self.login,
+                repositoryID: repository.id, fullName: repository.full_name) },
+            fetch: { try await self.repository(context.fullName) },
+            update: { value in
+                try self.ensureActiveAccount()
+                // Metadata editing requires administration, not Contents/push permission.
+                // Send only description; never rename or change visibility/default branch.
+                let body = try JSONSerialization.data(withJSONObject: ["description": value])
+                let request = try self.request(self.url(Self.repoPath(context.fullName)), method: "PATCH", body: body)
+                let (data, response) = try await self.session.data(for: request)
+                do { try self.check(data, response, operation: "修改仓库描述") }
+                catch let error as GitHubAPIError {
+                    if [403, 404].contains(error.status) {
+                        throw AppError(text: error.localizedDescription + "\n" + RepositoryDescriptionRules.permissionHelp)
+                    }
+                    throw error
+                }
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw AppError(text: "未收到 GitHub 保存成功确认，请刷新仓库核实。")
+                }
+                return try JSONDecoder().decode(Repository.self, from: data)
+            })
+        // Patch existing memory caches without publishing a global refresh signal.
+        for section in Array(collectionCache.keys) {
+            collectionCache[section] = collectionCache[section]?.map { $0.id == updated.id ? updated : $0 }
+        }
+        return updated
+    }
     func deletionContext(_ repository: Repository) -> RepositoryDeletionContext {
         RepositoryDeletionContext(accountID: accountID, generation: accountGeneration,
                                   repositoryID: repository.id, fullName: repository.full_name)
