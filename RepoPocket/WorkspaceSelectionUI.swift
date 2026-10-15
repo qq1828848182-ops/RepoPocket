@@ -34,7 +34,9 @@ extension View {
     func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true, separatorInset: CGFloat = 20) -> some View {
         listRowSeparator(.hidden)
             .listRowBackground(
-                SoftGroupShape(top: top, bottom: bottom)
+                // The fixed native-list boundary owns the outer corners. A rounded
+                // moving background would leave a notch beside the swipe button.
+                Rectangle()
                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
                     .overlay(alignment: .bottom) {
                         if !bottom {
