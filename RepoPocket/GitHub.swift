@@ -410,8 +410,8 @@ final class GitHub: ObservableObject {
         guard attributes[.type] as? FileAttributeType == .typeRegular,
               let number = attributes[.size] as? NSNumber else { throw AppError(text: "请选择有效的普通文件。") }
         let sourceSize = number.int64Value
-        guard sourceSize > 0, sourceSize <= maximumBytes,
-              expectedSize == nil || expectedSize == sourceSize else { throw AppError(text: "文件为空、已变化或超过上传大小限制。") }
+        guard sourceSize >= 0, sourceSize <= maximumBytes,
+              expectedSize == nil || expectedSize == sourceSize else { throw AppError(text: "文件已变化或超过上传大小限制。") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RepoPocket-GitBlob-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: directory) }
