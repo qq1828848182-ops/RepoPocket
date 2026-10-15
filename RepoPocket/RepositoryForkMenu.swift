@@ -92,6 +92,7 @@ struct ForkRepositoryMenuButton: View {
     let repository: String
     @ObservedObject var api: GitHub
     @ObservedObject var state: RepositoryForkMenuState
+    var refreshID = 0
     var body: some View {
         if let name = try? RepositoryInput.parse(repository),
            !RepositoryGroupRules.isOwned(name, login: api.login) {
@@ -107,7 +108,7 @@ struct ForkRepositoryMenuButton: View {
             }
             .disabled(existing || checking || (!failed && !state.checked.contains(key)) || state.busy || !api.isCurrentSession || api.login.isEmpty ||
                       CredentialStore.read(account: api.accountID).isEmpty)
-            .task(id: name) { await state.check(name, api: api) }
+            .task(id: name + "\n" + String(refreshID)) { await state.check(name, api: api) }
             if failed && !existing {
                 Button { state.prepare(name, api: api) } label: {
                     Label("复刻或定位已有复刻", systemImage: "tuningfork")

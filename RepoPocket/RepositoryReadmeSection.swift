@@ -15,6 +15,7 @@ struct RepositoryReadmeSection: View {
     let repo: String
     let branch: String
     let canWrite: Bool
+    var refreshID = 0
     @State private var entry: Entry?
     @State private var document: ReadmeDocument?
     @State private var bodyHeight: CGFloat = 180
@@ -22,7 +23,7 @@ struct RepositoryReadmeSection: View {
     @State private var resolved = ""
     @State private var expanded = false
     @State private var revision = 0
-    private var requestID: String { repo + "\n" + branch + "\n" + String(revision) }
+    private var requestID: String { repo + "\n" + branch + "\n" + String(refreshID) + "\n" + String(revision) }
     var body: some View {
         Section {
             SoftGroupRows {

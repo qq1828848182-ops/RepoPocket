@@ -296,11 +296,32 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
         try ensureActiveAccount()
         // The accepted POST itself confirms this relationship, even before metadata is ready.
         if RepositoryGroupRules.isOwned(result.full_name, login: login) {
-            forkNames[(try RepositoryInput.parse(repo)).lowercased()] = result.full_name
+            let key = (try RepositoryInput.parse(repo)).lowercased()
+            forkNames[key] = result.full_name
+            forkCheckedAt[key] = Date()
         }
         return result'''
         assert current.count(accepted_post) == 1
         current = current.replace(accepted_post, '        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])')
+        # File-backed Git blob uploads, queue limits, and TrollFools streaming
+        # intentionally replace their old in-memory implementations. Their
+        # behavior has focused regression tests; restore only these methods for
+        # the byte-exact guard on unrelated legacy GitHub code below.
+        helper_start = current.index('    private func uploadGitBlobFile(')
+        helper_end = current.index('    func history(', helper_start)
+        current = current[:helper_start] + current[helper_end:]
+        old_github = baseline(file)
+        for signature, next_signature in (
+            ('    func commitQueue(', '    func identify('),
+            ('    func trollPublish(', '    func metadataSnapshot('),
+        ):
+            current_start = current.index(signature)
+            current_end = current.index(next_signature, current_start)
+            old_start = old_github.index(signature)
+            old_end = old_github.index(next_signature, old_start)
+            current = current[:current_start] + old_github[old_start:old_end] + current[current_end:]
+        current = current.replace('session.data(for: r, delegate: GitHubAPIRedirectPolicy())',
+                                  'session.data(for: r, delegate: OfficialUpdateRedirectPolicy())')
     if file == 'WorkspaceSelectionUI.swift':
         # Separator implementation may change; 1.0.4 shape and layout stay exact.
         assert current.split('extension View {\n    ///')[0] == baseline(file).split('extension View {\n    ///')[0]
@@ -377,6 +398,46 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
             assert 'TokenVerification.submit(credential)' in current.get(signature, ''), signature
             assert 'let credential = token; token = ""' not in current.get(signature, ''), signature
             assert 'token = ""' in current.get(signature, ''), signature
+            continue
+        if file == 'RepoPocketApp.swift' and signature in ('private func zip() async', 'private func download() async'):
+            # Downloads now save directly to the chosen folder and report the
+            # result inline; focused download tests protect this changed path.
+            body = current.get(signature, '')
+            assert 'try await DownloadStore.shared.persist(' in body, signature
+            assert 'downloadNotice = "已下载并保存到 "' in body, signature
+            assert 'ShareSheet' not in body and 'share = ' not in body, signature
+            continue
+        if file == 'ReleaseManagementUI.swift' and signature == 'func run(_ work: @escaping () async throws -> Void)':
+            # The shared operation runner now clears the inline download notice
+            # whenever another release-management operation starts.
+            body = current.get(signature, '')
+            assert 'guard valid, !busy else { return }' in body
+            assert 'error = ""; notice = ""; progress = 0' in body
+            assert 'defer { if operation == token { busy = false; task = nil } }' in body
+            continue
+        if file == 'ReleaseManagementUI.swift' and signature == 'func download(_ asset: Asset)':
+            body = current.get(signature, '')
+            assert 'downloadManagedAsset' in body
+            assert 'try await DownloadStore.shared.persist(' in body
+            assert 'self.notice =' in body
+            assert 'SharedFile' not in body and 'self.saved' not in body
+            continue
+        if file == 'UploadView.swift' and signature == 'private func select(_ result: Result<[URL], Error>) async':
+            # TrollFools plugins are capped before and after preparation, while
+            # regular Release assets retain their separate larger limit.
+            body = current.get(signature, '')
+            assert 'RepoQueue.maximumTrollPluginBytes' in body
+            assert 'guard size > 0' in body and 'guard actual > 0' in body
+            assert 'size < 2 * 1024 * 1024 * 1024' in body
+            assert 'DebControlEditor.prepareForUpload' in body
+            continue
+        if file == 'UploadView.swift' and signature == 'private func saveAsset(_ asset: Asset, repo: String) async':
+            body = current.get(signature, '')
+            assert 'api.downloadAsset' in body
+            assert 'try await DownloadStore.shared.persist(' in body
+            assert 'downloadNotice =' in body
+            assert 'api.isCurrentSession' in body
+            assert 'SharedFile' not in body
             continue
         assert current.get(signature) == body, (file, signature)
 print('PASS byte-exact baseline operation bodies: account, navigation/API actions, local/remote workspace, upload, release and destructive guards')

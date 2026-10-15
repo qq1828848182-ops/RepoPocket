@@ -244,7 +244,6 @@ struct BrowserView: View {
     @State private var repositoryInfo: Repository?
     @StateObject private var copyFeedback = RepositoryCopyFeedback()
     @StateObject private var forkMenu = RepositoryForkMenuState()
-    @StateObject private var releasePresence = ReleasePresenceState()
     @State private var creatingRelease = false
     private var canWrite: Bool { RepositoryWriteRules.canWrite(push: repositoryInfo?.permissions?.push, sessionMatches: api.isCurrentSession) }
     @State private var showBranches = false
@@ -254,8 +253,9 @@ struct BrowserView: View {
     @State private var entries: [Entry] = []
     @State private var loaded = false
     @State private var refreshing = false
+    @State private var homeRefreshRevision = 0
     @State private var busy = false
-    @State private var share: SharedFile?
+    @State private var downloadNotice = ""
     @State private var showUpload = false
     @State private var debEntry: Entry?
     @State private var metadataEntry: Entry?
@@ -277,14 +277,14 @@ struct BrowserView: View {
                     HStack(spacing: 16) {
                         RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
+                        ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu, refreshID: homeRefreshRevision)
                     }.buttonStyle(.borderless).softGroupedRow(bottom: true)
                 }
             }
     }
     @ViewBuilder private var repositoryOverview: some View {
                 RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
-                RepositoryHomeHighlights(api: api, repo: repo)
+                RepositoryHomeHighlights(api: api, repo: repo, refreshID: homeRefreshRevision)
                 Section {
                     SoftGroupRows {
                         SoftGroupRow("branch") {
@@ -300,7 +300,7 @@ struct BrowserView: View {
                         }
                     }
                 }
-                RepositoryReadmeSection(api: api, repo: repo, branch: activeBranch, canWrite: canWrite)
+                RepositoryReadmeSection(api: api, repo: repo, branch: activeBranch, canWrite: canWrite, refreshID: homeRefreshRevision)
     }
     @ViewBuilder private var directoryRows: some View {
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
@@ -345,6 +345,7 @@ struct BrowserView: View {
     var body: some View {
         List {
             repositoryHeader
+            if !downloadNotice.isEmpty { Text(downloadNotice).font(.caption).foregroundStyle(.secondary).softGroupedRow() }
             if path.isEmpty && !showFiles { repositoryOverview } else { directoryRows }
         }
         .listStyle(.insetGrouped)
@@ -352,20 +353,25 @@ struct BrowserView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(path.isEmpty ? (showFiles ? "代码" : ((try? RepositoryInput.parse(repo))?.split(separator: "/").last.map(String.init) ?? repo)) : (path as NSString).lastPathComponent)
         .adaptiveWorkspaceLayout()
-        .refreshable { refreshing = true; await load(); refreshing = false }
+        .refreshable {
+            refreshing = true
+            defer { refreshing = false }
+            await load()
+            if path.isEmpty && !showFiles { homeRefreshRevision += 1 }
+        }
         .toolbar {
             if canWrite { Button("上传") { showUpload = true }.disabled(busy) }
             Menu {
                 CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)
                 if !path.isEmpty || showFiles {
-                    ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
+                    ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu, refreshID: homeRefreshRevision)
                     RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                 }
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
                 if path.isEmpty && canWrite { Button("新建发行版") { creatingRelease = true } }
                 Button("下载整个仓库 ZIP") { Task { await zip() } }
-                Button("刷新目录") { Task { await load() } }
+                Button("刷新目录") { Task { await load(); if path.isEmpty && !showFiles { homeRefreshRevision += 1 } } }
                 Button("删除远端仓库…", role: .destructive) {
                     if let repositoryInfo, repositoryInfo.permissions?.admin == true {
                         repositoryDeletionTarget = RepositoryDeletionTarget(repository: repositoryInfo, context: api.deletionContext(repositoryInfo))
@@ -376,18 +382,7 @@ struct BrowserView: View {
         .repositoryCopyNotice(copyFeedback)
         .repositoryForkConfirmation(forkMenu, api: api)
         .task { if !loaded { await load() } }
-        .task { if path.isEmpty { releasePresence.load(api: api, repo: repo) } }
-        .onDisappear { releasePresence.cancel() }
-        .onReceive(NotificationCenter.default.publisher(for: .githubAccountChanged)) { _ in releasePresence.reset() }
-        .onReceive(NotificationCenter.default.publisher(for: .releaseManagementChanged)) { notice in
-            if path.isEmpty, notice.userInfo?["repo"] as? String == repo,
-               notice.userInfo?["generation"] as? UUID == AccountStore.generation {
-                releasePresence.load(api: api, repo: repo, refresh: true)
-            }
-        }
-        .sheet(isPresented: $creatingRelease, onDismiss: {
-            if path.isEmpty { releasePresence.load(api: api, repo: repo, refresh: true) }
-        }) { if canWrite { ReleaseEditorView(api: api, repo: repo, original: nil) } }
+        .sheet(isPresented: $creatingRelease) { if canWrite { ReleaseEditorView(api: api, repo: repo, original: nil) } }
         .sheet(item: $repositoryDeletionTarget) { target in
             RepositoryDeletionView(api: api, repository: target.repository, context: target.context) {
                 entries = []; repositoryInfo = nil; dismiss()
@@ -401,7 +396,6 @@ struct BrowserView: View {
         .sheet(isPresented: $showUpload, onDismiss: { Task { await load() } }) {
             if canWrite { UploadView(api: api, initialRepo: repo, directory: path, initialBranch: activeBranch, openedFromFolder: true) }
         }
-        .sheet(item: $share) { ShareSheet(url: $0.url) }
         .sheet(item: $metadataEntry) { entry in TrollMetadataView(api: api, repo: repo, entry: entry, branch: activeBranch, canWrite: canWrite) }
         .sheet(item: $debEntry) { entry in DebEditorView(api: api, remote: (repo, entry, activeBranch), canWrite: canWrite) }
         .confirmationDialog("永久删除仓库中的文件？", isPresented: Binding(get: { deleteEntry != nil }, set: { if !$0 { deleteEntry = nil } }), titleVisibility: .visible) {
@@ -461,16 +455,16 @@ struct BrowserView: View {
     private func zip() async {
         busy = true; defer { busy = false }
         do {
+            downloadNotice = ""
             let generation = AccountStore.generation
             try await DownloadStore.shared.requireAuthorization()
             guard api.isCurrentSession else { throw CancellationError() }
             DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
             let temporary = try await api.downloadZIP(repo, branch: activeBranch)
             defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
-            let saved = try DownloadStore.shared.persist(temporary, session: generation)
+            _ = try await DownloadStore.shared.persist(temporary, session: generation)
             guard api.isCurrentSession else { throw CancellationError() }
-            api.message = "已保存到 " + DownloadStore.shared.label
-            share = SharedFile(url: saved)
+            downloadNotice = "已下载并保存到 " + DownloadStore.shared.label
         }
         catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }
@@ -487,8 +481,8 @@ struct FileView: View {
     @State private var currentSHA = ""
     @State private var editable = false
     @State private var busy = false
+    @State private var downloadNotice = ""
     @State private var commitMessage = "Update file via RepoPocket"
-    @State private var share: SharedFile?
     @State private var showMetadata = false
     @State private var showDeb = false
     @State private var confirmSave = false
@@ -507,6 +501,7 @@ struct FileView: View {
                 if writable && entry.name.lowercased().hasSuffix(".deb") { Button("编辑包信息") { showDeb = true }.disabled(busy || deleted).softGroupedRow(top: true) }
                 if writable && entry.name.lowercased().hasSuffix(".dylib") { Button("编辑插件信息") { showMetadata = true }.disabled(busy || deleted).softGroupedRow(top: true) }
                 Button("下载 / 存到文件") { Task { await download() } }.disabled(busy || deleted).softGroupedRow(top: !(writable && (entry.name.lowercased().hasSuffix(".deb") || entry.name.lowercased().hasSuffix(".dylib"))))
+                if !downloadNotice.isEmpty { Text(downloadNotice).font(.caption).foregroundStyle(.secondary).softGroupedRow() }
                 Button("加载文本（最多 1 MiB）") { Task { await read() } }.disabled(busy || deleted).softGroupedRow(bottom: !busy)
                 if busy { ProgressView().softGroupedRow(bottom: true) }
             }
@@ -529,7 +524,6 @@ struct FileView: View {
         }
         .navigationTitle(entry.name)
         .adaptiveWorkspaceLayout()
-        .sheet(item: $share) { ShareSheet(url: $0.url) }
         .sheet(isPresented: $showDeb) { DebEditorView(api: api, remote: (repo, entry, branch), canWrite: writable) }
         .sheet(isPresented: $showMetadata) { TrollMetadataView(api: api, repo: repo, entry: entry, branch: branch, canWrite: writable) }
         .confirmationDialog("把修改提交到 \(repo)？", isPresented: $confirmSave, titleVisibility: .visible) {
@@ -569,16 +563,16 @@ struct FileView: View {
     private func download() async {
         busy = true; defer { busy = false }
         do {
+            downloadNotice = ""
             let generation = AccountStore.generation
             try await DownloadStore.shared.requireAuthorization()
             guard api.isCurrentSession else { throw CancellationError() }
             DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
             let temporary = try await api.downloadFile(repo, entry: entry, branch: branch)
             defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
-            let saved = try DownloadStore.shared.persist(temporary, session: generation)
+            _ = try await DownloadStore.shared.persist(temporary, session: generation)
             guard api.isCurrentSession else { throw CancellationError() }
-            api.message = "已保存到 " + DownloadStore.shared.label
-            share = SharedFile(url: saved)
+            downloadNotice = "已下载并保存到 " + DownloadStore.shared.label
         }
         catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }

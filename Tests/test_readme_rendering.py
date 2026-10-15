@@ -67,6 +67,20 @@ assert.deepEqual(messages, [124, 171, 20000, 21000]);
         self.assertIn('renderError.isEmpty', view)
         self.assertIn('renderError.isEmpty', reading)
 
+    def test_large_readmes_use_html_and_same_host_redirects_only(self):
+        rules = (ROOT / 'RepoPocket/ReadmeDocument.swift').read_text(encoding='utf-8')
+        api = (ROOT / 'RepoPocket/GitHub.swift').read_text(encoding='utf-8')
+        redirect = (ROOT / 'RepoPocket/OfficialUpdateRedirectPolicy.swift').read_text(encoding='utf-8')
+        loader = rules.split('func repositoryReadmeDocument(', 1)[1]
+        self.assertNotIn('guard (entry.size ?? 0) <= ReadmeDocumentRules.sourceByteLimit else', loader)
+        self.assertIn('(entry.size ?? 0) <= ReadmeDocumentRules.sourceByteLimit ?', loader)
+        self.assertLess(loader.index('communityReadmeHTML'), loader.index('guard source != nil'))
+        html = api.split('func communityReadmeHTML(', 1)[1].split('// Native collaboration transport', 1)[0]
+        self.assertIn('GitHubAPIRedirectPolicy()', html)
+        policy = redirect.split('final class GitHubAPIRedirectPolicy', 1)[1]
+        self.assertIn('api.github.com', policy)
+        self.assertIn('url.scheme?.lowercased() == "https"', policy)
+
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift regression runs on macOS')
     def test_production_readme_formats_and_html_transport(self):
         api = (ROOT / 'RepoPocket/GitHub.swift').read_text()
@@ -172,9 +186,10 @@ GATEWAY
    precondition(fallback.html==nil && fallback.source=="Title\n=")
    api.entry=entry("README",Data([0,1,2]))
    do {_ = try await api.repositoryReadmeDocument("owner/repo",branch:"main");preconditionFailure()}catch{}
-   api.entry=entry("README",Data(),size:1048577);let beforeLarge=Fixture.count()
-   do {_ = try await api.repositoryReadmeDocument("owner/repo",branch:"main");preconditionFailure()}catch{}
-   precondition(Fixture.count()==beforeLarge)
+   api.entry=entry("README",Data(),size:1048577);Fixture.status=200;let beforeLarge=Fixture.count()
+   let large=try await api.repositoryReadmeDocument("owner/repo",branch:"main")
+   precondition(large.source==nil && large.html != nil && Fixture.count()==beforeLarge+1)
+   Fixture.status=403
    api.active=false;let beforeInactive=Fixture.count()
    do {_ = try await api.communityReadmeHTML("owner/repo",branch:"main");preconditionFailure()}catch{}
    precondition(Fixture.count()==beforeInactive)

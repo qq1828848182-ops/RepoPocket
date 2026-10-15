@@ -198,7 +198,7 @@ struct WorkflowArtifactsView: View {
             DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
             let file = try await api.communityArtifact(repo, id: artifact.id, name: artifact.name)
             defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
-            _ = try DownloadStore.shared.persist(file, session: generation)
+            _ = try await DownloadStore.shared.persist(file, session: generation)
             guard api.isCurrentSession else { throw CancellationError() }; result = "已保存 ZIP 到 " + DownloadStore.shared.label
         } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { result = error.localizedDescription } }
     }

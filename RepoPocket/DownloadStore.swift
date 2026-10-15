@@ -47,25 +47,37 @@ import Foundation
     }
     func begin() { operations += 1 }
     func end() { operations = max(0, operations - 1) }
-    func persist(_ temporary: URL, session: UUID) throws -> URL {
+    func persist(_ temporary: URL, session: UUID) async throws -> URL {
         guard session == AccountStore.generation else { throw CancellationError() }
         let parent: URL
         do { parent = try resolve() }
         catch { label = "授权失效，请重新选择保存位置"; throw AppError(text: "保存位置不可用，请在设置重新选择下载位置。") }
         guard parent.startAccessingSecurityScopedResource() else { throw AppError(text: "请重新授权下载位置。") }
         defer { parent.stopAccessingSecurityScopedResource() }
-        let sourceBytes = (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value ?? 0
-        if let available = try? parent.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage, available < sourceBytes { throw AppError(text: "保存位置空间不足，请释放空间或选择其他文件夹。") }
-        var coordinationError: NSError?
-        var result: Result<URL, Error>?
-        NSFileCoordinator().coordinate(writingItemAt: parent, options: [], error: &coordinationError) { coordinated in
-            result = Result {
-                try DownloadRules.save(temporary, parent: coordinated, valid: { session == AccountStore.generation && !Task.isCancelled }, fingerprint: LocalStore.snapshotFileSHA256)
+        let worker = Task.detached(priority: .utility) { () throws -> URL in
+            try Task.checkCancellation()
+            guard session == AccountStore.generation else { throw CancellationError() }
+            let sourceBytes = (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value ?? 0
+            if let available = try? parent.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
+               available < sourceBytes { throw AppError(text: "保存位置空间不足，请释放空间或选择其他文件夹。") }
+            var coordinationError: NSError?
+            var result: Result<URL, Error>?
+            NSFileCoordinator().coordinate(writingItemAt: parent, options: [], error: &coordinationError) { coordinated in
+                result = Result {
+                    try DownloadRules.save(temporary, parent: coordinated,
+                        valid: { session == AccountStore.generation && !Task.isCancelled },
+                        fingerprint: LocalStore.snapshotFileSHA256)
+                }
             }
+            if let coordinationError { throw coordinationError }
+            guard let result else { throw AppError(text: "文件提供器未完成保存，请重试。") }
+            return try result.get()
         }
-        if let coordinationError { throw coordinationError }
-        guard let result else { throw AppError(text: "文件提供器未完成保存，请重试。") }
-        return try result.get()
+        return try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
     }
     func shareScope(for url: URL) -> URL? {
         guard let parent = try? resolve(), url.standardizedFileURL.path.hasPrefix(parent.standardizedFileURL.appendingPathComponent("RepoPocket").path + "/"), parent.startAccessingSecurityScopedResource() else { return nil }

@@ -10,11 +10,12 @@ class ForkStatusTests(unittest.TestCase):
         self.assertIn('let source: RepositoryReference?', api)
         self.assertIn('RepositoryForkRules.matches', api)
         self.assertIn('networkCount == directCount', api)
+        self.assertIn('Date().timeIntervalSince(date) < 300', api)
         self.assertNotIn('return try await pending.value', api)
         self.assertIn('复刻或定位已有复刻', menu)
         self.assertIn('forkNames[', menu)
         self.assertIn('已复刻', menu)
-        self.assertIn('.task(id: name)', menu)
+        self.assertIn('.task(id: name + "\\n" + String(refreshID))', menu)
         self.assertIn('await state.check(name, api: api)', menu)
         self.assertNotIn('scenePhase', menu)
     @unittest.skipUnless(shutil.which('swiftc'), 'Production fork lookup mocks run on macOS CI')
@@ -80,6 +81,10 @@ struct Repository: Decodable {
   let reads = api.reads.count
   _ = try await api.existingFork("up/TOOL")
   precondition(api.reads.count == reads)
+  api.collectionCache[.owned] = [fork]
+  api.forkCheckedAt["up/tool"] = Date().addingTimeInterval(-301)
+  let refreshedPositive = try await api.existingFork("up/tool")
+  precondition(refreshedPositive == "me/tool" && api.reads.count > reads)
   // Cancelling the first waiter cannot stop a second waiter publishing shared state.
   let shared = GitHub(); shared.fixtures = ["up/tool": upstream, "me/tool": fork]
   shared.holdReads = true

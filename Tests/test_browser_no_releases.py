@@ -25,8 +25,8 @@ class BrowserRollbackTests(unittest.TestCase):
         for file in ('RepositoryReleaseUI.swift','RepositoryReleases.swift'):
             self.assertFalse((ROOT/'RepoPocket'/file).exists())
         self.assertNotIn('/releases',BROWSER)
-        self.assertIn('if path.isEmpty {', BROWSER)
-        self.assertEqual(BROWSER.count('RepositoryHomeHighlights(api: api, repo: repo)'), 1)
+        self.assertIn('if path.isEmpty && !showFiles { repositoryOverview } else { directoryRows }', BROWSER)
+        self.assertEqual(BROWSER.count('RepositoryHomeHighlights(api: api, repo: repo, refreshID: homeRefreshRevision)'), 1)
         highlights = (ROOT/'RepoPocket/RepositoryHomeHighlights.swift').read_text()
         self.assertEqual(highlights.count('ReleaseManagementDestination(api: api, repo: repo)'), 1)
         self.assertNotIn('managedReleases', LOAD)
@@ -68,11 +68,30 @@ class BrowserRollbackTests(unittest.TestCase):
         try ensureActiveAccount()
         // The accepted POST itself confirms this relationship, even before metadata is ready.
         if RepositoryGroupRules.isOwned(result.full_name, login: login) {
-            forkNames[(try RepositoryInput.parse(repo)).lowercased()] = result.full_name
+            let key = (try RepositoryInput.parse(repo)).lowercased()
+            forkNames[key] = result.full_name
+            forkCheckedAt[key] = Date()
         }
         return result'''
         assert normalized.count(accepted_post) == 1
         normalized = normalized.replace(accepted_post, '        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])')
+        # The bounded file-backed upload path and its two consumers are covered
+        # by focused queue/Troll tests. Normalize those complete methods here so
+        # this exact comparison still protects every unrelated historic API.
+        helper_start = normalized.index('    private func uploadGitBlobFile(')
+        helper_end = normalized.index('    func history(', helper_start)
+        normalized = normalized[:helper_start] + normalized[helper_end:]
+        for signature, next_signature in (
+            ('    func commitQueue(', '    func identify('),
+            ('    func trollPublish(', '    func metadataSnapshot('),
+        ):
+            current_start = normalized.index(signature)
+            current_end = normalized.index(next_signature, current_start)
+            old_start = api_original.index(signature)
+            old_end = api_original.index(next_signature, old_start)
+            normalized = normalized[:current_start] + api_original[old_start:old_end] + normalized[current_end:]
+        normalized = normalized.replace('session.data(for: r, delegate: GitHubAPIRedirectPolicy())',
+                                        'session.data(for: r, delegate: OfficialUpdateRedirectPolicy())')
         self.assertEqual(normalized.rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
         for menu in ('CopyRepositoryLinkButton','ForkRepositoryMenuButton','RepositoryStarMenuButton'):
