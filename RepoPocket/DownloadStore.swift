@@ -8,7 +8,12 @@ import Foundation
     @Published private(set) var label: String
     @Published private(set) var operations = 0
     private var waiters: [CheckedContinuation<Void, Error>] = []
-    init() { label = UserDefaults.standard.string(forKey: "RepoPocket.download.label.v1") ?? "请选择保存位置" }
+    init() {
+        let defaults = UserDefaults.standard
+        let cached = defaults.string(forKey: "RepoPocket.download.label.v1")
+        label = DownloadRules.initialLabel(cached, hasBookmark: defaults.data(forKey: bookmarkKey) != nil)
+        if cached?.hasPrefix("/") != true { defaults.removeObject(forKey: "RepoPocket.download.label.v1") }
+    }
     private func resolve() throws -> URL {
         guard let data = UserDefaults.standard.data(forKey: bookmarkKey) else { throw AppError(text: "请选择保存位置；建议选择“我的 iPhone → 下载”。") }
         var stale = false
@@ -16,6 +21,8 @@ import Foundation
         guard url.startAccessingSecurityScopedResource() else { throw AppError(text: "下载位置授权失效，请重新选择文件夹。") }
         defer { url.stopAccessingSecurityScopedResource() }
         try DownloadRules.rejectSymlinks(url)
+        label = DownloadRules.destinationFolder(in: url).path
+        UserDefaults.standard.set(label, forKey: "RepoPocket.download.label.v1")
         if stale { UserDefaults.standard.set(try url.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil), forKey: bookmarkKey) }
         return url
     }
@@ -38,7 +45,7 @@ import Foundation
             try DownloadRules.rejectSymlinks(url)
             let data = try url.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(data, forKey: bookmarkKey)
-            label = url.lastPathComponent + "/RepoPocket"
+            label = DownloadRules.destinationFolder(in: url).path
             UserDefaults.standard.set(label, forKey: "RepoPocket.download.label.v1")
             result = .success(())
         } catch { result = .failure(error) }
@@ -80,7 +87,7 @@ import Foundation
         }
     }
     func shareScope(for url: URL) -> URL? {
-        guard let parent = try? resolve(), url.standardizedFileURL.path.hasPrefix(parent.standardizedFileURL.appendingPathComponent("RepoPocket").path + "/"), parent.startAccessingSecurityScopedResource() else { return nil }
+        guard let parent = try? resolve(), url.standardizedFileURL.path.hasPrefix(DownloadRules.destinationFolder(in: parent).standardizedFileURL.path + "/"), parent.startAccessingSecurityScopedResource() else { return nil }
         return parent
     }
 }
@@ -91,7 +98,7 @@ struct DownloadLocationSection: View {
         Section("下载位置") {
             Button("选择文件夹") { store.choose() }.disabled(store.operations > 0).softGroupedRow(top: true)
             Text(store.label).font(.caption).textSelection(.enabled).softGroupedRow()
-            Text("已下载文件保留，清缓存不会删除。卸载 App 可能删除内部工作区；外部文件仍受提供器管理。下载需保持前台，中断后请重试。首次下载请授权文件夹。建议选择“文件 → 我的 iPhone → 下载”，文件保存到所选目录的 RepoPocket 子文件夹，不自动写入系统下载。").font(.caption).foregroundColor(.secondary).softGroupedRow(bottom: true)
+            Text("已下载文件保留，清缓存不会删除。卸载 App 可能删除内部工作区；外部文件仍受提供器管理。下载需保持前台，中断后请重试。首次下载请授权文件夹。建议选择“文件 → 我的 iPhone → 下载”，文件保存到所选目录的 RepoPocket 子文件夹；若已选择 RepoPocket 文件夹则直接保存其中。上方显示实际保存路径，不自动写入系统下载。").font(.caption).foregroundColor(.secondary).softGroupedRow(bottom: true)
         }
     }
 }

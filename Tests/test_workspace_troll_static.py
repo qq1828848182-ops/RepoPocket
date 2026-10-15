@@ -34,7 +34,8 @@ class WorkspaceTrollStaticTests(unittest.TestCase):
         self.assertIn("LocalStore.removeWorkspace(target)", self.workspace)
         self.assertIn("fm.moveItem(at: folder, to: savedFolder)", self.workspace)
         self.assertIn("fm.moveItem(at: savedFolder, to: folder)", self.workspace)
-        self.assertIn(".swipeActions", self.workspace)
+        self.assertNotIn(".swipeActions", self.workspace)
+        self.assertIn(".contextMenu", self.workspace)
 
     def test_troll_form_and_index_preservation(self):
         for field in ("trollName", "trollVersion", "trollDescription", "trollBundleID", "trollAuthor", "trollPreview"):

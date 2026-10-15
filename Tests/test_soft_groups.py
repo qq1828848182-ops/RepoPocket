@@ -32,7 +32,8 @@ assert 'Section("已保存账号")' not in ui
 assert '.sheet(isPresented: $accountPresentation.showing' in ui
 assert '.listStyle(.insetGrouped)' in workspace and '.listStyle(.insetGrouped)' in ui
 assert '.formStyle(.grouped)' in upload
-assert '.swipeActions {' in workspace and 'pendingDelete = root; confirmDelete = true' in workspace
+assert '.swipeActions {' not in workspace and 'pendingDelete = root; confirmDelete = true' in workspace
+assert '.contextMenu {' in workspace
 assert '.swipeActions' in ui and 'confirmDelete' in ui
 assert 'verticalSizeClass == .compact ? 3 : 7' in card
 assert '.lineLimit(descriptionLineLimit)' in card
@@ -70,28 +71,31 @@ for has_release in (False, True):
     bottoms = [not has_release] + ([False, True] if has_release else [])
     assert sum(bottoms) == 1 and bottoms[-1]
 # Local workspace groups: the hint always opens the group; only the actual last
-# row closes it. Selection and swipe actions remain separate native List rows.
+# row closes it. Selection and long-press actions remain native List rows.
 local = workspace.split('private var localSection: some View {', 1)[1].split('private func workspaceManagement', 1)[0]
 assert 'softGroupedRow(top: true, bottom: roots.isEmpty)' in local
 assert '.softGroupedRow(bottom: root == roots.last)' in local
-assert 'ForEach(roots, id: \\.path)' in local and '.swipeActions {' in local
+assert 'ForEach(roots, id: \\.path)' in local and '.contextMenu {' in local
 management = workspace.split('private func workspaceManagement', 1)[1].split('private func bindingSection', 1)[0]
 assert 'if let binding { Text(binding.repo + " / " + binding.branch).font(.headline).softGroupedRow(top: true) }' in management
 assert 'Menu("工作区…")' in management
-assert '.disabled(busy).softGroupedRow(top: binding == nil, bottom: true)' in management
+assert '.disabled(busy).softGroupedRow(top: binding == nil, bottom: !linked)' in management
+assert '.font(.caption).softGroupedRow(bottom: true)' in management
 for count in (0, 1, 3):
     edges = [(True, count == 0)] + [(False, index == count - 1) for index in range(count)]
     assert sum(top for top, _ in edges) == 1 and edges[0][0]
     assert sum(bottom for _, bottom in edges) == 1 and edges[-1][1]
 for has_binding in (False, True):
-    edges = ([(True, False)] if has_binding else []) + [(not has_binding, True)]
-    assert sum(top for top, _ in edges) == sum(bottom for _, bottom in edges) == 1
+    for linked in (False, True):
+        edges = ([(True, False)] if has_binding else []) + [(not has_binding, not linked)]
+        if linked: edges += [(False, True)]
+        assert sum(top for top, _ in edges) == sum(bottom for _, bottom in edges) == 1
 
 # The local changes section ends with one fixed, concise hint rather than an expandable
 # disclosure. Keep it as the terminal decorated row so the outer rounded group remains intact.
 changes = workspace.split('private var changesSection: some View {', 1)[1].split('private var conflictSheet', 1)[0]
 assert 'DisclosureGroup("提交说明与限制")' not in changes
-assert '修改导入副本后，刷新变更。' in changes
+assert '刷新变更。' in changes
 assert '.font(.caption).foregroundStyle(.secondary).softGroupedRow(bottom: true)' in changes
 assert 'Button("刷新变更") { Task { await scan() } }.disabled(busy).softGroupedRow(bottom: selected.isEmpty)' in changes
 for has_selection in (False, True):
@@ -338,29 +342,6 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
         assert 'Button { Task { await load() } }' in current
     else:
         assert current == baseline(file), file
-for file, marker in [
-    ('ReleaseBranchPicker.swift', 'struct ReleaseBranchPicker: View {'),
-    ('ReleaseEntryView.swift', '    private func proceed() async {'),
-    ('TargetPickerView.swift', '    private func load() async {'),
-    ('RepositorySearchView.swift', '    private func begin('),
-    ('DebEditorView.swift', '    private var editorPresentation: some View {'),
-    ('WorkspaceView.swift', '    @MainActor private func importItems('),
-    ('TrollMetadataView.swift', '    @MainActor private func load() async {')]:
-    current, old = source(file), baseline(file)
-    if file == 'ReleaseBranchPicker.swift':
-        assert current.split(marker)[0] == old.split(marker)[0], file
-    elif file == 'RepositorySearchView.swift':
-        # UserRepositories UI is also explicitly allowed, its network code isn't.
-        current = current.replace('        requestedOptions = options\n', '')
-        current = current.replace('requested, page: requestedPage, options: requestedOptions)', 'requested, page: requestedPage)')
-        assert current.split(marker)[1].split('struct UserRepositoriesView:')[0] == old.split(marker)[1].split('struct UserRepositoriesView:')[0]
-        assert current.split('    private func load() async {')[-1] == old.split('    private func load() async {')[-1]
-    else:
-        assert current.split(marker, 1)[1] == old.split(marker, 1)[1], file
-print('PASS feature-page matrices: release pagination/status/attachments, direct management entry and 32 optional deb field combinations; native branch/SHA expansion boundaries; exact cc62549 business/shared-style protection')
-
-# Byte-exact operation bodies for mixed UI/logic files: rendering may move, API
-# calls/cancellation/permission and destructive confirmation logic may not.
 def function_blocks(text):
     import re
     matches = list(re.finditer(r'^    (?:@MainActor )?(?:private |static )*func [^\n]*', text, re.M))
@@ -383,6 +364,50 @@ def function_blocks(text):
         signature = text[start:opening].strip()
         result[signature] = text[opening:index]
     return result
+# Original-folder association deliberately changes only import and scan below.
+# Native filesystem/bookmark regression coverage lives in test_linked_workspaces.py.
+workspace_operations = (
+    'static func metadata(', 'static func snapshot(',
+    'static func removeWorkspace(', 'static func renameWorkspace(',
+    '@MainActor private func importItems(', '@MainActor private func scan()',
+)
+
+def restore_workspace_operations(current, old):
+    current_blocks, old_blocks = function_blocks(current), function_blocks(old)
+    for signature, body in old_blocks.items():
+        if any(signature.startswith(prefix) for prefix in workspace_operations):
+            assert signature in current_blocks, signature
+            updated = current_blocks[signature]
+            assert current.count(updated) == 1, signature
+            current = current.replace(updated, body, 1)
+    return current
+
+for file, marker in [
+    ('ReleaseBranchPicker.swift', 'struct ReleaseBranchPicker: View {'),
+    ('ReleaseEntryView.swift', '    private func proceed() async {'),
+    ('TargetPickerView.swift', '    private func load() async {'),
+    ('RepositorySearchView.swift', '    private func begin('),
+    ('DebEditorView.swift', '    private var editorPresentation: some View {'),
+    ('WorkspaceView.swift', '    @MainActor private func importItems('),
+    ('TrollMetadataView.swift', '    @MainActor private func load() async {')]:
+    current, old = source(file), baseline(file)
+    if file == 'ReleaseBranchPicker.swift':
+        assert current.split(marker)[0] == old.split(marker)[0], file
+    elif file == 'WorkspaceView.swift':
+        current = restore_workspace_operations(current, old)
+        assert current.split(marker, 1)[1] == old.split(marker, 1)[1], file
+    elif file == 'RepositorySearchView.swift':
+        # UserRepositories UI is also explicitly allowed, its network code isn't.
+        current = current.replace('        requestedOptions = options\n', '')
+        current = current.replace('requested, page: requestedPage, options: requestedOptions)', 'requested, page: requestedPage)')
+        assert current.split(marker)[1].split('struct UserRepositoriesView:')[0] == old.split(marker)[1].split('struct UserRepositoriesView:')[0]
+        assert current.split('    private func load() async {')[-1] == old.split('    private func load() async {')[-1]
+    else:
+        assert current.split(marker, 1)[1] == old.split(marker, 1)[1], file
+print('PASS feature-page matrices: release pagination/status/attachments, direct management entry and 32 optional deb field combinations; native branch/SHA expansion boundaries; exact cc62549 business/shared-style protection')
+
+# Byte-exact operation bodies for mixed UI/logic files: rendering may move, API
+# calls/cancellation/permission and destructive confirmation logic may not.
 for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.swift',
              'UploadView.swift', 'RepositoryDeletionView.swift', 'RepositorySections.swift',
              'AccountManagement.swift', 'DebEditorView.swift', 'TargetPickerView.swift',
@@ -392,6 +417,10 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
     rendering = ['workspaceManagement(', 'bindingSection(', 'outputSection(']
     for signature, body in old.items():
         if any(token in signature for token in rendering): continue
+        if file == 'WorkspaceView.swift' and any(signature.startswith(prefix) for prefix in workspace_operations):
+            # Explicitly replaced by linked-directory production regressions.
+            assert signature in current, signature
+            continue
         if file == 'RepoPocketApp.swift' and signature == 'private func verify() async':
             # Intentional fix: the pasted Token must survive a failed verification, and the
             # first attempt dropped by the system network prompt is retried once.

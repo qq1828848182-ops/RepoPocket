@@ -33,6 +33,8 @@ jobs:
         run: python3 Tests/test_local_selection.py
       - name: Test scanner, selective commit and three-way pull
         run: python3 Tests/test_local_store.py
+      - name: Test linked original folders, bookmark restore and exact deletion
+        run: python3 Tests/test_linked_workspaces.py
       - name: Test ZIPFoundation safe extraction
         run: python3 Tests/test_workspace_zip.py
       - name: Test deb control editor
@@ -124,7 +126,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "7"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "8"
           test "$(lipo -archs "$APP/RepoPocket")" = "arm64"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
