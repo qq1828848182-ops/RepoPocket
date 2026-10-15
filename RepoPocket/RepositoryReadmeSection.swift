@@ -16,7 +16,8 @@ struct RepositoryReadmeSection: View {
     let branch: String
     let canWrite: Bool
     @State private var entry: Entry?
-    @State private var text: String?
+    @State private var document: ReadmeDocument?
+    @State private var bodyHeight: CGFloat = 180
     @State private var error = ""
     @State private var resolved = ""
     @State private var expanded = false
@@ -35,14 +36,17 @@ struct RepositoryReadmeSection: View {
                         }
                     }
                 }
-                if let text {
+                if let document {
                     SoftGroupRow("body") {
-                        CommunityMarkdown(text: expanded ? text : ReadmePreviewRules.preview(text),
+                        ReadmeDocumentBody(document: document,
                             baseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: false),
-                            imageBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: true), api: api)
+                            api: api, expanded: expanded, height: $bodyHeight)
                     }
-                    if ReadmePreviewRules.needsExpansion(text) {
+                    if bodyHeight > ReadmeDocumentRules.collapsedHeight || ReadmePreviewRules.needsExpansion(document.source ?? "") {
                         SoftGroupRow("expand") { Button(expanded ? "收起自述文件" : "展开完整自述文件") { expanded.toggle() } }
+                    }
+                    if expanded && bodyHeight >= ReadmeDocumentRules.inlineHeightLimit {
+                        SoftGroupRow("limit") { Text("正文较长，可使用全屏阅读继续查看。").font(.caption).foregroundStyle(.secondary) }
                     }
                     SoftGroupRow("reader") { NavigationLink("全屏阅读") { RepositoryReadmeView(api: api, repo: repo, branch: resolved) } }
                 } else if error.isEmpty {
@@ -54,13 +58,12 @@ struct RepositoryReadmeSection: View {
                 }
             }
         }.task(id: requestID) {
-            entry = nil; text = nil; expanded = false; error = ""
+            entry = nil; document = nil; bodyHeight = 180; expanded = false; error = ""
             do {
                 let selected = try await api.resolvedBranch(repo, branch: branch)
-                let file = try await api.repositoryReadme(repo, branch: selected)
-                let source = try CommunityRules.readmeText(file)
+                let loaded = try await api.repositoryReadmeDocument(repo, branch: selected)
                 try Task.checkCancellation(); guard api.isCurrentSession else { return }
-                resolved = selected; entry = file; text = source
+                resolved = selected; entry = loaded.entry; document = loaded
             } catch {
                 if api.isCurrentSession, !RefreshFailure.isCancellation(error) {
                     self.error = (error as? GitHubAPIError)?.status == 404 ? "此分支没有自述文件，或账号没有读取权限。" : error.localizedDescription
