@@ -37,6 +37,14 @@ class UpdateGroupTests(unittest.TestCase):
         self.assertIn('let radius: CGFloat = 22', style)
         self.assertEqual(style.count('.listRowBackground('), 1)
 
+    def test_row_decoration_cannot_escape_into_list_layer(self):
+        # Regression: a list-owned cover keeps stale coordinates when other
+        # self-sizing rows move. Decoration must remain in SwiftUI's row subtree.
+        self.assertNotIn('SoftGroupCellBoundary(', style)
+        for path in (REPO_ROOT / 'RepoPocket').glob('*.swift'):
+            source = path.read_text()
+            self.assertNotIn('list.layer.addSublayer(cover)', source, path.name)
+
     def test_all_dynamic_states_have_only_outer_corners(self):
         # Read the actual source branches and row modifiers, rather than
         # maintaining a separate list of expected boundary flags.

@@ -34,9 +34,10 @@ extension View {
     func softGroupedRow(top: Bool = false, bottom: Bool = false, animateBackground: Bool = true, separatorInset: CGFloat = 20) -> some View {
         listRowSeparator(.hidden)
             .listRowBackground(
-                // The fixed native-list boundary owns the outer corners. A rounded
-                // moving background would leave a notch beside the swipe button.
-                Rectangle()
+                // As in 1.0.4, decoration belongs to this row's layout subtree.
+                // Never install a cover on the enclosing list: self-sizing rows
+                // can move without updating that cover's cached coordinates.
+                SoftGroupShape(top: top, bottom: bottom)
                     .fill(Color(uiColor: .secondarySystemGroupedBackground))
                     .overlay(alignment: .bottom) {
                         if !bottom {
@@ -45,7 +46,6 @@ extension View {
                         }
                     }
                     .clipShape(Rectangle())
-                    .background(SoftGroupCellBoundary(top: top, bottom: bottom))
                     .transaction { transaction in
                         if !animateBackground {
                             transaction.animation = nil
