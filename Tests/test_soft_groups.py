@@ -281,6 +281,26 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
         current = current[:start] + current[end:]
         current = current.replace('page: Int, options: RepositorySearchOptions = .init()) async throws -> RepositorySearchResponse', 'page: Int) async throws -> RepositorySearchResponse')
         current = current.replace('query: query, page: page, options: options)', 'query: query, page: page)')
+        # Explicit fork-status fix: new lookup and accepted-POST bookkeeping are
+        # covered by test_repository_fork_status.py. Keep every unrelated byte
+        # of the historic transport and mutation guards protected below.
+        current = current.replace('    let source: RepositoryReference?\n', '')
+        current = current.replace('    @Published private(set) var forkNames: [String: String] = [:]\n', '')
+        current = current.replace('    private var forkChecks: [String: Task<String?, Error>] = [:]\n', '')
+        current = current.replace('    private var forkCheckedAt: [String: Date] = [:]\n', '')
+        current = current.replace('    private var forkCheckIDs: [String: UUID] = [:]\n', '')
+        fork_start = current.index('    // Fork status is read only, on demand, and scoped to this account generation.')
+        fork_end = current.index('    func fork(_ repo: String)', fork_start)
+        current = current[:fork_start] + current[fork_end:]
+        accepted_post = '''        let result = try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])
+        try ensureActiveAccount()
+        // The accepted POST itself confirms this relationship, even before metadata is ready.
+        if RepositoryGroupRules.isOwned(result.full_name, login: login) {
+            forkNames[(try RepositoryInput.parse(repo)).lowercased()] = result.full_name
+        }
+        return result'''
+        assert current.count(accepted_post) == 1
+        current = current.replace(accepted_post, '        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])')
     if file == 'WorkspaceSelectionUI.swift':
         # Separator implementation may change; 1.0.4 shape and layout stay exact.
         assert current.split('extension View {\n    ///')[0] == baseline(file).split('extension View {\n    ///')[0]
