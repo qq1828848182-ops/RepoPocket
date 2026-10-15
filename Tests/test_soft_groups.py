@@ -275,6 +275,10 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
              'ReleasePublishPlan.swift', 'ReleaseTransfers.swift']:
     current = source(file)
     if file == 'GitHub.swift':
+        # The authorized metadata editor has separate permission/race tests.
+        description_start = current.index('    func descriptionContext(')
+        description_end = current.index('    func deletionContext(', description_start)
+        current = current[:description_start] + current[description_end:]
         # This feature adds a read-only community gateway and search options;
         # normalize only their exact expressions, keeping all writes frozen.
         start = current.index('    // Read-only gateway')

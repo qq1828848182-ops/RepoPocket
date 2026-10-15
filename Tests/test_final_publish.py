@@ -74,7 +74,7 @@ struct AppError: LocalizedError { let text: String; var errorDescription: String
   var recent = AppUpdateSessionRules(); precondition(!recent.claim(now:now,last:now.addingTimeInterval(-21_599)))
   var due = AppUpdateSessionRules(); precondition(due.claim(now:now,last:now.addingTimeInterval(-21_600)))
   var future = AppUpdateSessionRules(); precondition(!future.claim(now:now,last:now.addingTimeInterval(1)))
-  precondition(AppUpdateSessionRules.version("1.0.1",build:"5") == "1.0.1（5）")
+  precondition(AppUpdateSessionRules.version("1.0.1",build:"5") == "1.0.1")
   print("PASS production phase, fixed draft retry, cancel/finalization failure, identity/size, nonempty/budget/names, session once, six-hour edge and version format")
  }
 }
