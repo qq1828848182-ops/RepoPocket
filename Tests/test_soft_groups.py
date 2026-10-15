@@ -34,7 +34,7 @@ assert '.listStyle(.insetGrouped)' in workspace and '.listStyle(.insetGrouped)' 
 assert '.formStyle(.grouped)' in upload
 assert '.swipeActions {' not in workspace and 'pendingDelete = root; confirmDelete = true' in workspace
 assert '.contextMenu {' in workspace
-assert '.swipeActions' in ui and 'confirmDelete' in ui
+assert '.contextMenu' in ui and 'confirmationDialog' in ui
 assert 'verticalSizeClass == .compact ? 3 : 7' in card
 assert '.lineLimit(descriptionLineLimit)' in card
 # Divider regression: screenshot paths must decorate all intermediate rows.
@@ -307,6 +307,10 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
         return result'''
         assert current.count(accepted_post) == 1
         current = current.replace(accepted_post, '        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])')
+        # Explicit fork-write revalidation is covered by production fork fixtures.
+        revalidation = '        guard try await existingFork(repo) == nil else { throw AppError(text: "此仓库已复刻。") }\n        try ensureActiveAccount()\n'
+        assert current.count(revalidation) == 1
+        current = current.replace(revalidation, '')
         # File-backed Git blob uploads, queue limits, and TrollFools streaming
         # intentionally replace their old in-memory implementations. Their
         # behavior has focused regression tests; restore only these methods for

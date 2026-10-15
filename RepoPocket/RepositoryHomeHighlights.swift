@@ -3,27 +3,15 @@ import SwiftUI
 struct RepositoryHomeHighlights: View {
     @ObservedObject var api: GitHub
     let repo: String
-    var refreshID = 0
-    @State private var release: ManagedRelease?
-    @State private var run: WorkflowRun?
-    @State private var releaseLoading = true
-    @State private var runLoading = true
-    @State private var releaseError = ""
-    @State private var runError = ""
-    @State private var releaseRevision = 0
-    @State private var runRevision = 0
-    private var runStatus: String {
-        guard let run else { return "暂无运行记录" }
-        switch run.conclusion ?? run.status {
-        case "success": return "成功"
-        case "failure", "timed_out": return "失败"
-        case "cancelled": return "已取消"
-        case "in_progress": return "运行中"
-        case "queued", "waiting", "requested", "pending": return "等待运行"
-        case "skipped": return "已跳过"
-        default: return run.conclusion ?? run.status
-        }
-    }
+    @ObservedObject var releaseState: RepositoryPageLoadState<ManagedRelease>
+    @ObservedObject var runState: RepositoryPageLoadState<[WorkflowRun]>
+    private var release: ManagedRelease? { releaseState.value }
+    private var run: WorkflowRun? { runState.value?.first }
+    private var releaseLoading: Bool { releaseState.loading }
+    private var runLoading: Bool { runState.loading }
+    private var releaseError: String { releaseState.error }
+    private var runError: String { runState.error }
+    private var requestKey: String { api.accountID + "\n" + AccountStore.generation.uuidString + "\n" + repo.lowercased() }
     var body: some View {
         Section("发行版") {
             SoftGroupRows {
@@ -42,25 +30,9 @@ struct RepositoryHomeHighlights: View {
                 else if releaseError.isEmpty { SoftGroupRow("empty") { Text("暂无正式发行版").foregroundStyle(.secondary) } }
                 if !releaseError.isEmpty { SoftGroupRow("error") { Text(releaseError).font(.caption) } }
                 SoftGroupRow("all") { NavigationLink("全部发行版") { ReleaseManagementDestination(api: api, repo: repo) } }
-                SoftGroupRow("refresh") { Button(releaseError.isEmpty ? "刷新发行版" : "重试读取发行版") { releaseRevision += 1 }.disabled(releaseLoading) }
+                SoftGroupRow("refresh") { Button(releaseError.isEmpty ? "刷新发行版" : "重试读取发行版") { Task { await loadRelease(refresh: true) } }.disabled(releaseLoading) }
             }
-        }.onReceive(NotificationCenter.default.publisher(for: .releaseManagementChanged)) { notice in
-            if notice.userInfo?["repo"] as? String == repo,
-               notice.userInfo?["generation"] as? UUID == AccountStore.generation { releaseRevision += 1 }
-        }.task(id: "\(refreshID):release:\(releaseRevision)") {
-            releaseLoading = true; releaseError = ""; release = nil
-            defer { releaseLoading = false }
-            do {
-                let data = try await api.communityRead(GitHub.repoPath(repo) + "/releases/latest")
-                let value = try JSONDecoder().decode(ManagedRelease.self, from: data)
-                try Task.checkCancellation(); guard api.isCurrentSession else { return }
-                release = value
-            } catch {
-                if api.isCurrentSession, !RefreshFailure.isCancellation(error) {
-                    releaseError = (error as? GitHubAPIError)?.status == 404 ? "未找到正式发行版，或当前账号没有读取权限。" : error.localizedDescription
-                }
-            }
-        }
+        }.task(id: requestKey) { await loadRelease() }
         Section("最近一次 Actions · 所有分支") {
             SoftGroupRows {
                 if let run {
@@ -77,19 +49,23 @@ struct RepositoryHomeHighlights: View {
                 else if runError.isEmpty { SoftGroupRow("empty") { Text("暂无运行记录").foregroundStyle(.secondary) } }
                 if !runError.isEmpty { SoftGroupRow("error") { Text(runError).font(.caption) } }
                 SoftGroupRow("all") { NavigationLink("全部运行") { WorkflowRunsView(api: api, repo: repo, branch: "") } }
-                SoftGroupRow("refresh") { Button(runError.isEmpty ? "刷新运行状态" : "重试读取运行") { runRevision += 1 }.disabled(runLoading) }
+                SoftGroupRow("refresh") { Button(runError.isEmpty ? "刷新运行状态" : "重试读取运行") { Task { await loadRuns(refresh: true) } }.disabled(runLoading) }
             }
-        }.onReceive(NotificationCenter.default.publisher(for: .workflowRunDeleted)) { notice in
-            if notice.userInfo?["repo"] as? String == repo,
-               notice.userInfo?["generation"] as? UUID == AccountStore.generation { runRevision += 1 }
-        }.task(id: "\(refreshID):run:\(runRevision)") {
-            runLoading = true; runError = ""; run = nil
-            defer { runLoading = false }
-            do {
-                let values = try await api.workflowRuns(repo, branch: "", page: 1)
-                try Task.checkCancellation(); guard api.isCurrentSession else { return }
-                run = values.first
-            } catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { runError = error.localizedDescription } }
-        }
+        }.task(id: requestKey) { await loadRuns() }
+    }
+    private func loadRelease(refresh: Bool = false) async {
+        let api = api, repo = repo, generation = AccountStore.generation
+        await releaseState.load(key: requestKey, refresh: refresh, operation: {
+            let data = try await api.communityRead(GitHub.repoPath(repo) + "/releases/latest")
+            return try JSONDecoder().decode(ManagedRelease.self, from: data)
+        }, isValid: { api.isCurrentSession && AccountStore.generation == generation }, errorText: {
+            ($0 as? GitHubAPIError)?.status == 404 ? "未找到正式发行版，或当前账号没有读取权限。" : $0.localizedDescription
+        })
+    }
+    private func loadRuns(refresh: Bool = false) async {
+        let api = api, repo = repo, generation = AccountStore.generation
+        await runState.load(key: requestKey, refresh: refresh, operation: {
+            try await api.workflowRuns(repo, branch: "", page: 1)
+        }, isValid: { api.isCurrentSession && AccountStore.generation == generation })
     }
 }

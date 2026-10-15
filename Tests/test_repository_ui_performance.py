@@ -74,18 +74,18 @@ class RepositoryUIPerformanceTests(unittest.TestCase):
         self.assertNotIn('.onAppear', home)
         self.assertNotIn('.id(showSearch)', home)
 
-    def test_repository_pull_to_refresh_reloads_embedded_sections(self):
+    def test_repository_pull_to_refresh_preserves_embedded_sections(self):
         browser = APP[APP.index('struct BrowserView:'):APP.index('struct FileView:')]
         highlights = (ROOT/'RepoPocket/RepositoryHomeHighlights.swift').read_text()
         readme = (ROOT/'RepoPocket/RepositoryReadmeSection.swift').read_text()
-        self.assertIn('@State private var homeRefreshRevision = 0', browser)
-        self.assertIn('homeRefreshRevision += 1', browser)
-        self.assertIn('refreshID: homeRefreshRevision', browser)
-        self.assertIn('var refreshID = 0', highlights)
-        self.assertIn('\\(refreshID):release:\\(releaseRevision)', highlights)
-        self.assertIn('\\(refreshID):run:\\(runRevision)', highlights)
-        self.assertIn('var refreshID = 0', readme)
-        self.assertIn('String(refreshID)', readme)
+        self.assertIn('@StateObject private var homeRelease', browser)
+        self.assertIn('@StateObject private var homeRuns', browser)
+        self.assertIn('@StateObject private var readmeState', browser)
+        self.assertNotIn('homeRefreshRevision', browser)
+        self.assertNotIn('refreshID', highlights + readme)
+        self.assertIn('await loadRelease(refresh: true)', highlights)
+        self.assertIn('await loadRuns(refresh: true)', highlights)
+        self.assertIn('await load(refresh: true)', readme)
         self.assertNotIn('releasePresence', browser)
 
     @unittest.skipUnless(shutil.which('swiftc'), 'production Swift runs on macOS CI')

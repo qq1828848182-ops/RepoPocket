@@ -47,7 +47,6 @@ struct AccountRootView: View {
             TabView(selection: $selectedTab) {
                 RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }.tag(0)
                 GitWorkspaceView().environmentObject(gitCore).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }.tag(1)
-                WorkspaceView(api: api).tabItem { Label("本地", systemImage: "folder.badge.gearshape") }.tag(2)
                 UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }.tag(3)
                 SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.tag(4)
             }
@@ -253,7 +252,9 @@ struct BrowserView: View {
     @State private var entries: [Entry] = []
     @State private var loaded = false
     @State private var refreshing = false
-    @State private var homeRefreshRevision = 0
+    @StateObject private var readmeState = RepositoryReadmeState()
+    @StateObject private var homeRelease = RepositoryPageLoadState<ManagedRelease>()
+    @StateObject private var homeRuns = RepositoryPageLoadState<[WorkflowRun]>()
     @State private var busy = false
     @State private var downloadNotice = ""
     @State private var showUpload = false
@@ -277,14 +278,14 @@ struct BrowserView: View {
                     HStack(spacing: 16) {
                         RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu, refreshID: homeRefreshRevision)
+                        ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
                     }.buttonStyle(.borderless).softGroupedRow(bottom: true)
                 }
             }
     }
     @ViewBuilder private var repositoryOverview: some View {
                 RepositoryCommunitySection(api: api, repo: repo, branch: activeBranch, avatar: repositoryInfo?.owner?.avatar_url)
-                RepositoryHomeHighlights(api: api, repo: repo, refreshID: homeRefreshRevision)
+                RepositoryHomeHighlights(api: api, repo: repo, releaseState: homeRelease, runState: homeRuns)
                 Section {
                     SoftGroupRows {
                         SoftGroupRow("branch") {
@@ -300,7 +301,7 @@ struct BrowserView: View {
                         }
                     }
                 }
-                RepositoryReadmeSection(api: api, repo: repo, branch: activeBranch, canWrite: canWrite, refreshID: homeRefreshRevision)
+                RepositoryReadmeSection(api: api, repo: repo, branch: activeBranch, canWrite: canWrite, state: readmeState)
     }
     @ViewBuilder private var directoryRows: some View {
             if busy && entries.isEmpty && !refreshing { LoadingRows() }
@@ -333,7 +334,7 @@ struct BrowserView: View {
                         }
                     }
                     .softGroupedRow(top: e.id == entries.first?.id, bottom: e.id == entries.last?.id)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    .contextMenu {
                         if canWrite { Button("删除", role: .destructive) {
                             deleteAccount = api.accountID; deleteGeneration = AccountStore.generation
                             deleteBranch = activeBranch; deleteEntry = e
@@ -357,21 +358,21 @@ struct BrowserView: View {
             refreshing = true
             defer { refreshing = false }
             await load()
-            if path.isEmpty && !showFiles { homeRefreshRevision += 1 }
+
         }
         .toolbar {
             if canWrite { Button("上传") { showUpload = true }.disabled(busy) }
             Menu {
                 CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)
                 if !path.isEmpty || showFiles {
-                    ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu, refreshID: homeRefreshRevision)
+                    ForkRepositoryMenuButton(repository: repo, api: api, state: forkMenu)
                     RepositoryStarMenuButton(name: repo, repository: repositoryInfo, api: api)
                 }
                 Button("切换 / 创建分支") { showBranches = true }
                 NavigationLink("提交历史") { HistoryView(api: api, repo: repo, branch: activeBranch) }
                 if path.isEmpty && canWrite { Button("新建发行版") { creatingRelease = true } }
                 Button("下载整个仓库 ZIP") { Task { await zip() } }
-                Button("刷新目录") { Task { await load(); if path.isEmpty && !showFiles { homeRefreshRevision += 1 } } }
+                Button("刷新目录") { Task { await load() } }
                 Button("删除远端仓库…", role: .destructive) {
                     if let repositoryInfo, repositoryInfo.permissions?.admin == true {
                         repositoryDeletionTarget = RepositoryDeletionTarget(repository: repositoryInfo, context: api.deletionContext(repositoryInfo))

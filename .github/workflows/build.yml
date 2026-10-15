@@ -2,6 +2,11 @@ name: Build IPA
 on:
   workflow_dispatch:
     inputs:
+      validate_only:
+        description: Run tests and compile iOS without packaging an IPA
+        type: boolean
+        required: false
+        default: false
       style_preview:
         description: Render fixed-data simulator style screenshots
         type: boolean
@@ -101,6 +106,8 @@ jobs:
         run: python3 Tests/test_final_publish.py
       - name: Test TrollStore install encoding, fallbacks and update probe eligibility
         run: python3 Tests/test_trollstore_update.py
+      - name: Test repository page request lifetime and approved interface changes
+        run: python3 Tests/test_repository_page_lifecycle.py
       - name: Test Swift source structure before compiling
         run: python3 Tests/test_swift_structure.py
       - name: Select Xcode 15.4
@@ -114,6 +121,7 @@ jobs:
           set -o pipefail
           xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log
       - name: Ad-hoc sign and package IPA
+        if: ${{ !inputs.validate_only }}
         run: |
           set -euo pipefail
           APP=build/Build/Products/Release-iphoneos/RepoPocket.app
@@ -126,7 +134,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")" = "16.0"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist")" = "true"
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP/Info.plist")" = "true"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "8"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")" = "9"
           test "$(lipo -archs "$APP/RepoPocket")" = "arm64"
           codesign --force --sign - --entitlements Entitlements.plist "$APP"
           codesign --verify --deep --strict "$APP"
@@ -142,6 +150,7 @@ jobs:
           shasum -a 256 RepoPocket-1.1.1.ipa > RepoPocket-1.1.1.ipa.sha256
           shasum -a 256 -c RepoPocket-1.1.1.ipa.sha256
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.validate_only }}
         with:
           name: RepoPocket-1.1.1
           path: |
@@ -149,7 +158,7 @@ jobs:
             dist/RepoPocket-1.1.1.ipa.sha256
           retention-days: 30
       - name: Package optional update probe
-        if: ${{ inputs.build_update_probe }}
+        if: ${{ inputs.build_update_probe && !inputs.validate_only }}
         run: |
           set -euo pipefail
           APP=probe/Payload/RepoPocket.app
@@ -171,7 +180,7 @@ jobs:
           shasum -a 256 RepoPocket-1.0.3-rc.1.ipa > RepoPocket-1.0.3-rc.1.ipa.sha256
           shasum -a 256 -c RepoPocket-1.0.3-rc.1.ipa.sha256
       - uses: actions/upload-artifact@v4
-        if: ${{ inputs.build_update_probe }}
+        if: ${{ inputs.build_update_probe && !inputs.validate_only }}
         with:
           name: RepoPocket-update-probe
           path: |
