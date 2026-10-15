@@ -40,6 +40,7 @@ struct RepositoryReadmeSection: View {
                     SoftGroupRow("body") {
                         ReadmeDocumentBody(document: document,
                             baseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: false),
+                            mediaBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: entry?.path ?? "README.md", raw: true),
                             api: api, expanded: expanded, height: $bodyHeight)
                     }
                     if bodyHeight > ReadmeDocumentRules.collapsedHeight || ReadmePreviewRules.needsExpansion(document.source ?? "") {

@@ -16,7 +16,13 @@ enum ReadmeDocumentRules {
     (() => {
       const article = document.getElementById('repopocket-readme');
       if (!article) return;
-      const publish = () => window.webkit.messageHandlers.readmeSize.postMessage(article.getBoundingClientRect().height);
+      let previousHeight;
+      const publish = () => {
+        const height = Math.ceil(article.getBoundingClientRect().height);
+        if (!Number.isFinite(height) || height === previousHeight) return;
+        previousHeight = height;
+        window.webkit.messageHandlers.readmeSize.postMessage(height);
+      };
       new ResizeObserver(publish).observe(article);
       publish();
     })();
@@ -54,11 +60,60 @@ enum ReadmeDocumentRules {
         return target.url == origin.url
     }
 
-    static func document(_ fragment: String) -> String {
-        """
+    // GitHub HTML can retain relative media paths or github.com/blob URLs. Resolve
+    // media separately so document links still navigate through the GitHub reader.
+    static func mediaURLs(_ fragment: String, base: URL?) -> String {
+        guard let tags = try? NSRegularExpression(pattern: "<(?:img|source|video|audio)\\b(?:[^>\\\"']|\\\"[^\\\"]*\\\"|'[^']*')*>", options: .caseInsensitive),
+              let attributes = try? NSRegularExpression(pattern: "(\\s([^\\s=/>]+)\\s*=\\s*)(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", options: .caseInsensitive) else { return fragment }
+        func mediaURL(_ value: String) -> String {
+            guard !value.isEmpty, let url = URL(string: value, relativeTo: base)?.absoluteURL else { return value }
+            guard url.scheme == "https" else { return value }
+            if url.host?.lowercased() == "github.com", var parts = URLComponents(url: url, resolvingAgainstBaseURL: true) {
+                var path = parts.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: false)
+                if path.count > 5, path[3] == "blob" || path[3] == "raw" {
+                    path.remove(at: 3); parts.host = "raw.githubusercontent.com"
+                    parts.percentEncodedPath = path.joined(separator: "/")
+                    parts.queryItems = parts.queryItems?.filter { $0.name != "raw" }
+                    if parts.queryItems?.isEmpty == true { parts.queryItems = nil }
+                    return parts.url?.absoluteString ?? value
+                }
+            }
+            return url.absoluteString
+        }
+        var result = fragment
+        for tagMatch in tags.matches(in: fragment, range: NSRange(fragment.startIndex..., in: fragment)).reversed() {
+            guard let tagRange = Range(tagMatch.range, in: fragment) else { continue }
+            let tag = String(fragment[tagRange]); var updated = tag
+            for match in attributes.matches(in: tag, range: NSRange(tag.startIndex..., in: tag)).reversed() {
+                guard let nameRange = Range(match.range(at: 2), in: tag) else { continue }
+                let name = tag[nameRange].lowercased()
+                guard ["src", "srcset", "poster"].contains(name),
+                      let valueIndex = (3...5).first(where: { match.range(at: $0).location != NSNotFound }),
+                      let range = Range(match.range(at: valueIndex), in: tag) else { continue }
+                let value = String(tag[range])
+                let replacement: String
+                if name == "srcset" {
+                    // A data URL contains commas; leave such sets intact rather than corrupting it.
+                    if value.lowercased().contains("data:") { continue }
+                    replacement = value.components(separatedBy: ",").map { candidate in
+                        let fields = candidate.split(whereSeparator: { $0.isWhitespace })
+                        guard let first = fields.first else { return candidate }
+                        return ([mediaURL(String(first))] + fields.dropFirst().map(String.init)).joined(separator: " ")
+                    }.joined(separator: ", ")
+                } else { replacement = mediaURL(value) }
+                updated.replaceSubrange(range, with: replacement)
+            }
+            result.replaceSubrange(tagRange, with: updated)
+        }
+        return result
+    }
+
+    static func document(_ fragment: String, mediaBaseURL: URL? = nil) -> String {
+        let fragment = mediaURLs(fragment, base: mediaBaseURL)
+        return """
         <!doctype html><html><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'none'; frame-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; media-src https: data:; style-src 'unsafe-inline'; script-src 'none'; frame-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'">
         <style>
         :root { color-scheme: light dark; } * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; background: transparent; }

@@ -1,5 +1,7 @@
 """README production decoding/transport regression; fixtures never contact GitHub."""
 from pathlib import Path
+import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +23,49 @@ class ReadmeRenderingTests(unittest.TestCase):
         self.assertNotIn('change.newValue', view)
         self.assertIn('ReadingLinkDestination(url:', view)
         self.assertIn('CommunityRules.webURL(url.absoluteString)', view)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node executes the production observer')
+    def test_height_observer_posts_only_changed_rounded_dimensions(self):
+        rules = (ROOT / 'RepoPocket/ReadmeDocument.swift').read_text(encoding='utf-8')
+        observer = rules.split('static let heightObserver = """', 1)[1].split('"""', 1)[0]
+        harness = r'''const assert = require('node:assert/strict');
+let height = 123.1, notify, messages = [];
+global.document = { getElementById: () => ({ getBoundingClientRect: () => ({ height }) }) };
+global.window = { webkit: { messageHandlers: { readmeSize: { postMessage: value => messages.push(value) } } } };
+global.ResizeObserver = class { constructor(callback) { notify = callback; } observe() {} };
+OBSERVER
+notify(); notify();
+height = 123.4; notify();
+height = 170.2; notify(); notify();
+height = Infinity; notify();
+height = 20000; notify();
+height = 21000; notify();
+assert.deepEqual(messages, [124, 171, 20000, 21000]);
+'''.replace('OBSERVER', observer)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'observer.cjs'
+            path.write_text(harness, encoding='utf-8')
+            subprocess.run([shutil.which('node'), str(path)], check=True, timeout=10)
+
+    def test_media_attribute_pattern_ignores_src_text_inside_alt(self):
+        rules = (ROOT / 'RepoPocket/ReadmeDocument.swift').read_text(encoding='utf-8')
+        literal = rules.split('let attributes = try? NSRegularExpression(pattern: ', 1)[1].split(', options:', 1)[0]
+        pattern = json.loads(literal)
+        tag = '<img alt=\'example src="do-not-rewrite.png"\' src="screenshots/1-main.png" width="200">'
+        attributes = list(re.finditer(pattern, tag, re.IGNORECASE))
+        self.assertEqual([match.group(2) for match in attributes], ['alt', 'src', 'width'])
+        self.assertEqual(attributes[1].group(3), 'screenshots/1-main.png')
+
+    def test_html_media_and_web_failure_paths_are_connected(self):
+        rules = (ROOT / 'RepoPocket/ReadmeDocument.swift').read_text()
+        view = (ROOT / 'RepoPocket/ReadmeHTMLView.swift').read_text()
+        reading = (ROOT / 'RepoPocket/ReadingViews.swift').read_text()
+        self.assertIn('mediaBaseURL', rules)
+        self.assertIn('mediaURLs(fragment', rules)
+        self.assertIn('didFailProvisionalNavigation', view)
+        self.assertIn('webViewWebContentProcessDidTerminate', view)
+        self.assertIn('renderError.isEmpty', view)
+        self.assertIn('renderError.isEmpty', reading)
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Swift regression runs on macOS')
     def test_production_readme_formats_and_html_transport(self):
@@ -88,6 +133,29 @@ GATEWAY
    precondition(document.contains(fragment) && document.contains("script-src 'none'") && document.contains("img-src https: data:"))
    precondition(document.contains("display: flow-root") && document.contains("<main id=\"repopocket-readme\">"))
    precondition(ReadmeDocumentRules.heightObserver.contains("getBoundingClientRect().height") && !ReadmeDocumentRules.heightObserver.contains("scrollHeight"))
+   let mediaBase=URL(string:"https://raw.githubusercontent.com/owner/repo/feature%2Fa/docs/")!
+   let media="""
+   <p><a href="../guide.md"><img src="../images/logo.svg" alt="Logo"></a></p>
+   <picture><source srcset="dark.png 1x, dark@2x.png 2x"><img src=light.png></picture>
+   <video poster="poster.jpg" src="demo.mp4"></video>
+   <img src="https://github.com/owner/repo/blob/main/banner.png?raw=true">
+   <img src="https://example.com/banner.svg"><img src="data:image/svg+xml;base64,PHN2Zy8+">
+   """
+   let normalized=ReadmeDocumentRules.mediaURLs(media,base:mediaBase)
+   precondition(normalized.contains("href=\"../guide.md\""))
+   precondition(normalized.contains("src=\"https://raw.githubusercontent.com/owner/repo/feature%2Fa/images/logo.svg\""))
+   precondition(normalized.contains("https://raw.githubusercontent.com/owner/repo/feature%2Fa/docs/dark@2x.png 2x"))
+   precondition(normalized.contains("src=https://raw.githubusercontent.com/owner/repo/feature%2Fa/docs/light.png"))
+   precondition(normalized.contains("poster=\"https://raw.githubusercontent.com/owner/repo/feature%2Fa/docs/poster.jpg\""))
+   precondition(normalized.contains("src=\"https://raw.githubusercontent.com/owner/repo/main/banner.png\""))
+   precondition(normalized.contains("src=\"https://example.com/banner.svg\"") && normalized.contains("src=\"data:image/svg+xml;base64,PHN2Zy8+\""))
+   let screenshots="<img src=\"screenshots/1-main.png\" alt=\"Main page\" width=\"200\">"
+   let triggr=ReadmeDocumentRules.mediaURLs(screenshots,base:URL(string:"https://raw.githubusercontent.com/wm0104/triggr-beta/main/")!)
+   precondition(triggr=="<img src=\"https://raw.githubusercontent.com/wm0104/triggr-beta/main/screenshots/1-main.png\" alt=\"Main page\" width=\"200\">")
+   let quoted="<img alt='example src=\"do-not-rewrite.png\"' src=\"real.png\">"
+   precondition(ReadmeDocumentRules.mediaURLs(quoted,base:mediaBase).contains("alt='example src=\"do-not-rewrite.png\"'"))
+   let wrapped=ReadmeDocumentRules.document(media,mediaBaseURL:mediaBase)
+   precondition(wrapped.contains(normalized) && wrapped.contains("media-src https: data:"))
    let base=URL(string:"https://github.com/owner/repo/blob/main/README.rst")!
    precondition(ReadmeDocumentRules.isLocalAnchor(URL(string:base.absoluteString+"#title")!,base:base))
    precondition(!ReadmeDocumentRules.isLocalAnchor(URL(string:"https://example.com/#title")!,base:base))

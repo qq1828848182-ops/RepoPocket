@@ -5,8 +5,10 @@ import WebKit
 struct ReadmeHTMLView: UIViewRepresentable {
     let html: String
     let baseURL: URL?
+    var mediaBaseURL: URL? = nil
     var scrolling = false
     @Binding var height: CGFloat
+    var onFailure: (String) -> Void = { _ in }
     let openLink: (URL) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -28,10 +30,10 @@ struct ReadmeHTMLView: UIViewRepresentable {
     }
     func updateUIView(_ web: WKWebView, context: Context) {
         context.coordinator.parent = self
-        let identity = (baseURL?.absoluteString ?? "") + "\n" + html
+        let identity = (baseURL?.absoluteString ?? "") + "\n" + (mediaBaseURL?.absoluteString ?? "") + "\n" + html
         guard context.coordinator.identity != identity else { return }
         context.coordinator.identity = identity
-        web.loadHTMLString(ReadmeDocumentRules.document(html), baseURL: baseURL)
+        web.loadHTMLString(ReadmeDocumentRules.document(html, mediaBaseURL: mediaBaseURL), baseURL: baseURL)
     }
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
         web.configuration.userContentController.removeScriptMessageHandler(forName: "readmeSize", contentWorld: .defaultClient)
@@ -55,6 +57,15 @@ struct ReadmeHTMLView: UIViewRepresentable {
         var parent: ReadmeHTMLView
         var identity: String?
         init(_ parent: ReadmeHTMLView) { self.parent = parent }
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failed(error) }
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failed(error) }
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            parent.onFailure("自述文件排版进程已中断，请重新加载。")
+        }
+        private func failed(_ error: Error) {
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
+            parent.onFailure("自述文件排版失败：" + error.localizedDescription)
+        }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { decisionHandler(.cancel); return }
             if action.navigationType == .linkActivated || action.targetFrame == nil {
@@ -71,14 +82,16 @@ struct ReadmeHTMLView: UIViewRepresentable {
 struct ReadmeDocumentBody: View {
     let document: ReadmeDocument
     let baseURL: URL?
+    var mediaBaseURL: URL? = nil
     var api: GitHub? = nil
     let expanded: Bool
     @Binding var height: CGFloat
+    @State private var renderError = ""
     @State private var readingLink: ReadingLink?
     var body: some View {
         Group {
-            if let html = document.html {
-                ReadmeHTMLView(html: html, baseURL: baseURL, height: $height) { readingLink = ReadingLink(url: $0) }
+            if let html = document.html, renderError.isEmpty {
+                ReadmeHTMLView(html: html, baseURL: baseURL, mediaBaseURL: mediaBaseURL, height: $height, onFailure: { renderError = $0 }) { readingLink = ReadingLink(url: $0) }
                     .frame(height: expanded ? height : min(height, ReadmeDocumentRules.collapsedHeight))
                     .clipped()
             } else if let source = document.source {
@@ -86,8 +99,11 @@ struct ReadmeDocumentBody: View {
                     Text("排版暂不可用，已显示原文。").font(.caption).foregroundStyle(.secondary)
                     Text(expanded ? source : ReadmePreviewRules.preview(source)).textSelection(.enabled)
                 }
+            } else if !renderError.isEmpty {
+                Text(renderError).font(.caption).foregroundStyle(.secondary)
             }
         }
+        .onChange(of: document.html) { _ in renderError = "" }
         .sheet(item: $readingLink) { ReadingLinkDestination(url: $0.url, api: api) }
     }
 }

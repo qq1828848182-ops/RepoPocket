@@ -27,9 +27,18 @@ class BuildWorkflowTests(unittest.TestCase):
         self.assertIn('Print :CFBundleShortVersionString\' "$APP/Info.plist")" = "1.1.1"', self.source)
         project = (REPO_ROOT / 'project.yml').read_text()
         self.assertIn('MARKETING_VERSION: "1.1.1"', project)
-        self.assertIn('CURRENT_PROJECT_VERSION: "6"', project)
-        self.assertIn('CADisableMinimumFrameDurationOnPhone: true', project)
+        self.assertIn('CURRENT_PROJECT_VERSION: "7"', project)
+
+    def test_system_default_refresh_rate(self):
+        project = (REPO_ROOT / 'project.yml').read_text()
+        self.assertNotIn('CADisableMinimumFrameDurationOnPhone:', project)
         self.assertIn('Print :CADisableMinimumFrameDurationOnPhone', self.source)
+        self.assertNotIn('Print :CADisableMinimumFrameDurationOnPhone\' "$APP/Info.plist")" = "true"', self.source)
+        # Do not replace the opt-in with a permanent display link or FPS hook.
+        for path in (REPO_ROOT / 'RepoPocket').glob('*.swift'):
+            source = path.read_text()
+            self.assertNotIn('CADisplayLink(', source, path.name)
+            self.assertNotIn('preferredFramesPerSecond = 120', source, path.name)
 
     def test_python_scripts_use_organized_existing_paths(self):
         import re

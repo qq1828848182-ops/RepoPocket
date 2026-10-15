@@ -96,6 +96,7 @@ struct Repository: Decodable, Identifiable {
     let language: String?
     let fork: Bool?
     let parent: RepositoryReference?
+    let source: RepositoryReference?
     struct Permissions: Decodable { let admin: Bool?; let push: Bool? }
     let permissions: Permissions?
 }
@@ -157,6 +158,10 @@ final class GitHub: ObservableObject {
     private var parentActive = 0
     private var parentWaiters: [CheckedContinuation<Void, Never>] = []
     private var collectionCache: [RepositoryHomeSection: [Repository]] = [:]
+    @Published private(set) var forkNames: [String: String] = [:]
+    private var forkChecks: [String: Task<String?, Error>] = [:]
+    private var forkCheckIDs: [String: UUID] = [:]
+    private var forkCheckedAt: [String: Date] = [:]
     lazy var stars = RepositoryStarStore(api: self)
     @Published private(set) var starRevision = 0
     func requireStarSession() throws {
@@ -758,6 +763,80 @@ final class GitHub: ObservableObject {
         if !branch.isEmpty { o["branch"] = branch }
         _ = try await data(Self.repoPath(repo) + "/contents/" + Self.filePath(entry.path), method: "DELETE", object: o)
     }
+    // Fork status is read only, on demand, and scoped to this account generation.
+    func existingFork(_ input: String) async throws -> String? {
+        try requireStarSession()
+        let name = try RepositoryInput.parse(input), key = name.lowercased()
+        guard !RepositoryGroupRules.isOwned(name, login: login), !login.isEmpty else { return nil }
+        if let known = forkNames[key] { return known }
+        if let date = forkCheckedAt[key], Date().timeIntervalSince(date) < 300 { return nil }
+        let task: Task<String?, Error>, requestID: UUID
+        if let pending = forkChecks[key], let pendingID = forkCheckIDs[key] {
+            task = pending; requestID = pendingID
+        } else {
+            task = Task<String?, Error> { try await self.findExistingFork(name) }
+            requestID = UUID()
+            forkChecks[key] = task; forkCheckIDs[key] = requestID
+        }
+        defer {
+            if forkCheckIDs[key] == requestID {
+                forkChecks[key] = nil; forkCheckIDs[key] = nil
+            }
+        }
+        let result = try await task.value
+        try Task.checkCancellation()
+        try requireStarSession()
+        // A concurrent successful POST takes precedence over an earlier empty lookup.
+        if let known = forkNames[key] { return known }
+        if let result { forkNames[key] = result }
+        forkCheckedAt[key] = Date()
+        return result
+    }
+    private func findExistingFork(_ name: String) async throws -> String? {
+        let upstream = try await repository(name)
+        let candidates = collectionCache[.owned] ?? []
+        if let found = candidates.first(where: { RepositoryForkRules.matches($0, upstream: upstream, login: login) }) {
+            return found.full_name
+        }
+        let candidateName = login + "/" + (name.split(separator: "/").last.map(String.init) ?? "")
+        do {
+            let candidate = try await repository(candidateName)
+            if RepositoryForkRules.matches(candidate, upstream: upstream, login: login) { return candidate.full_name }
+        } catch let error as GitHubAPIError where error.status == 404 {
+            // A renamed fork cannot be found by its original repository name.
+        }
+        // Server-side viewer ownership filter avoids enumerating popular fork networks.
+        // Query both the immediate upstream and its network root for renamed forks.
+        let root = upstream.source?.full_name ?? upstream.full_name
+        let parts = root.split(separator: "/").map(String.init)
+        let target = upstream.full_name.split(separator: "/").map(String.init)
+        guard parts.count == 2, target.count == 2 else { throw AppError(text: "无法确认复刻状态") }
+        let query = """
+        query($owner: String!, $name: String!, $targetOwner: String!, $targetName: String!) {
+          root: repository(owner: $owner, name: $name) { forkCount direct: forks(first: 1) { totalCount } forks(first: 1, affiliations: [OWNER]) { nodes { nameWithOwner } } }
+          target: repository(owner: $targetOwner, name: $targetName) { forks(first: 1, affiliations: [OWNER]) { nodes { nameWithOwner } } }
+        }
+        """
+        let response = try await decoded(RepositoryForkLookup.self, "/graphql", method: "POST", object: [
+            "query": query, "variables": ["owner": parts[0], "name": parts[1], "targetOwner": target[0], "targetName": target[1]]])
+        guard response.errors?.isEmpty != false, let data = response.data,
+              let rootResult = data.root, let targetResult = data.target else {
+            throw AppError(text: "无法确认复刻状态，请重试。")
+        }
+        for node in targetResult.forks.nodes + rootResult.forks.nodes {
+            let candidate = try await repository(node.nameWithOwner)
+            if RepositoryForkRules.matches(candidate, upstream: upstream, login: login) { return candidate.full_name }
+        }
+        // forks(affiliations: OWNER) only searches direct forks. An empty result
+        // is conclusive only when the root's whole network contains no indirect
+        // forks; otherwise my renamed fork may be below another owner's fork.
+        guard let networkCount = rootResult.forkCount,
+              let directCount = rootResult.direct?.totalCount,
+              networkCount == directCount else {
+            throw AppError(text: "此仓库有间接复刻，暂时无法完整确认你的复刻状态。")
+        }
+        return nil
+    }
     func fork(_ repo: String) async throws -> Repository {
         let endpoint = try Self.repoPath(repo)
         // Revalidate identity using the current credential, not cached UI state.
@@ -766,7 +845,13 @@ final class GitHub: ObservableObject {
         guard owner.caseInsensitiveCompare(login) != .orderedSame else {
             throw AppError(text: "这是你自己的仓库（\(login)）。GitHub 不允许把自己的仓库 Fork 回同一个账号。\n\n更新文件请点“浏览这个仓库”或“提交 / 发布”。如果要另外复制一份，需要新建不同名字的仓库再复制内容；这不属于 Fork，本版尚未提供完整仓库复制。")
         }
-        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])
+        let result = try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])
+        try ensureActiveAccount()
+        // The accepted POST itself confirms this relationship, even before metadata is ready.
+        if RepositoryGroupRules.isOwned(result.full_name, login: login) {
+            forkNames[(try RepositoryInput.parse(repo)).lowercased()] = result.full_name
+        }
+        return result
     }
     func createRepository(name: String, isPrivate: Bool) async throws -> Repository {
         guard !name.isEmpty, name.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil,

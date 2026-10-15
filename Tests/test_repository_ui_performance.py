@@ -53,7 +53,10 @@ class RepositoryUIPerformanceTests(unittest.TestCase):
         section = (ROOT/'RepoPocket/RepositorySections.swift').read_text()
         for value in ('let parent: RepositoryReference?', 'let fork: Bool?', 'repository.fork == true', 'parentActive < 3', 'parentTasks[key]', 'parentCache.count >= 512', 'Date().timeIntervalSince(cached.0) < 300', 'JSONDecoder().decode(Repository.self, from: bytes).parent'):
             self.assertIn(value, api)
-        self.assertNotIn('.source', api)
+        # Parent attribution must still use the immediate parent; network root
+        # metadata is now separately needed for existing-fork discovery.
+        parent_loader = api.split('func forkParent(', 1)[1].split('func ', 1)[0]
+        self.assertNotIn('.source', parent_loader)
         self.assertIn('Text("复刻自 " + parent.full_name)', UI)
         self.assertIn('guard !Task.isCancelled else { return }', UI)
         self.assertLess(UI.index('Text("复刻自'), UI.index('if let repository {', UI.index('Text("复刻自')))

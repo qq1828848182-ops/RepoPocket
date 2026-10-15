@@ -58,6 +58,7 @@ struct RepositoryReadmeView: View {
     @State private var error = ""
     @State private var revision = 0
     @State private var raw = false
+    @State private var renderError = ""
     @State private var readingLink: ReadingLink?
     private var webBase: URL? {
         CommunityRules.readingBase(repo, branch: resolved, file: entryPath, raw: false)
@@ -66,8 +67,11 @@ struct RepositoryReadmeView: View {
         VStack(alignment: .leading, spacing: 12) {
             if let document {
                 if document.source != nil { Toggle("查看原文", isOn: $raw) }
-                if !raw, let html = document.html {
-                    ReadmeHTMLView(html: html, baseURL: webBase, scrolling: true, height: .constant(0)) {
+                if !renderError.isEmpty { Text(renderError).font(.caption).foregroundStyle(.secondary) }
+                if !raw, renderError.isEmpty, let html = document.html {
+                    ReadmeHTMLView(html: html, baseURL: webBase,
+                        mediaBaseURL: CommunityRules.readingBase(repo, branch: resolved, file: entryPath, raw: true),
+                        scrolling: true, height: .constant(0), onFailure: { renderError = $0 }) {
                         readingLink = ReadingLink(url: $0)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let source = document.source {
@@ -75,12 +79,13 @@ struct RepositoryReadmeView: View {
                 }
             } else if error.isEmpty { ProgressView("加载自述文件…") }
             if !error.isEmpty { Text(error); Button("重试") { revision += 1 } }
+            if !renderError.isEmpty { Button("重新加载排版") { revision += 1 } }
         }.padding().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle((entryPath as NSString).lastPathComponent).adaptiveWorkspaceLayout()
         .sheet(item: $readingLink) { ReadingLinkDestination(url: $0.url, api: api) }
         .toolbar { Button("刷新") { revision += 1 } }
         .task(id: revision) {
-            error = ""; document = nil; raw = false
+            error = ""; document = nil; raw = false; renderError = ""
             do {
                 let selected = try await api.resolvedBranch(repo, branch: branch)
                 let loaded = try await api.repositoryReadmeDocument(repo, branch: selected)

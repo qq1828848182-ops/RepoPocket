@@ -53,6 +53,26 @@ class BrowserRollbackTests(unittest.TestCase):
         self.assertIn('try Task.checkCancellation()', gateway)
         self.assertNotIn('method:', gateway.split('    // Native collaboration transport:')[0])
         normalized = normalized[:gateway_start] + normalized[gateway_end:]
+        # Explicit fork-status fix: new lookup and accepted-POST bookkeeping are
+        # covered by test_repository_fork_status.py. Keep every unrelated byte
+        # of the historic transport and mutation guards protected below.
+        normalized = normalized.replace('    let source: RepositoryReference?\n', '')
+        normalized = normalized.replace('    @Published private(set) var forkNames: [String: String] = [:]\n', '')
+        normalized = normalized.replace('    private var forkChecks: [String: Task<String?, Error>] = [:]\n', '')
+        normalized = normalized.replace('    private var forkCheckedAt: [String: Date] = [:]\n', '')
+        normalized = normalized.replace('    private var forkCheckIDs: [String: UUID] = [:]\n', '')
+        fork_start = normalized.index('    // Fork status is read only, on demand, and scoped to this account generation.')
+        fork_end = normalized.index('    func fork(_ repo: String)', fork_start)
+        normalized = normalized[:fork_start] + normalized[fork_end:]
+        accepted_post = '''        let result = try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])
+        try ensureActiveAccount()
+        // The accepted POST itself confirms this relationship, even before metadata is ready.
+        if RepositoryGroupRules.isOwned(result.full_name, login: login) {
+            forkNames[(try RepositoryInput.parse(repo)).lowercased()] = result.full_name
+        }
+        return result'''
+        assert normalized.count(accepted_post) == 1
+        normalized = normalized.replace(accepted_post, '        return try await decoded(Repository.self, endpoint + "/forks", method: "POST", object: [:])')
         self.assertEqual(normalized.rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
         for menu in ('CopyRepositoryLinkButton','ForkRepositoryMenuButton','RepositoryStarMenuButton'):
