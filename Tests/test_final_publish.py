@@ -25,7 +25,7 @@ class FinalPublishTests(unittest.TestCase):
         self.assertIn('generation == AccountStore.generation', entry)
         self.assertIn('showCancel: !request.isZIP', picker)
         self.assertNotIn('let label = UILabel()', picker)
-        for token in ['Menu("工作区…")', 'if !selected.isEmpty', 'Text("暂无变更")', '复制实际副本路径', '发布为发行版']:
+        for token in ['Menu("工作区…")', 'if !selected.isEmpty', 'Text("暂无变更")', '复制实际工作目录路径', '发布为发行版']:
             self.assertIn(token, workspace)
         self.assertIn('await updateChecker.automaticCheck(api: api)', app)
         self.assertNotIn('.badge(updateChecker.hasUpdate', app)
