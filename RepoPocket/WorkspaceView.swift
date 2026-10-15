@@ -394,110 +394,126 @@ struct WorkspaceView: View {
     private enum Field: Hashable { case remoteRepo, remoteBranch, associationRepo, associationBranch, baselineRevision, commitMessage }
     @FocusState private var focusedField: Field?
     var body: some View {
-        NavigationStack {
-            List {
-                localSection
-                associationManagementSection
-                if let folder = folder {
-                    workspaceManagement(folder)
-                    changesSection
-                }
+        NavigationStack { workspaceAlerts }
+    }
+
+    // Bound each opaque view expression without changing modifier order,
+    // navigation ownership, or presentation identity.
+    private var workspaceContent: some View {
+        List {
+            localSection
+            associationManagementSection
+            if let folder = folder {
+                workspaceManagement(folder)
+                changesSection
             }
-            .listStyle(.insetGrouped)
-            .navigationTitle("本地工作区")
-            .adaptiveWorkspaceLayout()
-            .refreshable { await scan() }
-            .scrollDismissesKeyboard(.interactively)
-            .onSubmit { focusedField = nil }
-            .onChange(of: importRequest?.id) { _ in focusedField = nil }
-            .onChange(of: folder) { _ in focusedField = nil }
-            .onDisappear { focusedField = nil }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button("下载远端建立可靠基线") { showRemoteImport = true }
-                        Button("导入一个或多个文件夹") { importRequest = WorkspaceImportRequest(kind: .folder) }
-                        Button("导入一个或多个 ZIP") { importRequest = WorkspaceImportRequest(kind: .zip) }
-                    } label: { Image(systemName: "plus") }.disabled(busy)
-                }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focusedField = nil } } }
-            .sheet(isPresented: $showRemoteImport) {
-                NavigationStack { List { remoteSection }.navigationTitle("导入远端").toolbar { Button("关闭") { showRemoteImport = false }.disabled(busy) } }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("本地工作区")
+        .adaptiveWorkspaceLayout()
+        .refreshable { await scan() }
+        .scrollDismissesKeyboard(.interactively)
+        .onSubmit { focusedField = nil }
+        .onChange(of: importRequest?.id) { _ in focusedField = nil }
+        .onChange(of: folder) { _ in focusedField = nil }
+        .onDisappear { focusedField = nil }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button("下载远端建立可靠基线") { showRemoteImport = true }
+                    Button("导入一个或多个文件夹") { importRequest = WorkspaceImportRequest(kind: .folder) }
+                    Button("导入一个或多个 ZIP") { importRequest = WorkspaceImportRequest(kind: .zip) }
+                } label: { Image(systemName: "plus") }.disabled(busy)
             }
-            .sheet(isPresented: $showAssociation) {
-                NavigationStack { List { if let folder { bindingSection(folder) } }.navigationTitle("关联仓库 / 分支").toolbar { Button("关闭") { showAssociation = false }.disabled(busy) } }
+            ToolbarItemGroup(placement: .keyboard) { Spacer(); Button("完成") { focusedField = nil } } }
+    }
+
+    private var workspacePresentations: some View {
+        workspaceContent
+        .sheet(isPresented: $showRemoteImport) {
+            NavigationStack { List { remoteSection }.navigationTitle("导入远端").toolbar { Button("关闭") { showRemoteImport = false }.disabled(busy) } }
+        }
+        .sheet(isPresented: $showAssociation) {
+            NavigationStack { List { if let folder { bindingSection(folder) } }.navigationTitle("关联仓库 / 分支").toolbar { Button("关闭") { showAssociation = false }.disabled(busy) } }
+        }
+        .sheet(isPresented: $showDetails) {
+            NavigationStack { List { if let folder { bindingSection(folder) } }.navigationTitle("工作区详情").toolbar { Button("关闭") { showDetails = false } } }
+        }
+        .sheet(isPresented: $publishing) { ReleaseEntryView(api: api, initialRepo: binding?.repo ?? "", initialBranch: binding?.branch ?? "") }
+        .confirmationDialog("检查远端更新？此操作不会修改本地文件；检查完成后仍需确认才会拉取。", isPresented: $confirmPull, titleVisibility: .visible) {
+            Button("检查更新") { Task { await checkRemote() } }
+            Button("取消", role: .cancel) {}
+        }
+        .task { if !hasScanned { folder = selectionStore.session.rememberedFolder(accountID: api.accountID); await scan() } }
+        .sheet(item: $importRequest) { request in
+            WorkspaceDocumentPicker(request: request) { urls in
+                importRequest = nil
+                guard let urls else { return }
+                Task { await importItems(urls, zip: request.isZIP) }
             }
-            .sheet(isPresented: $showDetails) {
-                NavigationStack { List { if let folder { bindingSection(folder) } }.navigationTitle("工作区详情").toolbar { Button("关闭") { showDetails = false } } }
+            .id(request.id)
+        }
+        .sheet(isPresented: $resolvingPull, onDismiss: { discardPull() }) { conflictSheet }
+    }
+
+    private var workspaceConfirmations: some View {
+        workspacePresentations
+        .confirmationDialog("确认提交到 \(binding?.repo ?? "") · \(binding?.branch ?? "")？包含勾选的删除操作。", isPresented: $confirming, titleVisibility: .visible) {
+            Button("确认提交 \(selected.count) 项") { Task { await commit() } }
+            Button("取消", role: .cancel) {}
+        }
+        .confirmationDialog("永久删除所选实际目录及其全部内容？\n\(pendingDelete?.path ?? "")\n不会删除父目录、其他文件夹或 GitHub 远端。", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("继续删除所选目录", role: .destructive) { inspectDeletion() }
+            Button("取消", role: .cancel) { pendingDelete = nil }
+        }
+        .confirmationDialog("仅解除关联，保留原目录及全部文件：\n\(pendingDetach?.path ?? "")", isPresented: $confirmDetach, titleVisibility: .visible) {
+            Button("解除关联（保留文件）") {
+                guard let target = pendingDetach else { return }
+                do {
+                    try LinkedWorkspaces.detach(target)
+                    if folder == target { folder = nil }
+                    Task { await scan() }
+                } catch { message = error.localizedDescription }
+                pendingDetach = nil
             }
-            .sheet(isPresented: $publishing) { ReleaseEntryView(api: api, initialRepo: binding?.repo ?? "", initialBranch: binding?.branch ?? "") }
-            .confirmationDialog("检查远端更新？此操作不会修改本地文件；检查完成后仍需确认才会拉取。", isPresented: $confirmPull, titleVisibility: .visible) {
-                Button("检查更新") { Task { await checkRemote() } }
-                Button("取消", role: .cancel) {}
-            }
-            .task { if !hasScanned { folder = selectionStore.session.rememberedFolder(accountID: api.accountID); await scan() } }
-            .sheet(item: $importRequest) { request in
-                WorkspaceDocumentPicker(request: request) { urls in
-                    importRequest = nil
-                    guard let urls else { return }
-                    Task { await importItems(urls, zip: request.isZIP) }
-                }
-                .id(request.id)
-            }
-            .sheet(isPresented: $resolvingPull, onDismiss: { discardPull() }) { conflictSheet }
-            .confirmationDialog("确认提交到 \(binding?.repo ?? "") · \(binding?.branch ?? "")？包含勾选的删除操作。", isPresented: $confirming, titleVisibility: .visible) {
-                Button("确认提交 \(selected.count) 项") { Task { await commit() } }
-                Button("取消", role: .cancel) {}
-            }
-            .confirmationDialog("永久删除所选实际目录及其全部内容？\n\(pendingDelete?.path ?? "")\n不会删除父目录、其他文件夹或 GitHub 远端。", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("继续删除所选目录", role: .destructive) { inspectDeletion() }
-                Button("取消", role: .cancel) { pendingDelete = nil }
-            }
-            .confirmationDialog("仅解除关联，保留原目录及全部文件：\n\(pendingDetach?.path ?? "")", isPresented: $confirmDetach, titleVisibility: .visible) {
-                Button("解除关联（保留文件）") {
-                    guard let target = pendingDetach else { return }
-                    do {
-                        try LinkedWorkspaces.detach(target)
-                        if folder == target { folder = nil }
-                        Task { await scan() }
-                    } catch { message = error.localizedDescription }
-                    pendingDetach = nil
-                }
-                Button("取消", role: .cancel) { pendingDetach = nil }
-            }
-            .confirmationDialog((deletionIsDirty ? "此目录有未提交更改，删除后无法恢复。" : "再次确认永久删除实际目录及全部内容。") + "\n" + (pendingDelete?.path ?? ""), isPresented: $confirmDirtyDelete, titleVisibility: .visible) {
-                Button("永久删除未提交更改与工作区", role: .destructive) { deleteSelected() }
-                Button("取消", role: .cancel) { pendingDelete = nil }
-            }
-            .alert("重命名实际工作区目录", isPresented: $confirmingRename) {
-                TextField("可读目录名", text: $renameName)
-                Button("重命名") { Task { await renameCurrentWorkspace() } }
-                Button("取消", role: .cancel) {}
-            } message: { Text("将同步移动文件及基线记录，保留勾选。不会修改远端；请勿同时在文件 App 移动目录。") }
-            .alert("提示", isPresented: Binding(get: { !message.isEmpty }, set: { if !$0 { message = "" } })) {
-                Button("好", role: .cancel) { message = "" }
-            } message: { Text(message) }
-            .sheet(item: $checkPending, onDismiss: { discardCheck() }) { pending in
-                NavigationStack {
-                    List {
-                        if pending.binding.head == binding?.head { Text("远端无新提交，本地更改保持不变。").softGroupedRow(top: true, bottom: true) }
-                        else {
-                            Text("下列路径是远端相对当前基线的实际变更；拉取会按三方合并，冲突另行逐项确认。").softGroupedRow(top: true)
-                            ForEach(WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot), id: \.path) { change in
-                                LabeledContent(change.path, value: change.kind).softGroupedRow(bottom: change.path == WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).last?.path)
-                            }
-                            if WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).isEmpty { Text("提交改变，但文件内容未变。").softGroupedRow(bottom: true) }
+            Button("取消", role: .cancel) { pendingDetach = nil }
+        }
+        .confirmationDialog((deletionIsDirty ? "此目录有未提交更改，删除后无法恢复。" : "再次确认永久删除实际目录及全部内容。") + "\n" + (pendingDelete?.path ?? ""), isPresented: $confirmDirtyDelete, titleVisibility: .visible) {
+            Button("永久删除未提交更改与工作区", role: .destructive) { deleteSelected() }
+            Button("取消", role: .cancel) { pendingDelete = nil }
+        }
+    }
+
+    private var workspaceAlerts: some View {
+        workspaceConfirmations
+        .alert("重命名实际工作区目录", isPresented: $confirmingRename) {
+            TextField("可读目录名", text: $renameName)
+            Button("重命名") { Task { await renameCurrentWorkspace() } }
+            Button("取消", role: .cancel) {}
+        } message: { Text("将同步移动文件及基线记录，保留勾选。不会修改远端；请勿同时在文件 App 移动目录。") }
+        .alert("提示", isPresented: Binding(get: { !message.isEmpty }, set: { if !$0 { message = "" } })) {
+            Button("好", role: .cancel) { message = "" }
+        } message: { Text(message) }
+        .sheet(item: $checkPending, onDismiss: { discardCheck() }) { pending in
+            NavigationStack {
+                List {
+                    if pending.binding.head == binding?.head { Text("远端无新提交，本地更改保持不变。").softGroupedRow(top: true, bottom: true) }
+                    else {
+                        Text("下列路径是远端相对当前基线的实际变更；拉取会按三方合并，冲突另行逐项确认。").softGroupedRow(top: true)
+                        ForEach(WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot), id: \.path) { change in
+                            LabeledContent(change.path, value: change.kind).softGroupedRow(bottom: change.path == WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).last?.path)
                         }
+                        if WorkspaceMerge.remoteChanges(base: binding?.snapshot ?? LocalSnapshot(), remote: pending.binding.snapshot).isEmpty { Text("提交改变，但文件内容未变。").softGroupedRow(bottom: true) }
                     }
-                    .navigationTitle("远端更新检查")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("稍后") { discardCheck() } }
-                        if pending.binding.head != binding?.head {
-                            ToolbarItem(placement: .confirmationAction) { Button("确认拉取") { Task { await pullChecked() } }.disabled(busy) }
-                        }
+                }
+                .navigationTitle("远端更新检查")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("稍后") { discardCheck() } }
+                    if pending.binding.head != binding?.head {
+                        ToolbarItem(placement: .confirmationAction) { Button("确认拉取") { Task { await pullChecked() } }.disabled(busy) }
                     }
-                }.interactiveDismissDisabled(busy)
-            }
+                }
+            }.interactiveDismissDisabled(busy)
         }
     }
     private var remoteSection: some View {
