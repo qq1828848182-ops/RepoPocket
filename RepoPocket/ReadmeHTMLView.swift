@@ -14,20 +14,16 @@ struct ReadmeHTMLView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
+        if !scrolling {
+            configuration.userContentController.add(HeightHandler(context.coordinator), contentWorld: .defaultClient, name: "readmeSize")
+            configuration.userContentController.addUserScript(WKUserScript(source: ReadmeDocumentRules.heightObserver,
+                injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
+        }
         let web = WKWebView(frame: .zero, configuration: configuration)
         web.isOpaque = false; web.backgroundColor = .clear; web.scrollView.backgroundColor = .clear
         web.scrollView.isScrollEnabled = scrolling; web.allowsLinkPreview = false
+        web.scrollView.contentInsetAdjustmentBehavior = .never
         web.navigationDelegate = context.coordinator
-        if !scrolling {
-            context.coordinator.sizeObservation = web.scrollView.observe(\.contentSize, options: [.new]) { [weak coordinator = context.coordinator] _, change in
-                guard let size = change.newValue, size.height.isFinite else { return }
-                let measured = min(max(44, size.height), ReadmeDocumentRules.inlineHeightLimit)
-                DispatchQueue.main.async {
-                    guard let coordinator, abs(coordinator.parent.height - measured) > 0.5 else { return }
-                    coordinator.parent.height = measured
-                }
-            }
-        }
         return web
     }
     func updateUIView(_ web: WKWebView, context: Context) {
@@ -38,12 +34,26 @@ struct ReadmeHTMLView: UIViewRepresentable {
         web.loadHTMLString(ReadmeDocumentRules.document(html), baseURL: baseURL)
     }
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
-        coordinator.sizeObservation?.invalidate(); web.stopLoading(); web.navigationDelegate = nil
+        web.configuration.userContentController.removeScriptMessageHandler(forName: "readmeSize", contentWorld: .defaultClient)
+        web.configuration.userContentController.removeAllUserScripts()
+        web.stopLoading(); web.navigationDelegate = nil
+    }
+    final class HeightHandler: NSObject, WKScriptMessageHandler {
+        weak var coordinator: Coordinator?
+        init(_ coordinator: Coordinator) { self.coordinator = coordinator }
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.frameInfo.isMainFrame, let number = message.body as? NSNumber,
+                  number.doubleValue.isFinite, number.doubleValue >= 0 else { return }
+            let measured = min(max(44, CGFloat(number.doubleValue.rounded(.up))), ReadmeDocumentRules.inlineHeightLimit)
+            DispatchQueue.main.async { [weak coordinator = coordinator] in
+                guard let coordinator, abs(coordinator.parent.height - measured) > 0.5 else { return }
+                coordinator.parent.height = measured
+            }
+        }
     }
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: ReadmeHTMLView
         var identity: String?
-        var sizeObservation: NSKeyValueObservation?
         init(_ parent: ReadmeHTMLView) { self.parent = parent }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = action.request.url else { decisionHandler(.cancel); return }

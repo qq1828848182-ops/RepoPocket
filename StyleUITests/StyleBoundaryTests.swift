@@ -9,6 +9,7 @@ final class StyleBoundaryTests: XCTestCase {
         XCTAssertTrue(web.waitForExistence(timeout: 15))
         XCTAssertTrue(web.images["累计下载次数"].waitForExistence(timeout: 10))
         XCTAssertTrue(web.images["最新版本"].waitForExistence(timeout: 10))
+        XCTAssertLessThan(web.frame.height, 750, "Short README must not grow to the viewport/inline height cap")
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "readme-badges"; attachment.lifetime = .keepAlways; add(attachment)
         web.links["在 App 内打开仓库"].tap()

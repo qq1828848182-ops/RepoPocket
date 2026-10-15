@@ -9,13 +9,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReadmeRenderingTests(unittest.TestCase):
-    def test_web_content_has_no_authenticated_session_or_script_bridge(self):
+    def test_web_content_has_no_authenticated_session_and_only_isolated_height_messages(self):
         view = (ROOT / 'RepoPocket/ReadmeHTMLView.swift').read_text()
         self.assertIn('websiteDataStore = .nonPersistent()', view)
         self.assertIn('allowsContentJavaScript = false', view)
         self.assertNotIn('Authorization', view)
-        self.assertNotIn('addScriptMessageHandler', view)
-        self.assertIn('sizeObservation?.invalidate()', view)
+        self.assertIn('contentWorld: .defaultClient', view)
+        self.assertIn('message.frameInfo.isMainFrame', view)
+        self.assertIn('message.body as? NSNumber', view)
+        self.assertIn('removeScriptMessageHandler', view)
+        self.assertNotIn('change.newValue', view)
         self.assertIn('ReadingLinkDestination(url:', view)
         self.assertIn('CommunityRules.webURL(url.absoluteString)', view)
 
@@ -83,6 +86,8 @@ GATEWAY
    let fragment="<img src='data:image/svg+xml;base64,PHN2Zy8+'><details><summary>更多</summary>正文</details>"
    let document=ReadmeDocumentRules.document(fragment)
    precondition(document.contains(fragment) && document.contains("script-src 'none'") && document.contains("img-src https: data:"))
+   precondition(document.contains("display: flow-root") && document.contains("<main id=\"repopocket-readme\">"))
+   precondition(ReadmeDocumentRules.heightObserver.contains("getBoundingClientRect().height") && !ReadmeDocumentRules.heightObserver.contains("scrollHeight"))
    let base=URL(string:"https://github.com/owner/repo/blob/main/README.rst")!
    precondition(ReadmeDocumentRules.isLocalAnchor(URL(string:base.absoluteString+"#title")!,base:base))
    precondition(!ReadmeDocumentRules.isLocalAnchor(URL(string:"https://example.com/#title")!,base:base))
