@@ -72,12 +72,12 @@ do { _ = try LinkedWorkspaces.roots() } catch { rejected = true }
 precondition(rejected)
 allowScope = true
 let restored = try LinkedWorkspaces.roots()
-precondition(Set(restored.map(\.path)) == Set([a.path, b.path]), "Cold-start bookmark roots must restore both original canonical directories; got \(restored.map(\.path))")
+precondition(restored.count == 2 && LocalStore.matchingRoot(a, in: restored) != nil && LocalStore.matchingRoot(b, in: restored) != nil, "Cold-start bookmarks must restore both original directories despite Darwin path aliases; got \(restored.map(\.path)); expected \([a.path, b.path])")
 // Preserve the second selection when the OS bookmark resolves the /var alias
 // to /private/var. This must return the authorized root URL, not a rebuilt URL.
 let aliasB = URL(fileURLWithPath: b.path.replacingOccurrences(of: "/private/var/", with: "/var/"), isDirectory: true)
 let selectedB = LocalStore.matchingRoot(aliasB, in: restored)
-precondition(selectedB?.path == b.path, "Canonical path aliases must retain selected B rather than falling back to first A")
+precondition(selectedB == LocalStore.matchingRoot(b, in: restored) && selectedB != LocalStore.matchingRoot(a, in: restored), "Canonical path aliases must retain selected B rather than falling back to first A")
 rejected = false
 do { _ = try LocalStore.renameWorkspace(a, to: "moved") } catch { rejected = true }
 precondition(rejected && fm.fileExists(atPath: a.path))
@@ -101,7 +101,7 @@ precondition(fm.fileExists(atPath: a.deletingLastPathComponent().path))
 let neighbor = try String(contentsOf: b.appendingPathComponent("keep.txt"), encoding: .utf8)
 precondition(neighbor == "neighbor")
 let remaining = try LinkedWorkspaces.roots()
-precondition(remaining.map(\.path) == [b.path], "Removing A must retain precisely registered B")
+precondition(remaining.count == 1 && LocalStore.matchingRoot(b, in: remaining) != nil, "Removing A must retain precisely registered B")
 let survivor = fixture.appendingPathComponent("survivor", isDirectory: true)
 try fm.createDirectory(at: survivor, withIntermediateDirectories: true)
 _ = try LinkedWorkspaces.register(survivor)
@@ -112,7 +112,7 @@ do { _ = try LinkedWorkspaces.roots() } catch { rejected = true }
 precondition(rejected)
 try LinkedWorkspaces.detach(b) // Recover without permission to access the lost root.
 let recovered = try LinkedWorkspaces.roots()
-precondition(recovered.map(\.path) == [survivor.path], "Detaching lost B must recover the survivor root")
+precondition(recovered.count == 1 && LocalStore.matchingRoot(survivor, in: recovered) != nil, "Detaching lost B must recover the survivor root")
 try LinkedWorkspaces.detach(survivor)
 precondition(fm.fileExists(atPath: survivor.path))
 print("PASS linked original changes, persistent bookmarks, same-name isolation, preserved baseline, exact deletion and unavailable-root refusal")
