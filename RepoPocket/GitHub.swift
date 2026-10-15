@@ -648,6 +648,14 @@ final class GitHub: ObservableObject {
         guard bytes.count <= 8 * 1024 * 1024 else { throw AppError(text: "响应过大，请在 GitHub 查看。") }
         return bytes
     }
+    func communityReadmeHTML(_ repo: String, branch: String) async throws -> String {
+        try ensureActiveAccount(); try Task.checkCancellation()
+        var r = try request(url(Self.repoPath(repo) + "/readme", query: [.init(name: "ref", value: branch)]))
+        r.setValue("application/vnd.github.html+json", forHTTPHeaderField: "Accept")
+        let (bytes, response) = try await session.data(for: r, delegate: OfficialUpdateRedirectPolicy())
+        try check(bytes, response); try Task.checkCancellation()
+        return try ReadmeDocumentRules.renderedHTML(bytes)
+    }
     // Native collaboration transport: allowed routes and bodies are constructed
     // by CommunityMutationRules, never from a user-supplied API path.
     func communityMutate(_ repo: String, action: CommunityMutation, title: String = "", text: String = "") async throws -> Data {

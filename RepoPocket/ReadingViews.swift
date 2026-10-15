@@ -52,39 +52,40 @@ struct RepositoryReadmeView: View {
     @ObservedObject var api: GitHub
     let repo: String
     let branch: String
-    @State private var text: String?
+    @State private var document: ReadmeDocument?
     @State private var entryPath = "README.md"
     @State private var resolved = ""
     @State private var error = ""
     @State private var revision = 0
     @State private var raw = false
+    @State private var readingLink: ReadingLink?
     private var webBase: URL? {
         CommunityRules.readingBase(repo, branch: resolved, file: entryPath, raw: false)
     }
-    private var imageBase: URL? {
-        CommunityRules.readingBase(repo, branch: resolved, file: entryPath, raw: true)
-    }
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if let text {
-                    Toggle("查看 Markdown 源文", isOn: $raw)
-                    if raw { Text(text).font(.system(.body, design: .monospaced)).textSelection(.enabled) }
-                    else { CommunityMarkdown(text: text, baseURL: webBase, imageBaseURL: imageBase, api: api) }
-                } else if error.isEmpty { ProgressView("加载 README…") }
-                if !error.isEmpty { Text(error); Button("重试") { revision += 1 } }
-
-            }.padding().frame(maxWidth: .infinity, alignment: .leading)
-        }.navigationTitle("README").adaptiveWorkspaceLayout()
+        VStack(alignment: .leading, spacing: 12) {
+            if let document {
+                if document.source != nil { Toggle("查看原文", isOn: $raw) }
+                if !raw, let html = document.html {
+                    ReadmeHTMLView(html: html, baseURL: webBase, scrolling: true, height: .constant(0)) {
+                        readingLink = ReadingLink(url: $0)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let source = document.source {
+                    ScrollView { Text(source).font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                }
+            } else if error.isEmpty { ProgressView("加载自述文件…") }
+            if !error.isEmpty { Text(error); Button("重试") { revision += 1 } }
+        }.padding().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .navigationTitle((entryPath as NSString).lastPathComponent).adaptiveWorkspaceLayout()
+        .sheet(item: $readingLink) { ReadingLinkDestination(url: $0.url, api: api) }
         .toolbar { Button("刷新") { revision += 1 } }
         .task(id: revision) {
-            error = ""
+            error = ""; document = nil; raw = false
             do {
                 let selected = try await api.resolvedBranch(repo, branch: branch)
-                let entry = try await api.repositoryReadme(repo, branch: selected)
-                let source = try CommunityRules.readmeText(entry)
+                let loaded = try await api.repositoryReadmeDocument(repo, branch: selected)
                 try Task.checkCancellation(); guard api.isCurrentSession else { return }
-                resolved = selected; entryPath = entry.path; text = source
+                resolved = selected; entryPath = loaded.entry.path; document = loaded
             } catch {
                 if api.isCurrentSession, !RefreshFailure.isCancellation(error) {
                     self.error = (error as? GitHubAPIError)?.status == 404 ? "此分支没有 README，或账号没有读取权限。" : error.localizedDescription

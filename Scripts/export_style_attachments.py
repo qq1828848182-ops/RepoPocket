@@ -1,4 +1,4 @@
-"""Export only the three fixed-data native swipe screenshots from Xcode 15."""
+"""Export the fixed-data native swipe and README screenshots from Xcode 15."""
 import json
 from pathlib import Path
 import subprocess
@@ -10,6 +10,7 @@ destination.mkdir(parents=True, exist_ok=True)
 pending = [None]
 seen = set()
 exported = set()
+expected = {'swipe-first', 'swipe-middle', 'swipe-last', 'readme-badges'}
 
 while pending:
     reference = pending.pop()
@@ -32,12 +33,12 @@ while pending:
                     pending.append(ref)
             name = item.get('name', {}).get('_value', '')
             payload = item.get('payloadRef', {}).get('id', {}).get('_value')
-            if payload and name in {'swipe-first', 'swipe-middle', 'swipe-last'}:
+            if payload and name in expected:
                 subprocess.run(['xcrun', 'xcresulttool', 'export', '--type', 'file', '--path', bundle,
                                 '--id', payload, '--output-path', str(destination / (name + '.png'))], check=True)
                 exported.add(name)
             stack.extend(item.values())
 
-if len(exported) != 3:
-    raise RuntimeError(f'Expected three native swipe screenshots; got {exported}')
-print('PASS exported first, middle and last native swipe boundaries')
+if exported != expected:
+    raise RuntimeError(f'Expected native swipe and README screenshots; got {exported}')
+print('PASS exported first, middle and last native swipe boundaries and README badges')
