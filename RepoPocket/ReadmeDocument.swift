@@ -11,6 +11,16 @@ enum ReadmeDocumentRules {
     static let htmlByteLimit = 2 * 1024 * 1024
     static let collapsedHeight: CGFloat = 360
     static let inlineHeightLimit: CGFloat = 12_000
+    // Fixed app-owned code runs in an isolated content world; README scripts stay disabled.
+    static let heightObserver = """
+    (() => {
+      const article = document.getElementById('repopocket-readme');
+      if (!article) return;
+      const publish = () => window.webkit.messageHandlers.readmeSize.postMessage(article.getBoundingClientRect().height);
+      new ResizeObserver(publish).observe(article);
+      publish();
+    })();
+    """
 
     static func source(_ entry: Entry) throws -> String {
         guard (entry.size ?? 0) <= sourceByteLimit, entry.encoding == "base64",
@@ -52,6 +62,7 @@ enum ReadmeDocumentRules {
         <style>
         :root { color-scheme: light dark; } * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; background: transparent; }
+        #repopocket-readme { display: flow-root; }
         body { font: -apple-system-body; font-size: 17px; line-height: 1.5; overflow-wrap: anywhere; color: #1f2328; }
         h1 { font-size: 1.85em; } h2 { font-size: 1.45em; } h3 { font-size: 1.2em; }
         h1, h2 { border-bottom: 1px solid #d1d9e0; padding-bottom: .25em; }
@@ -68,7 +79,7 @@ enum ReadmeDocumentRules {
           body { color: #f0f3f6; } a { color: #58a6ff; } pre { background: #161b22; }
           td, th, h1, h2, blockquote, hr { border-color: #3d444d; } blockquote { color: #9198a1; }
         }
-        </style></head><body>\(fragment)</body></html>
+        </style></head><body><main id="repopocket-readme">\(fragment)</main></body></html>
         """
     }
 }

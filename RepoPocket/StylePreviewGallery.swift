@@ -28,7 +28,6 @@ struct StylePreviewGallery: View {
                         ReadmeHTMLView(html: Self.readmeFixture, baseURL: URL(string: "https://github.com/wm0104/RepoPocket/blob/main/README.rst"), height: $readmeHeight) { _ in readmeOpened = true }
                             .frame(height: max(320, readmeHeight)).softGroupedRow(top: true, bottom: true)
                     }
-                    if readmeOpened { Text("已在 App 内处理链接").accessibilityIdentifier("readme-link-opened") }
                 } else if workflow {
                     Section { WorkflowRunHeading(repo: "wm0104/RepoPocket", run: workflowRun).listRowBackground(Color.clear).listRowSeparator(.hidden) }
                     Section {
@@ -81,6 +80,11 @@ struct StylePreviewGallery: View {
                     }
                 }
             }.onAppear { if ProcessInfo.processInfo.arguments.contains("-expanded-style-preview") { expanded = true } }.navigationTitle(account ? "账号管理" : "RepoPocket").adaptiveWorkspaceLayout()
+            .toolbar {
+                if readme && readmeOpened {
+                    ToolbarItem(placement: .navigationBarTrailing) { Text("链接已处理").accessibilityIdentifier("readme-link-opened") }
+                }
+            }
         }
     }
     private static var readmeFixture: String {
