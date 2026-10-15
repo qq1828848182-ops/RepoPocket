@@ -1,6 +1,6 @@
 # RepoPocket
 
-![累计下载次数](https://img.shields.io/github/downloads/wm0104/RepoPocket/total?label=Downloads&color=007AFF)
+![累计下载次数](https://img.shields.io/github/downloads/wm0104/RepoPocket/total?label=Downloads&color=007AFF&cacheSeconds=300&v=2)
 ![最新版本](https://img.shields.io/github/v/release/wm0104/RepoPocket?label=Release&color=007AFF)
 
 [下载 RepoPocket](https://github.com/wm0104/RepoPocket/releases/latest) · [TrollFools LSP 修改版插件源](https://github.com/wm0104/trollfools-repo)
