@@ -161,6 +161,7 @@ struct RepositoriesView: View {
                         repositories: repos, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .owned })
                     RepositoryInlineSection(api: api, section: .starred, expanded: $starredExpanded,
                         repositories: starred, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .starred })
+                    UserConnectionsSection(api: api)
                 }
                 Section {
                     NavigationLink { CommunityDiscoveryView(api: api) } label: { Label("发现与关注动态", systemImage: "safari") }.softGroupedRow(top: true, bottom: true)

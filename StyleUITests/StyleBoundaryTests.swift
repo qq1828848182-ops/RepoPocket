@@ -2,6 +2,37 @@ import XCTest
 import UIKit
 
 final class StyleBoundaryTests: XCTestCase {
+    func testCurrentAccountConnectionsOpenPeopleAndProfiles() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-user-connections-style-preview"]
+        app.launch()
+        let followers = app.buttons["account-connections-followers"]
+        XCTAssertTrue(followers.waitForExistence(timeout: 20))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS '2'"), object: followers)], timeout: 15), .completed)
+        keepScreenshot(app, name: "account-connections-home")
+        followers.tap()
+        let follower = app.buttons["connection-person-fixture-follower"]
+        XCTAssertTrue(follower.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["connection-person-fixture-second"].exists)
+        keepScreenshot(app, name: "account-followers-list")
+        follower.tap()
+        XCTAssertTrue(app.staticTexts["关注列表测试用户"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["fixture-follower"].exists)
+        app.navigationBars.buttons["关注者"].tap()
+        XCTAssertTrue(follower.waitForExistence(timeout: 5))
+        app.navigationBars.buttons["RepoPocket"].tap()
+        let following = app.buttons["account-connections-following"]
+        XCTAssertTrue(following.waitForExistence(timeout: 5)); following.tap()
+        let person = app.buttons["connection-person-fixture-following"]
+        XCTAssertTrue(person.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["connection-person-fixture-follower"].exists)
+        person.tap()
+        XCTAssertTrue(app.staticTexts["关注列表测试用户"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["fixture-following"].exists)
+        keepScreenshot(app, name: "account-following-user-profile")
+    }
     func testAccountTokenAdditionWorksWithoutSwitching() {
         exerciseAccountAddition(switchFirst: false)
     }

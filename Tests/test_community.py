@@ -69,6 +69,28 @@ final class OAuthFixtureProtocol: URLProtocol {
  @MainActor static func main() async throws {
    let decoder = JSONDecoder()
    let api = GitHub()
+   api.payload = Data(#"[{"id":8,"login":"example-user","avatar_url":null}]"#.utf8)
+   for kind in UserConnectionKind.allCases {
+     let people = try await api.userConnections("fixture-owner", kind:kind, page:2)
+     precondition(people.count == 1 && people[0].user.login == "example-user" && people[0].user.id == 8)
+     precondition(api.calls.last!.0 == "/users/fixture%2Downer/" + kind.rawValue)
+     precondition(api.calls.last!.1.contains { $0.name == "page" && $0.value == "2" })
+     precondition(api.calls.last!.1.contains { $0.name == "per_page" && $0.value == "30" })
+   }
+   let calls = api.calls.count
+   for invalid in ["", "../user", "user/name", "name?x=1", String(repeating:"a", count:40)] {
+     do { _ = try await api.userConnections(invalid,kind:.followers,page:1); preconditionFailure() } catch {}
+   }
+   for page in [0,11] {
+     do { _ = try await api.userConnections("valid",kind:.following,page:page); preconditionFailure() } catch {}
+   }
+   api.isCurrentSession = false
+   do { _ = try await api.userConnections("valid",kind:.followers,page:1); preconditionFailure() } catch is CancellationError {}
+   precondition(api.calls.count == calls)
+   api.isCurrentSession = true
+   api.payload = Data("[]".utf8)
+   let noPeople = try await api.userConnections("valid",kind:.following,page:1)
+   precondition(noPeople.isEmpty)
    let minimal = Data(#"{"id":1,"number":2,"title":"例子","state":"open","html_url":"https://github.com/o/r/issues/2"}"#.utf8)
    let issue = try decoder.decode(CollaborationItem.self, from: minimal)
    precondition(issue.user == nil && issue.body == nil && issue.pull_request == nil)

@@ -39,6 +39,16 @@ extension GitHub {
     func communityProfile(_ login: String) async throws -> CommunityProfile {
         try await communityDecode(CommunityProfile.self, path: "/users/" + Self.component(login))
     }
+    func userConnections(_ login: String, kind: UserConnectionKind, page: Int) async throws -> [RepositorySocialUser] {
+        try Task.checkCancellation()
+        guard isCurrentSession else { throw CancellationError() }
+        guard !login.isEmpty, login.utf8.count <= 39,
+              login.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 }) else {
+            throw AppError(text: "无效的 GitHub 用户名。")
+        }
+        return try await communityDecode([RepositorySocialUser].self,
+            path: "/users/" + Self.component(login) + "/" + kind.rawValue, query: CommunityRules.page(page))
+    }
     func communityEvents(_ login: String, received: Bool = false, page: Int) async throws -> [CommunityEvent] {
         try await communityDecode([CommunityEvent].self, path: "/users/" + Self.component(login) + (received ? "/received_events" : "/events/public"), query: CommunityRules.page(page))
     }

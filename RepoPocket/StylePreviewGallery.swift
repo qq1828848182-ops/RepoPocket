@@ -16,6 +16,8 @@ struct StylePreviewGallery: View {
     var body: some View {
         if ProcessInfo.processInfo.arguments.contains("-account-session-style-preview") {
             AccountSessionStylePreview()
+        } else if ProcessInfo.processInfo.arguments.contains("-user-connections-style-preview") {
+            UserConnectionsStylePreview()
         } else if ProcessInfo.processInfo.arguments.contains("-local-git-style-preview") {
             LocalGitStylePreview()
         } else if ProcessInfo.processInfo.arguments.contains("-source-style-preview") {
