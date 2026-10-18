@@ -119,6 +119,12 @@ class BrowserRollbackTests(unittest.TestCase):
         normalized = normalized[:release_start] + api_original[old_release_start:old_release_end] + normalized[release_end:]
         normalized = normalized.replace('session.data(for: r, delegate: GitHubAPIRedirectPolicy())',
                                         'session.data(for: r, delegate: OfficialUpdateRedirectPolicy())')
+        # Account-session UI tests inject an isolated URLSession configuration.
+        # Keep the production default and all unrelated transport byte-protected.
+        normalized = normalized.replace(
+            '    init(configuration: URLSessionConfiguration = .ephemeral) {\n'
+            '        let config = configuration.copy() as! URLSessionConfiguration\n',
+            '    init() {\n        let config = URLSessionConfiguration.ephemeral\n')
         self.assertEqual(normalized.rstrip() + '\n}\n', api_original)
         self.assertEqual(BROWSER.count('.task { if !loaded { await load() } }'),1)
         for menu in ('CopyRepositoryLinkButton','ForkRepositoryMenuButton','RepositoryStarMenuButton'):
