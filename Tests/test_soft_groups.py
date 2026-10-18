@@ -350,6 +350,12 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
         current = current[:release_start] + old_github[old_release_start:old_release_end] + current[release_end:]
         current = current.replace('session.data(for: r, delegate: GitHubAPIRedirectPolicy())',
                                   'session.data(for: r, delegate: OfficialUpdateRedirectPolicy())')
+        # Account-sheet integration tests inject an isolated URL protocol through
+        # the session configuration; preserve the byte guard for unrelated API code.
+        current = current.replace(
+            '    init(configuration: URLSessionConfiguration = .ephemeral) {\n'
+            '        let config = configuration.copy() as! URLSessionConfiguration\n',
+            '    init() {\n        let config = URLSessionConfiguration.ephemeral\n')
     if file == 'WorkspaceSelectionUI.swift':
         # Separator implementation may change; 1.0.4 shape and layout stay exact.
         assert current.split('extension View {\n    ///')[0] == baseline(file).split('extension View {\n    ///')[0]
