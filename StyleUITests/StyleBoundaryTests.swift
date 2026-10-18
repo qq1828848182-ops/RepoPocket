@@ -113,6 +113,14 @@ final class StyleBoundaryTests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 30))
         XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: search)], timeout: 15) == .completed)
         let candidates = app.collectionViews.cells.containing(.staticText, identifier: "debs")
+        // Files may restore the previous browser location instead of honoring
+        // directoryURL. Navigate the real picker from either observed location.
+        let fixtureParent = app.collectionViews.cells.containing(.staticText, identifier: "导入测试")
+        let browserReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (fixtureParent.allElementsBoundByIndex + candidates.allElementsBoundByIndex).contains { $0.isHittable }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [browserReady], timeout: 30), .completed)
+        if let parent = fixtureParent.allElementsBoundByIndex.first(where: { $0.isHittable }) { parent.tap() }
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in candidates.allElementsBoundByIndex.contains { $0.isHittable } }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
         guard let source = candidates.allElementsBoundByIndex.first(where: { $0.isHittable }) else { XCTFail("Missing actual Files folder cell"); return }
