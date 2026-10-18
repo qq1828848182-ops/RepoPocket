@@ -11,6 +11,7 @@ cleanup_preview() {
     kill -INT "$RECORDING_PID" 2>/dev/null || true
     wait "$RECORDING_PID" || true
   fi
+  xcrun simctl spawn "$DEVICE" log show --last 15m --style compact --predicate 'process == "RepoPocket" OR eventMessage CONTAINS "com.wm0104.RepoPocket"' > app-preview.log 2>&1 || true
   xcrun simctl shutdown "$DEVICE" 2>/dev/null || true
   xcrun simctl delete "$DEVICE" 2>/dev/null || true
 }
@@ -18,11 +19,9 @@ trap cleanup_preview EXIT
 xcrun simctl boot "$DEVICE"
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl status_bar "$DEVICE" override --time 9:41 --batteryState charged --batteryLevel 100
-# Build the test bundle first, then sign the simulator app with the same
-# keychain identity used by the IPA. An unsigned simulator cannot exercise
-# CredentialStore (Security returns errSecMissingEntitlement / -34018).
-xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build-for-testing > style-test-build.log 2>&1 || { tail -100 style-test-build.log; exit 1; }
-codesign --force --sign - --entitlements Entitlements.plist preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
+# Let Xcode embed Simulator entitlements before signing. An unsigned simulator
+# cannot exercise CredentialStore (errSecMissingEntitlement / -34018).
+xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build-for-testing > style-test-build.log 2>&1 || { tail -100 style-test-build.log; exit 1; }
 codesign --verify preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
 xcrun simctl install "$DEVICE" preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
 APP_CONTAINER=$(xcrun simctl get_app_container "$DEVICE" com.wm0104.RepoPocket data)
@@ -97,6 +96,5 @@ xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug
 kill -INT "$RECORDING_PID" 2>/dev/null || true
 wait "$RECORDING_PID" || true
 RECORDING_PID=""
-xcrun simctl spawn "$DEVICE" log show --last 15m --style compact --predicate 'process == "RepoPocket"' > app-preview.log 2>&1 || true
 python3 Scripts/export_style_attachments.py style-tests.xcresult screenshots || TEST_STATUS=1
 exit "$TEST_STATUS"

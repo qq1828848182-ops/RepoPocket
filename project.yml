@@ -71,6 +71,11 @@ targets:
         HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/NativeBuild/$(PLATFORM_NAME)/include"
         LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/NativeBuild/$(PLATFORM_NAME)/lib"
         OTHER_LDFLAGS: "$(inherited) -lgit2 -lz -liconv -framework Security -framework CoreFoundation"
+      configs:
+        Debug:
+          "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+          "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+          "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Scripts/Simulator.entitlements
   RepoPocketShare:
     type: app-extension
     platform: iOS
