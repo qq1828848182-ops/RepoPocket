@@ -18,6 +18,12 @@ trap cleanup_preview EXIT
 xcrun simctl boot "$DEVICE"
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl status_bar "$DEVICE" override --time 9:41 --batteryState charged --batteryLevel 100
+# Build the test bundle first, then sign the simulator app with the same
+# keychain identity used by the IPA. An unsigned simulator cannot exercise
+# CredentialStore (Security returns errSecMissingEntitlement / -34018).
+xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build-for-testing > style-test-build.log 2>&1 || { tail -100 style-test-build.log; exit 1; }
+codesign --force --sign - --entitlements Entitlements.plist preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
+codesign --verify preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
 xcrun simctl install "$DEVICE" preview-build/Build/Products/Debug-iphonesimulator/RepoPocket.app
 APP_CONTAINER=$(xcrun simctl get_app_container "$DEVICE" com.wm0104.RepoPocket data)
 PREVIEW_ROOT="$APP_CONTAINER/Documents/本地提交预览"
@@ -87,7 +93,7 @@ xcrun simctl terminate "$DEVICE" com.wm0104.RepoPocket
 xcrun simctl io "$DEVICE" recordVideo --codec=h264 screenshots/local-git-interactions.mp4 > local-git-recording.log 2>&1 &
 RECORDING_PID=$!
 TEST_STATUS=0
-xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build -resultBundlePath style-tests.xcresult CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -only-testing:RepoPocketStyleUITests test > style-tests.log 2>&1 || { tail -100 style-tests.log; TEST_STATUS=1; }
+xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build -resultBundlePath style-tests.xcresult CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -only-testing:RepoPocketStyleUITests test-without-building > style-tests.log 2>&1 || { tail -100 style-tests.log; TEST_STATUS=1; }
 kill -INT "$RECORDING_PID" 2>/dev/null || true
 wait "$RECORDING_PID" || true
 RECORDING_PID=""
