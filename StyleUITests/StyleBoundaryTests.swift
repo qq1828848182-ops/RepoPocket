@@ -2,6 +2,52 @@ import XCTest
 import UIKit
 
 final class StyleBoundaryTests: XCTestCase {
+    func testAccountTokenAdditionWorksWithoutSwitching() {
+        exerciseAccountAddition(switchFirst: false)
+    }
+    func testAccountTokenAdditionStillWorksAfterSwitching() {
+        exerciseAccountAddition(switchFirst: true)
+    }
+    private func exerciseAccountAddition(switchFirst: Bool) {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-account-session-style-preview"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["fixture-active-account"].waitForExistence(timeout: 20))
+        app.buttons["打开账号管理"].tap()
+        XCTAssertTrue(app.buttons["完成"].waitForExistence(timeout: 10))
+        if switchFirst {
+            app.buttons["切换"].tap()
+            XCTAssertFalse(app.buttons["移除本机账号"].exists)
+        }
+        app.buttons["添加 / 更新 GitHub 账号"].tap()
+        let token = app.secureTextFields["粘贴你自己的 Token"]
+        XCTAssertTrue(token.waitForExistence(timeout: 5))
+        token.tap(); token.typeText("fixture-charlie")
+        app.buttons["验证并安全保存"].tap()
+        let active = app.staticTexts["fixture-active-account"]
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '303' AND hittable == true"), object: active)], timeout: 20) == .completed,
+                      "The current account session must verify and save the new account after switching")
+    }
+    func testLocalImportDestinationClosesAtNestedFolder() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-local-git-style-preview"]
+        app.launch()
+        let choose = app.buttons["导入位置：根目录"]
+        XCTAssertTrue(app.buttons["localgit.folder.debs"].waitForExistence(timeout: 40))
+        reveal(choose, in: app); choose.tap()
+        for name in ["目标", "子目录"] {
+            let matches = app.buttons.matching(identifier: name)
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in matches.allElementsBoundByIndex.contains { $0.isHittable } }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+            matches.allElementsBoundByIndex.first(where: { $0.isHittable })!.tap()
+        }
+        app.buttons["选择此文件夹"].tap()
+        let selected = app.buttons["导入位置：目标/子目录"]
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: selected)], timeout: 10) == .completed,
+                      "Choosing a nested import destination must dismiss the entire picker")
+    }
     func testLocalDEBUsesExistingEditorAndSavesToProject() {
         continueAfterFailure = false
         let app = XCUIApplication()

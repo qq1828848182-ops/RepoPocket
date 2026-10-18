@@ -33,6 +33,7 @@ git -C "$PREVIEW_ROOT" add --all
 git -C "$PREVIEW_ROOT" commit -m '新增 Python 输出'
 printf '%s\n' '# Python 示例' 'print("after")' 'print("working")' > "$PREVIEW_ROOT/示例.py"
 mkdir -p "$PREVIEW_ROOT/debs"
+mkdir -p "$PREVIEW_ROOT/目标/子目录"
 for number in $(seq -w 1 44); do
   printf '!<arch>\nDEB fixture %s\n' "$number" > "$PREVIEW_ROOT/debs/package-$number.deb"
 done
