@@ -424,12 +424,17 @@ final class StyleBoundaryTests: XCTestCase {
         app.launch()
         let web = app.webViews.firstMatch
         XCTAssertTrue(web.waitForExistence(timeout: 15))
+        // WebKit can expose its accessibility tree before navigation finishes.
+        // A tap during that interval is ignored despite the link already existing.
+        XCTAssertTrue(app.staticTexts["readme-document-ready"].waitForExistence(timeout: 30))
         XCTAssertTrue(web.images["累计下载次数"].waitForExistence(timeout: 30))
         XCTAssertTrue(web.images["最新版本"].waitForExistence(timeout: 10))
         XCTAssertLessThan(web.frame.height, 750, "Short README must not grow to the viewport/inline height cap")
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "readme-badges"; attachment.lifetime = .keepAlways; add(attachment)
-        web.links["在 App 内打开仓库"].tap()
+        let link = web.links["在 App 内打开仓库"]
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: link)], timeout: 10), .completed)
+        link.tap()
         XCTAssertTrue(app.staticTexts["readme-link-opened"].waitForExistence(timeout: 15))
     }
     func testNativeSwipeBoundaries() {
