@@ -86,6 +86,7 @@ struct LocalProjectView: View {
             NavigationStack {
                 LocalGitDirectoryPicker(project: project, internalRoot: store.internalRoot, directory: "") { picked in
                     importTarget = picked
+                    choosingImportTarget = false
                 }
                 .toolbar { Button("关闭") { choosingImportTarget = false } }
             }.appSheetCornerRadius()

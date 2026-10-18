@@ -3,6 +3,11 @@ import SwiftUI
 
 /// Isolated simulator fixture: exercises the application's real account sheet.
 struct AccountSessionStylePreview: View {
+    static var configuration: URLSessionConfiguration {
+        let value = URLSessionConfiguration.ephemeral
+        value.protocolClasses = [AccountPreviewProtocol.self]
+        return value
+    }
     @EnvironmentObject private var presentation: AccountPresentation
     @State private var prepared = false
     @State private var active = ""
@@ -12,7 +17,6 @@ struct AccountSessionStylePreview: View {
             Button("打开账号管理") { presentation.showing = true }
         }.task {
             guard !prepared else { return }; prepared = true
-            URLProtocol.registerClass(AccountPreviewProtocol.self)
             UserDefaults.standard.removeObject(forKey: AccountStore.accountsKey)
             for id in ["301", "302", "303"] { CredentialStore.clear(account: id) }
             try? AccountStore.record(GitHubAccount(id: "301", login: "fixture-alice", avatarURL: nil))

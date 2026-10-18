@@ -25,7 +25,7 @@ struct RepoPocketApp: App {
                 .background(WindowStyleApplier(style: appearance == "dark" ? .dark : (appearance == "light" ? .light : .unspecified)))
                 .environmentObject(selectionStore)
                 .environmentObject(accountPresentation)
-                .sheet(isPresented: $accountPresentation.showing) { AccountManagementView().environmentObject(accountPresentation).appSheetCornerRadius() }
+                .sheet(isPresented: $accountPresentation.showing) { accountManager.id(accountID).environmentObject(accountPresentation).appSheetCornerRadius() }
                 .sheet(item: $downloads.picker, onDismiss: { downloads.selected(nil) }) { request in
                     WorkspaceDocumentPicker(request: request, allowsMultipleSelection: false, cancelTitle: "取消") { downloads.selected($0) }
                 }
@@ -33,6 +33,15 @@ struct RepoPocketApp: App {
                     accountID = AccountStore.generation
                 }
         }
+    }
+    @MainActor @ViewBuilder private var accountManager: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-account-session-style-preview") {
+            AccountManagementView(configuration: AccountSessionStylePreview.configuration)
+        } else { AccountManagementView() }
+        #else
+        AccountManagementView()
+        #endif
     }
 }
 

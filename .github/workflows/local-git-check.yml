@@ -2,12 +2,18 @@ name: Local Git checks
 on:
   workflow_dispatch:
   push:
-    branches: [codex/local-git-tools]
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+concurrency:
+  group: local-git-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   native:
     runs-on: macos-14
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode

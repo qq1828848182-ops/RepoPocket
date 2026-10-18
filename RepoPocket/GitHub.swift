@@ -246,8 +246,8 @@ final class GitHub: ObservableObject {
         if parentWaiters.isEmpty { parentActive -= 1 }
         else { parentWaiters.removeFirst().resume() }
     }
-    init() {
-        let config = URLSessionConfiguration.ephemeral
+    init(configuration: URLSessionConfiguration = .ephemeral) {
+        let config = configuration.copy() as! URLSessionConfiguration
         config.timeoutIntervalForRequest = 120
         config.timeoutIntervalForResource = 3600
         config.httpShouldSetCookies = false

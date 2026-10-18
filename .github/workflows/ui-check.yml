@@ -2,20 +2,36 @@ name: Native UI checks
 on:
   workflow_dispatch:
   push:
-    branches: [codex/local-git-tools]
+    branches: [main, 'codex/**']
     paths:
-      - RepoPocket/SourceTextSurface.swift
-      - RepoPocket/CommitPatchView.swift
-      - RepoPocket/LocalDiffPreview.swift
-      - RepoPocket/SourceStylePreview.swift
+      - RepoPocket/**
+      - SharedInbox/**
+      - ShareExtension/**
+      - Vendor/**
+      - project.yml
       - StyleUITests/**
-      - Scripts/run_style_preview.sh
+      - Scripts/**
       - .github/workflows/ui-check.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - RepoPocket/**
+      - SharedInbox/**
+      - ShareExtension/**
+      - Vendor/**
+      - project.yml
+      - StyleUITests/**
+      - Scripts/**
+      - .github/workflows/ui-check.yml
+concurrency:
+  group: ui-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   preview:
     runs-on: macos-14
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode 15.4

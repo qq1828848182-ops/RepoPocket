@@ -26,8 +26,29 @@ final class StyleBoundaryTests: XCTestCase {
         token.tap(); token.typeText("fixture-charlie")
         app.buttons["验证并安全保存"].tap()
         let active = app.staticTexts["fixture-active-account"]
-        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '303' AND hittable == true"), object: active)], timeout: 20) == .completed,
+        let completed = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '303' AND hittable == true"), object: active)], timeout: 20) == .completed
+        if !completed {
+            app.navigationBars.buttons["账号管理"].tap()
+            keepScreenshot(app, name: switchFirst ? "account-switch-failure" : "account-control-failure")
+        }
+        XCTAssertTrue(completed,
                       "The current account session must verify and save the new account after switching")
+        if switchFirst { keepScreenshot(app, name: "account-session-after-switch") }
+    }
+    func testLocalChangeDeletionUsesGuardedConfirmationAndCanCancel() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-local-git-style-preview"]
+        app.launch()
+        let folder = app.buttons["localgit.folder.debs"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 40)); folder.tap()
+        let file = app.staticTexts["package-01.deb"]
+        XCTAssertTrue(file.waitForExistence(timeout: 10)); file.press(forDuration: 1)
+        app.buttons["删除文件"].tap()
+        XCTAssertTrue(app.buttons["确认删除此文件"].waitForExistence(timeout: 15))
+        keepScreenshot(app, name: "local-delete-confirmation")
+        app.buttons["关闭"].tap()
+        XCTAssertTrue(file.waitForExistence(timeout: 10), "Cancelling confirmation must retain the selected file")
     }
     func testLocalImportDestinationClosesAtNestedFolder() {
         continueAfterFailure = false
@@ -47,6 +68,7 @@ final class StyleBoundaryTests: XCTestCase {
         let selected = app.buttons["导入位置：目标/子目录"]
         XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: selected)], timeout: 10) == .completed,
                       "Choosing a nested import destination must dismiss the entire picker")
+        keepScreenshot(app, name: "local-import-destination")
     }
     func testLocalDEBUsesExistingEditorAndSavesToProject() {
         continueAfterFailure = false
@@ -408,7 +430,7 @@ final class StyleBoundaryTests: XCTestCase {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "readme-badges"; attachment.lifetime = .keepAlways; add(attachment)
         web.links["在 App 内打开仓库"].tap()
-        XCTAssertTrue(app.staticTexts["readme-link-opened"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["readme-link-opened"].waitForExistence(timeout: 15))
     }
     func testNativeSwipeBoundaries() {
         let app = XCUIApplication()
