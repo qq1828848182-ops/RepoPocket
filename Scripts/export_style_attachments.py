@@ -25,10 +25,14 @@ expected.update({'local-history-collapsed', 'local-history-expanded', 'local-com
 expected.update({'source-preview-left', 'source-preview-right', 'source-editor-left', 'source-editor-right'})
 expected.update({'patch-highlight-left', 'patch-highlight-right', 'patch-raw-left', 'patch-raw-right'})
 profiles = {'profile-issue-list', 'profile-fork', 'profile-activity', 'profile-fork-repository', 'profile-activity-repository'}
+actions = {'release-compact-attachments', 'release-inline-progress', 'profile-following-action', 'profile-follow-status-error', 'repository-owner-profile'}
 if scope == 'profiles':
     expected = profiles
+elif scope == 'actions':
+    expected = actions
 elif scope == 'all':
     expected.update(profiles)
+    expected.update(actions)
 else:
     raise ValueError('Unknown UI test scope')
 

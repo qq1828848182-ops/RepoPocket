@@ -14,11 +14,19 @@ final class StyleBoundaryTests: XCTestCase {
         file.tap()
         XCTAssertTrue(app.buttons["下载并保存"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["复制下载链接"].exists)
-        XCTAssertFalse(app.buttons["删除附件"].exists)
-        app.buttons["取消"].tap()
-        app.buttons["附件操作：sample-1.ipa"].tap()
+        XCTAssertTrue(app.buttons["删除附件"].exists)
+        // Dismiss the menu, then reopen by tapping its empty trailing area, not the filename.
+        app.navigationBars["发行版详情"].tap()
+        file.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.7)).tap()
         XCTAssertTrue(app.buttons["删除附件"].waitForExistence(timeout: 5)); app.buttons["删除附件"].tap()
         XCTAssertTrue(app.buttons["删除"].waitForExistence(timeout: 5)); app.buttons["取消"].tap()
+        // Copy alert and delete cancellation must not lock the next presentation.
+        file.tap(); app.buttons["复制下载链接"].tap()
+        XCTAssertTrue(app.buttons["好"].waitForExistence(timeout: 5)); app.buttons["好"].tap()
+        let third = app.buttons["release-asset-3"]
+        third.tap(); app.buttons["删除附件"].tap()
+        XCTAssertTrue(app.buttons["删除"].waitForExistence(timeout: 5)); app.buttons["删除"].tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: third)], timeout: 10), .completed)
         file.tap(); app.buttons["下载并保存"].tap()
         let retry = app.buttons["release-download-retry-1"]
         XCTAssertTrue(retry.waitForExistence(timeout: 10))
@@ -32,6 +40,42 @@ final class StyleBoundaryTests: XCTestCase {
         retry.tap()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '已下载并保存到'"), object: status)], timeout: 15), .completed)
     }
+    func testSharedProfileFollowStateAndFailureHandling() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        func openAuthor(_ flags: [String] = []) {
+            app.launchArguments = ["-style-preview", "-user-connections-style-preview"] + flags; app.launch()
+            let issue = app.buttons["home-issue-4"]
+            XCTAssertTrue(issue.waitForExistence(timeout: 20)); issue.tap()
+            let author = app.buttons["issue-author"]
+            XCTAssertTrue(author.waitForExistence(timeout: 15)); author.tap()
+            XCTAssertTrue(app.navigationBars["fixture-follower"].waitForExistence(timeout: 10))
+        }
+        openAuthor()
+        let action = app.buttons["user-follow-action"]
+        XCTAssertTrue(action.waitForExistence(timeout: 10)); XCTAssertEqual(action.label, "关注")
+        action.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '取消关注' AND enabled == true"), object: action)], timeout: 10), .completed)
+        keepScreenshot(app, name: "profile-following-action")
+        app.navigationBars.buttons["Issue #4"].tap()
+        app.buttons["讨论评论"].tap()
+        let commenter = app.buttons["discussion-author-71"]
+        XCTAssertTrue(commenter.waitForExistence(timeout: 10)); commenter.tap()
+        XCTAssertTrue(action.waitForExistence(timeout: 10)); XCTAssertEqual(action.label, "取消关注")
+        action.tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '关注' AND enabled == true"), object: action)], timeout: 10), .completed)
+        app.navigationBars.buttons["讨论"].tap()
+        app.buttons["discussion-author-72"].tap()
+        XCTAssertTrue(action.waitForExistence(timeout: 10)); XCTAssertEqual(action.label, "取消关注", "An existing relationship must load from the server")
+        app.terminate(); openAuthor(["-follow-status-error"])
+        XCTAssertTrue(app.staticTexts["user-follow-error"].waitForExistence(timeout: 10))
+        XCTAssertFalse(action.exists, "Failed relationship reads must never guess an unfollowed state")
+        keepScreenshot(app, name: "profile-follow-status-error")
+        app.terminate(); openAuthor(["-follow-write-denied"])
+        XCTAssertTrue(action.waitForExistence(timeout: 10)); action.tap()
+        XCTAssertTrue(app.staticTexts["user-follow-error"].waitForExistence(timeout: 10))
+        XCTAssertEqual(action.label, "关注", "Rejected writes must not change the relationship")
+    }
     func testDirectRepositorySearchAndTypedUserNavigation() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -41,6 +85,7 @@ final class StyleBoundaryTests: XCTestCase {
         let owner = app.buttons["repository-owner-link"]
         XCTAssertTrue(owner.waitForExistence(timeout: 20)); owner.tap()
         XCTAssertTrue(app.navigationBars["fixture-owner"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["user-follow-action"].exists, "Self profiles have no follow action")
         keepScreenshot(app, name: "repository-owner-profile")
         app.terminate(); app.launch()
         XCTAssertTrue(field.waitForExistence(timeout: 10)); field.tap(); field.typeText("sample\n")

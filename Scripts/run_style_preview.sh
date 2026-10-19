@@ -95,6 +95,7 @@ TEST_STATUS=0
 case "${RP_STYLE_TEST_SCOPE:-all}" in
   all) TEST_ARGUMENTS=(-only-testing:RepoPocketStyleUITests) ;;
   profiles) TEST_ARGUMENTS=(-only-testing:RepoPocketStyleUITests/StyleBoundaryTests/testIssueAndCommentAuthorsOpenTheirProfiles) ;;
+  actions) TEST_ARGUMENTS=(-only-testing:RepoPocketStyleUITests/StyleBoundaryTests/testReleaseAttachmentsUseNativeActionsAndInlineDownloadStates -only-testing:RepoPocketStyleUITests/StyleBoundaryTests/testSharedProfileFollowStateAndFailureHandling -only-testing:RepoPocketStyleUITests/StyleBoundaryTests/testDirectRepositorySearchAndTypedUserNavigation) ;;
   *) echo 'Unknown UI test scope'; exit 1 ;;
 esac
 xcodebuild -project RepoPocket.xcodeproj -scheme RepoPocket -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath preview-build -resultBundlePath style-tests.xcresult CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES "${TEST_ARGUMENTS[@]}" test-without-building > style-tests.log 2>&1 || { tail -100 style-tests.log; TEST_STATUS=1; }

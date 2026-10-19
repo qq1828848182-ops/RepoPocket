@@ -173,7 +173,7 @@ detail_ui = release.split('struct ReleaseDetailView: View', 1)[1].split('private
 asset_ui = detail_ui.split('ForEach(state.assets) { asset in', 1)[1].split('if state.assets.isEmpty', 1)[0]
 assert 'let isLastAsset = asset.id == state.assets.last?.id && !state.assetMore' in asset_ui
 assert asset_ui.count('.softGroupedRow(') == 1  # approved compact attachment row with native actions
-assert '}.softGroupedRow(top: asset.id == state.assets.first?.id, bottom: isLastAsset)' in asset_ui
+assert '.softGroupedRow(top: asset.id == state.assets.first?.id, bottom: isLastAsset)' in asset_ui
 assert 'LocalGitFileLabel(' in asset_ui and 'Menu {' in asset_ui
 assert 'ReleaseAssetDownloadStatusView(' in asset_ui
 assert 'Divider()' not in asset_ui and 'Rectangle().fill' not in asset_ui
@@ -280,6 +280,12 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
              'ReleasePublishPlan.swift', 'ReleaseTransfers.swift']:
     current = source(file)
     if file == 'GitHub.swift':
+        # Exact additions for the account-scoped follow capability have their own native request/race fixtures.
+        current = current.replace('    lazy var follows = UserFollowStore(api: self)\n', '')
+        current = current.replace('                self?.follows.invalidate()\n', '')
+        follow_start = current.index('    func followIdentity()')
+        follow_end = current.index('    private func managedJSON', follow_start)
+        current = current[:follow_start] + current[follow_end:]
         # The explicitly approved issue deletion transport has separate native
         # permission, account-generation, and mutation acknowledgement fixtures.
         deletion_start = current.index('    lazy var issueDeletions = IssueDeletionState()')

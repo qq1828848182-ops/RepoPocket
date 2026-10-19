@@ -80,7 +80,9 @@ class ReleaseManagementTests(unittest.TestCase):
         self.assertIn('state.download(asset)',actions)
         self.assertIn('UIPasteboard.general.url = link',actions)
         self.assertIn('asset.browser_download_url, repo: state.repo',actions)
-        self.assertIn('presenting: assetAction',ui)
+        self.assertNotIn('presenting: assetAction',ui)
+        self.assertNotIn('ellipsis',row)
+        self.assertIn('.contentShape(Rectangle())',row)
         self.assertIn('target.generation == AccountStore.generation',ui)
 
     def test_concise_copy_keeps_safety_and_budget_guards(self):
