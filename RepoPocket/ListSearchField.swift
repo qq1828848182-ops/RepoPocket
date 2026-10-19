@@ -8,7 +8,7 @@ struct ListSearchButton: View {
         Button {
             visible.toggle()
             if !visible { query = "" }
-        } label: { Image(systemName: visible ? "xmark" : "magnifyingglass") }
+        } label: { Image(systemName: visible ? "xmark" : "magnifyingglass").frame(width: 44, height: 44).contentShape(Rectangle()) }
         .accessibilityLabel(visible ? "关闭搜索" : "搜索" + title)
         .accessibilityIdentifier("list-search-button")
     }

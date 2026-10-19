@@ -109,8 +109,9 @@ struct NativeActivityChartView: View {
             Section("最近30天 · 公开活动") {
                 SoftGroupRows {
                     SoftGroupRow("count") { Text("已加载 \(store.items.count) 条公开活动").font(.headline) }
+                    if let range = store.recordRange { SoftGroupRow("range") { Text("已加载记录日期：" + range).font(.caption).foregroundStyle(.secondary) } }
                     SoftGroupRow("calendar") { ActivityCalendarView(days: days, selected: $selected) }
-                    SoftGroupRow("scope") { Text("仅统计已加载的公开活动，不等同于全年贡献日历。虚线表示尚未覆盖的日期；当天记录可能延迟。点击日期查看活动。").font(.caption).foregroundStyle(.secondary) }
+                    SoftGroupRow("scope") { Text("仅统计已加载的公开活动，不等同于全年贡献日历。虚线表示未完整覆盖的日期；当天记录可能延迟。点击日期查看活动。").font(.caption).foregroundStyle(.secondary) }
                 }
             }
             if let selected, let day = days.first(where: { $0.id == selected }) { ActivityDayEvents(api: api, day: day) }
@@ -125,7 +126,7 @@ struct NativeActivityChartView: View {
                 }
             }
         }.navigationTitle("活动图表").adaptiveWorkspaceLayout()
-        .toolbar { Button("刷新") { anchor = Date(); store.load(refresh: true, api: api, login: login) }.disabled(store.busy) }
+        .toolbar { Button("刷新") { anchor = Date(); store.load(refresh: true, api: api, login: login) } }
         .task { guard !appeared else { return }; appeared = true; store.load(api: api, login: login) }
         .onDisappear { if store.busy { appeared = false }; store.cancel() }
     }

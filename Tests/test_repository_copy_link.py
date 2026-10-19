@@ -15,7 +15,7 @@ class CopyLinkTests(unittest.TestCase):
         app = (ROOT/'RepoPocket/RepoPocketApp.swift').read_text()
         sections = (ROOT/'RepoPocket/RepositorySections.swift').read_text()
         search = (ROOT/'RepoPocket/RepositorySearchView.swift').read_text()
-        self.assertEqual(sections.count('RepositoryCard(repository: repository,'), 2)
+        self.assertEqual(sections.count('RepositoryCard(repository: repository,'), 1)
         self.assertEqual(search.count('RepositoryCard(repository: repository,'), 2)
         self.assertNotIn('.contextMenu', sections + search)
         self.assertIn('.contextMenu {', ui)
@@ -26,7 +26,7 @@ class CopyLinkTests(unittest.TestCase):
         self.assertIn('CopyRepositoryLinkButton(repository: repo, feedback: copyFeedback)', browser)
         self.assertNotIn('CopyRepositoryLinkButton(repository: path', browser)
         self.assertIn('.repositoryCopyNotice(copyFeedback)', browser)
-        self.assertEqual(sections.count('.swipeActions(edge: .trailing, allowsFullSwipe: false)'), 2)
+        self.assertEqual(sections.count('.swipeActions(edge: .trailing, allowsFullSwipe: false)'), 1)
         self.assertIn('NavigationLink', sections)
         self.assertNotIn('.onLongPressGesture', ui)
 

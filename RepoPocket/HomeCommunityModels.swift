@@ -7,6 +7,13 @@ enum HomeListSearch {
     }
 }
 
+enum CollaborationDraftRules {
+    static func hasContent(number: Int?, title: String, text: String) -> Bool {
+        if number == nil { return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 enum PersonalIssueFilter: String, CaseIterable, Identifiable {
     case involved, created, assigned, mentioned
     var id: String { rawValue }
@@ -35,6 +42,16 @@ enum PersonalIssueRules {
 struct PersonalIssueSearchResponse: Decodable {
     let items: [CollaborationItem]
     let incomplete_results: Bool?
+}
+
+enum DiscussionComposerTarget: Identifiable {
+    case comment, reply(CommentReplyContext)
+    var id: String {
+        switch self { case .comment: return "comment"; case .reply(let value): return "reply-\(value.id)" }
+    }
+    var replyContext: CommentReplyContext? {
+        if case .reply(let value) = self { return value }; return nil
+    }
 }
 
 struct CommentReplyContext: Identifiable {

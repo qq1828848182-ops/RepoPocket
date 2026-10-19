@@ -18,6 +18,16 @@ struct ActivityDay: Identifiable {
 }
 
 enum ActivityCalendar {
+    static func recordRange(_ events: [CommunityEvent]) -> String? {
+        let plain = ISO8601DateFormatter(), fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let dates = events.compactMap { event -> Date? in
+            guard let raw = event.created_at else { return nil }
+            return plain.date(from: raw) ?? fractional.date(from: raw)
+        }
+        guard let first = dates.min(), let last = dates.max() else { return nil }
+        return ChinaDate.day(first) + " — " + ChinaDate.day(last)
+    }
     static func days(events: [CommunityEvent], exhausted: Bool, now: Date) -> [ActivityDay] {
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = ChinaDate.timeZone
         let today = calendar.startOfDay(for: now)
@@ -52,16 +62,17 @@ enum ActivityCalendar {
     @Published private(set) var exhausted = false
     @Published private(set) var limited = false
     @Published private(set) var error = ""
+    @Published private(set) var recordRange: String?
     private var page = 1
     private var generation = UUID()
     private var task: Task<Void, Never>?
     func cancel() { generation = UUID(); task?.cancel(); task = nil; busy = false }
     func load(refresh: Bool = false, api: GitHub, login: String) {
-        guard api.isCurrentSession, !busy else { return }
+        guard api.isCurrentSession else { return }
         if refresh {
-            cancel(); items = []; page = 1; exhausted = false; limited = false; loaded = false
+            cancel(); items = []; page = 1; exhausted = false; limited = false; loaded = false; recordRange = nil
         }
-        guard !exhausted, !limited else { return }
+        guard !busy, !exhausted, !limited else { return }
         let request = generation
         attempted = true; busy = true; error = ""
         task = Task { @MainActor [weak self] in
@@ -76,6 +87,7 @@ enum ActivityCalendar {
                     guard batch.count <= CommunityRules.pageSize else { throw AppError(text: "活动响应超过分页限制，请重试。") }
                     var ids = Set(self.items.map(\.id))
                     self.items += batch.filter { ids.insert($0.id).inserted }
+                    self.recordRange = ActivityCalendar.recordRange(self.items)
                     self.page += 1; self.loaded = true
                     self.exhausted = batch.count < CommunityRules.pageSize
                     self.limited = !self.exhausted && self.page > CommunityRules.pageLimit

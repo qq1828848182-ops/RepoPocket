@@ -4,6 +4,17 @@ import shutil, subprocess, tempfile, unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class HomeCommunityTests(unittest.TestCase):
+    def test_refresh_replaces_pending_request_and_title_only_issue_is_retained(self):
+        source=(ROOT/'RepoPocket/ActivityCalendar.swift').read_text().split('func load(refresh:',1)[1]
+        self.assertNotIn('!busy',source.split('if refresh',1)[0], 'Refresh must cancel before checking busy')
+        composer=(ROOT/'RepoPocket/CollaborationComposer.swift').read_text()
+        self.assertIn('CollaborationDraftRules.hasContent(',composer)
+        people=(ROOT/'RepoPocket/UserConnectionsView.swift').read_text()
+        self.assertIn('已达读取上限',people)
+        discussion=(ROOT/'RepoPocket/CollaborationViews.swift').read_text().split('struct DiscussionView:',1)[1].split('struct PullFilesView:',1)[0]
+        self.assertIn('.sheet(item: $composerTarget)',discussion)
+        self.assertNotIn('LazyVGrid(', (ROOT/'RepoPocket/ActivityCalendarView.swift').read_text())
+
     def test_home_uses_destinations_and_shared_search(self):
         app = (ROOT/'RepoPocket/RepoPocketApp.swift').read_text()
         home = app.split('struct RepositoriesView:',1)[1].split('struct BrowserView:',1)[0]
@@ -55,7 +66,12 @@ enum RefreshFailure { static func isCancellation(_ error:Error)->Bool { error is
   precondition(try PersonalIssueRules.query(login:"alice",filter:.involved) == "is:issue involves:alice")
   do { _ = try PersonalIssueRules.query(login:"alice repo:secret",filter:.mentioned); preconditionFailure() } catch {}
   let context = CommentReplyContext(id:7,login:"alice",body:"> old quote\n\n这次正文\n第二行",url:nil)
+  precondition(CollaborationDraftRules.hasContent(number:nil,title:"A title",text:""))
+  precondition(!CollaborationDraftRules.hasContent(number:nil,title:" ",text:"body"))
+  precondition(!CollaborationDraftRules.hasContent(number:4,title:"",text:" \n "))
   let reply = try context.submission("谢谢",repo:"o/r",number:4)
+  let target=DiscussionComposerTarget.reply(context)
+  precondition(target.replyContext?.id==7 && target.id=="reply-7" && DiscussionComposerTarget.comment.replyContext==nil)
   precondition(reply.contains("@alice") && reply.contains("> 这次正文") && reply.contains("> 第二行"))
   precondition(reply.contains("#issuecomment-7") && !reply.contains("old quote") && reply.hasSuffix("谢谢"))
   do { _ = try context.submission(" \n ",repo:"o/r",number:4); preconditionFailure() } catch {}
@@ -63,6 +79,7 @@ enum RefreshFailure { static func isCancellation(_ error:Error)->Bool { error is
   let events=[event("1","2026-10-18T16:01:00Z"),event("1","2026-10-18T16:01:00Z"),event("2","2026-10-17T16:01:00Z")]
   let partial=ActivityCalendar.days(events:events,exhausted:false,now:now)
   precondition(partial.count==30 && partial.last!.id=="2026-10-19" && partial.last!.count==1)
+  precondition(ActivityCalendar.recordRange(events)=="2026-10-18 — 2026-10-19")
   precondition(partial[28].count==1 && !partial[28].complete && partial[27].count==nil)
   let full=ActivityCalendar.days(events:events,exhausted:true,now:now)
   precondition(full[27].count==0 && full[27].complete && full.last!.count==1)
@@ -97,6 +114,17 @@ enum RefreshFailure { static func isCancellation(_ error:Error)->Bool { error is
   gate!.resume(returning:[event("stale","2026-10-19T00:00:00Z")])
   for _ in 0..<20 { await Task.yield() }
   precondition(cancelledStore.items.isEmpty && !cancelledStore.busy)
+  let replacingAPI=GitHub(), replacingStore=ActivityCalendarStore()
+  var old:CheckedContinuation<[CommunityEvent],Never>?
+  replacingAPI.operation={_ in await withCheckedContinuation {old=$0} }
+  replacingStore.load(api:replacingAPI,login:"a")
+  while old==nil { await Task.yield() }
+  replacingAPI.operation={_ in [event("new","2026-10-19T00:00:00Z")] }
+  replacingStore.load(refresh:true,api:replacingAPI,login:"a")
+  await drain(replacingStore)
+  old!.resume(returning:[event("old","2026-10-19T00:00:00Z")])
+  for _ in 0..<20 { await Task.yield() }
+  precondition(replacingStore.items.map(\.id)==["new"] && replacingStore.exhausted && !replacingStore.busy)
   print("PASS production list search, quoted reply, bounded daily coverage, timezone and activity paging")
  }
 }

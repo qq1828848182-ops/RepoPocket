@@ -19,7 +19,7 @@ struct CollaborationComposer: View {
         return (try? replyContext.submission(text, repo: repo, number: number)) ?? ""
     }
     private var valid: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        CollaborationDraftRules.hasContent(number: number, title: title, text: text) &&
         (try? CommunityMutationRules.request(action, title: title, text: submittedText)) != nil
     }
     var body: some View {

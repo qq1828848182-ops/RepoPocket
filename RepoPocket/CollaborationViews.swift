@@ -199,8 +199,7 @@ struct DiscussionView: View {
     let stream: DiscussionStream
     @StateObject private var store = CommunityPageStore<CollaborationComment>()
     @State private var attempted = false
-    @State private var composing = false
-    @State private var replyContext: CommentReplyContext?
+    @State private var composerTarget: DiscussionComposerTarget?
     var body: some View {
         List {
             ForEach(store.items) { comment in
@@ -220,7 +219,7 @@ struct DiscussionView: View {
                     SoftGroupRow("body") { CommunityMarkdown(text: comment.body.flatMap { $0.isEmpty ? nil : $0 } ?? "无文字内容", baseURL: CommunityRules.webURL(comment.html_url) ?? CommunityRules.repositoryURL(repo), api: api) }
                     if stream == .conversation {
                         SoftGroupRow("reply") {
-                            Button { replyContext = CommentReplyContext(comment); composing = true }
+                            Button { composerTarget = .reply(CommentReplyContext(comment)) }
                             label: { Label("回复", systemImage: "arrowshape.turn.up.left") }
                             .accessibilityLabel("回复 " + (comment.user?.login ?? "已删除用户"))
                             .accessibilityIdentifier("reply-comment-\(comment.id)")
@@ -233,11 +232,11 @@ struct DiscussionView: View {
             CommunityPageFooter(store: store, next: { load() })
         }.navigationTitle(stream.title).adaptiveWorkspaceLayout()
         .toolbar {
-            if stream == .conversation { Button("发表评论") { replyContext = nil; composing = true } }
+            if stream == .conversation { Button("发表评论") { composerTarget = .comment } }
             Button("刷新") { load(reset: true) }.disabled(store.busy)
         }
-        .sheet(isPresented: $composing) {
-            CollaborationComposer(api: api, repo: repo, number: number, replyContext: replyContext) { load(reset: true) }
+        .sheet(item: $composerTarget) { target in
+            CollaborationComposer(api: api, repo: repo, number: number, replyContext: target.replyContext) { load(reset: true) }
                 .appSheetCornerRadius()
         }
         .task { guard !attempted else { return }; attempted = true; load() }

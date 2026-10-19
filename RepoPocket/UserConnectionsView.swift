@@ -51,7 +51,10 @@ struct UserConnectionsView: View {
                     SoftGroupRows {
                         SoftGroupRow("search") { ListSearchField(query: $query, title: kind.title) }
                         if store.more || store.limited {
-                            SoftGroupRow("scope") { Text("搜索已加载的 \(store.items.count) 位用户，可继续加载更多。").font(.caption).foregroundStyle(.secondary) }
+                            SoftGroupRow("scope") {
+                                Text(store.limited ? "搜索已加载的 \(store.items.count) 位用户，已达读取上限，更多用户请在 GitHub 查看。" : "搜索已加载的 \(store.items.count) 位用户，可继续加载更多。")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
