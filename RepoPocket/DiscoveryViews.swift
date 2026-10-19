@@ -47,6 +47,7 @@ struct CommunityEventsView: View {
     let login: String
     var received = false
     @StateObject private var store = CommunityPageStore<CommunityEvent>()
+    @State private var selectedRepository: String?
 
     var body: some View {
         List {
@@ -58,8 +59,9 @@ struct CommunityEventsView: View {
                                 CommunityAuthorLink(api: api, user: User(id: nil, login: event.actor.login, avatar_url: event.actor.avatar_url, name: nil, followers: nil, following: nil), date: event.created_at, opensInSheet: true)
                                     .accessibilityIdentifier("event-author-" + event.id)
                                 Text(event.summary).font(.caption).foregroundStyle(.secondary)
-                                NavigationLink { BrowserView(api: api, repo: event.repo.name, path: "", branch: "") }
-                                    label: { Text(event.repo.name).font(.headline) }.buttonStyle(.borderless)
+                                Button { selectedRepository = event.repo.name } label: {
+                                    Text(event.repo.name).font(.headline).frame(minHeight: 44)
+                                }.buttonStyle(.borderless).accessibilityIdentifier("event-repository-" + event.id)
                             }
                         }
                     }
@@ -69,6 +71,9 @@ struct CommunityEventsView: View {
             }
             CommunityPageFooter(store: store, next: { load() })
         }.navigationTitle(received ? "关注动态" : "公开活动").adaptiveWorkspaceLayout()
+        .navigationDestination(isPresented: Binding(get: { selectedRepository != nil }, set: { if !$0 { selectedRepository = nil } })) {
+            if let selectedRepository { BrowserView(api: api, repo: selectedRepository, path: "", branch: "") }
+        }
         .toolbar { Button("刷新") { load(reset: true) }.disabled(store.busy) }
         .task { if !store.loaded { load() } }.onDisappear { store.cancel() }
     }

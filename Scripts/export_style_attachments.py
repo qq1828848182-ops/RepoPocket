@@ -4,7 +4,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-bundle, output = sys.argv[1:]
+bundle, output = sys.argv[1:3]
+scope = sys.argv[3] if len(sys.argv) > 3 else 'all'
 destination = Path(output)
 destination.mkdir(parents=True, exist_ok=True)
 pending = [None]
@@ -23,6 +24,13 @@ expected.update({'local-history-collapsed', 'local-history-expanded', 'local-com
                  'local-commit-patch', 'local-history-after-folding'})
 expected.update({'source-preview-left', 'source-preview-right', 'source-editor-left', 'source-editor-right'})
 expected.update({'patch-highlight-left', 'patch-highlight-right', 'patch-raw-left', 'patch-raw-right'})
+profiles = {'profile-issue-list', 'profile-fork', 'profile-activity', 'profile-fork-repository', 'profile-activity-repository'}
+if scope == 'profiles':
+    expected = profiles
+elif scope == 'all':
+    expected.update(profiles)
+else:
+    raise ValueError('Unknown UI test scope')
 
 while pending:
     reference = pending.pop()

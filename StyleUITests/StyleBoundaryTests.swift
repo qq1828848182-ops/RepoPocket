@@ -76,20 +76,25 @@ final class StyleBoundaryTests: XCTestCase {
         let listAuthor = app.buttons["issue-list-author-4"]
         XCTAssertTrue(listAuthor.waitForExistence(timeout: 20)); listAuthor.tap()
         XCTAssertTrue(app.navigationBars["fixture-follower"].waitForExistence(timeout: 10))
+        keepScreenshot(app, name: "profile-issue-list")
         app.navigationBars["fixture-follower"].buttons["关闭"].tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["fixture-follower"])], timeout: 10), .completed)
         app.buttons["repository-issue-4"].tap()
         XCTAssertTrue(app.navigationBars["Issue #4"].waitForExistence(timeout: 10))
         for (argument, identity, destination) in [
-            ("-fork-author-preview", "fork-author-505", "fixture-follower/sample"),
-            ("-event-author-preview", "event-author-1-0", "fixture-owner/sample")
+            ("-fork-author-preview", "fork-author-505", "fork-repository-505"),
+            ("-event-author-preview", "event-author-1-0", "event-repository-1-0")
         ] {
             app.terminate()
             app.launchArguments = ["-style-preview", "-user-connections-style-preview", argument]; app.launch()
             let author = app.buttons[identity]
             XCTAssertTrue(author.waitForExistence(timeout: 20)); author.tap()
             XCTAssertTrue(app.navigationBars["fixture-follower"].waitForExistence(timeout: 10))
+            keepScreenshot(app, name: argument == "-fork-author-preview" ? "profile-fork" : "profile-activity")
             app.navigationBars["fixture-follower"].buttons["关闭"].tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.navigationBars["fixture-follower"])], timeout: 10), .completed)
             app.buttons[destination].firstMatch.tap()
+            keepScreenshot(app, name: argument == "-fork-author-preview" ? "profile-fork-repository" : "profile-activity-repository")
             if argument == "-fork-author-preview" {
                 XCTAssertTrue(app.buttons["浏览复刻仓库"].waitForExistence(timeout: 10))
             } else {
