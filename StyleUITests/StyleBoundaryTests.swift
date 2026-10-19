@@ -185,7 +185,16 @@ final class StyleBoundaryTests: XCTestCase {
         let version = app.textFields["Version"]
         XCTAssertTrue(version.waitForExistence(timeout: 20))
         XCTAssertEqual(version.value as? String, "1.0")
-        version.tap(); version.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "2.0")
+        version.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        // Wait for each edit to reach the SwiftUI field before sending the next
+        // phase; batching deletes with replacement text can race keyboard focus.
+        version.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == ''"), object: version)], timeout: 10), .completed)
+        version.typeText("2.0")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == '2.0'"), object: version)], timeout: 10), .completed)
         XCTAssertEqual(version.value as? String, "2.0")
         let returnKey = app.keyboards.buttons["return"]
         if returnKey.exists { returnKey.tap() }
