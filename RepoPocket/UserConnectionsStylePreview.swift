@@ -10,6 +10,10 @@ struct UserConnectionsStylePreview: View {
             if let api {
                 if ProcessInfo.processInfo.arguments.contains("-issue-deletion-repository-preview") {
                     NavigationStack { CollaborationListView(api: api, repo: "fixture-owner/sample", kind: .issues) }
+                } else if ProcessInfo.processInfo.arguments.contains("-fork-author-preview") {
+                    RepositorySocialView(api: api, repository: try! JSONDecoder().decode(Repository.self, from: Data(ConnectionsPreviewProtocol.repository.utf8)), destination: .forks)
+                } else if ProcessInfo.processInfo.arguments.contains("-event-author-preview") {
+                    NavigationStack { CommunityEventsView(api: api, login: "fixture-follower") }
                 } else if ProcessInfo.processInfo.arguments.contains("-search-style-preview") {
                     RepositorySearchView(api: api)
                 } else { RepositoriesView(api: api) }
@@ -100,6 +104,8 @@ private final class ConnectionsPreviewProtocol: URLProtocol {
             payload = Self.repository
         } else if path == "/repos/fixture-owner/sample/contents" {
             payload = "[]"
+        } else if path == "/repos/fixture-owner/sample/forks" {
+            payload = #"[{"id":505,"name":"sample","full_name":"fixture-follower/sample","default_branch":"main","fork":true,"owner":{"id":402,"login":"fixture-follower"},"html_url":"https://github.com/fixture-follower/sample"}]"#
         } else if path == "/repos/fixture-owner/sample/issues/4/comments" {
             Self.lock.lock(); let posted = Self.posted; Self.lock.unlock()
             let rows: [[String: Any]] = [
@@ -128,7 +134,7 @@ private final class ConnectionsPreviewProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
     private static let issue = #"{"id":601,"number":4,"title":"Add English support","state":"open","html_url":"https://github.com/fixture-owner/sample/issues/4","body":"Issue fixture body","comments":2,"updated_at":"2026-10-19T00:00:00Z","user":{"login":"fixture-follower"}}"#
-    private static let repository = #"{"id":504,"name":"sample","full_name":"fixture-owner/sample","default_branch":"main","owner":{"id":401,"login":"fixture-owner"},"html_url":"https://github.com/fixture-owner/sample","permissions":{"push":false}}"#
+    static let repository = #"{"id":504,"name":"sample","full_name":"fixture-owner/sample","default_branch":"main","owner":{"id":401,"login":"fixture-owner"},"html_url":"https://github.com/fixture-owner/sample","permissions":{"push":false}}"#
     private static func body(_ request: URLRequest) -> Data? {
         if let data = request.httpBody { return data }
         guard let stream = request.httpBodyStream else { return nil }

@@ -95,7 +95,7 @@ struct RepositorySocialView: View {
                                 .softGroupedRow(top: fork.id == forks.items.first?.id, bottom: fork.id == forks.items.last?.id)
                         } else {
                             VStack(alignment: .leading, spacing: 6) {
-                                CommunityAuthorLink(api: api, user: forkUser(fork))
+                                CommunityAuthorLink(api: api, user: forkUser(fork), opensInSheet: true)
                                     .accessibilityIdentifier("fork-author-\(fork.id)")
                                 NavigationLink { ForkRepositoryView(api: api, base: repository, fork: fork) } label: {
                                     Text(fork.full_name).font(.caption).foregroundStyle(.secondary)

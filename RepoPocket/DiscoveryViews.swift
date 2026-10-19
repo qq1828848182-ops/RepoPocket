@@ -55,7 +55,8 @@ struct CommunityEventsView: View {
                     for event in store.items {
                         SoftGroupRow(event.id) {
                             VStack(alignment: .leading, spacing: 6) {
-                                CommunityAuthorLink(api: api, user: User(id: nil, login: event.actor.login, avatar_url: event.actor.avatar_url, name: nil, followers: nil, following: nil), date: event.created_at)
+                                CommunityAuthorLink(api: api, user: User(id: nil, login: event.actor.login, avatar_url: event.actor.avatar_url, name: nil, followers: nil, following: nil), date: event.created_at, opensInSheet: true)
+                                    .accessibilityIdentifier("event-author-" + event.id)
                                 Text(event.summary).font(.caption).foregroundStyle(.secondary)
                                 NavigationLink { BrowserView(api: api, repo: event.repo.name, path: "", branch: "") }
                                     label: { Text(event.repo.name).font(.headline) }.buttonStyle(.borderless)

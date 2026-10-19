@@ -82,7 +82,7 @@ struct CollaborationListView: View {
                 }
                 .issueDeletionMenu(api: api, state: deletions, subject: kind == .issues ? IssueDeletionSubject(item, repo: repo) : nil, target: $deletionTarget)
                 .accessibilityIdentifier("repository-issue-\(item.number)")
-                CommunityAuthorLink(api: api, user: item.user).accessibilityIdentifier("issue-list-author-\(item.number)")
+                CommunityAuthorLink(api: api, user: item.user, opensInSheet: true).accessibilityIdentifier("issue-list-author-\(item.number)")
                 }
                 }
             }

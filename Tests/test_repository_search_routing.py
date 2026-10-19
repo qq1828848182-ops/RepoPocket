@@ -17,10 +17,10 @@ class SearchRoutingTests(unittest.TestCase):
         self.assertIn('openOwner ?? { showOwnerProfile = true }', cards)
         self.assertIn('UserRepositoriesView(api: api, user: ownerProfile)', cards)
         issues = (ROOT/'RepoPocket/CollaborationViews.swift').read_text()
-        self.assertIn('CommunityAuthorLink(api: api, user: item.user)', issues)
+        self.assertIn('CommunityAuthorLink(api: api, user: item.user, opensInSheet: true)', issues)
         self.assertIn('issue-list-author-', issues)
         social = (ROOT/'RepoPocket/RepositorySocial.swift').read_text()
-        self.assertIn('CommunityAuthorLink(api: api, user: forkUser(fork))', social)
+        self.assertIn('CommunityAuthorLink(api: api, user: forkUser(fork), opensInSheet: true)', social)
 
     @unittest.skipUnless(shutil.which('swiftc'), 'Native Swift runs on macOS')
     def test_production_route_validation(self):
