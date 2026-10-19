@@ -33,7 +33,13 @@ final class StyleBoundaryTests: XCTestCase {
         let issue = app.buttons["home-issue-4"]
         XCTAssertTrue(issue.waitForExistence(timeout: 20)); issue.tap()
         let comments = app.buttons["讨论评论"]
-        XCTAssertTrue(comments.waitForExistence(timeout: 15)); comments.tap()
+        XCTAssertTrue(comments.waitForExistence(timeout: 15))
+        // Markdown finishes asynchronously and changes the rows below its height.
+        // Wait for that content before computing the navigation button's tap point.
+        XCTAssertTrue(app.staticTexts["Issue fixture body"].waitForExistence(timeout: 15))
+        comments.tap()
+        XCTAssertTrue(app.navigationBars["讨论"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["请增加英文支持"].waitForExistence(timeout: 15))
         let reply = app.buttons["reply-comment-71"]
         XCTAssertTrue(reply.waitForExistence(timeout: 15)); reply.tap()
         XCTAssertTrue(app.staticTexts["reply-recipient"].waitForExistence(timeout: 10))
