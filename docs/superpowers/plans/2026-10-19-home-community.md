@@ -10,7 +10,7 @@
 ## Global Constraints
 - iOS16，版本1.0.9，无新依赖，README不改。
 - 22点连续圆角，沿用分隔线；账号切换隔离；无滚动刷新。
-- 只通过Actions交付IPA，全部通过后强制关机。
+- 只通过Actions交付IPA；用户已于最终验证期间取消关机要求。
 
 ## Review Focus
 - 过滤后空结果、单行、多行的分组边界和分页范围提示。
@@ -21,25 +21,27 @@
 
 ### Task 1: 首页与四个列表搜索
 Files: RepositorySections.swift, RepoPocketApp.swift, UserConnectionsView.swift, ListSearchField.swift; Tests/test_home_community.py, StyleUITests.
-- [ ] 添加失败的主页导航/搜索UI契约和原生过滤测试。
-- [ ] 合并首页入口；复用集合页，统一显式搜索框；添加无结果与范围提示。
-- [ ] 本地契约检查、CI原生和模拟器验证。
+- [x] 添加失败的主页导航/搜索UI契约和原生过滤测试。
+- [x] 合并首页入口；复用集合页，统一显式搜索框；添加无结果与范围提示。
+- [x] 本地契约检查、CI原生和模拟器验证。
 
 ### Task 2: 我的议题与明确引用回复
 Files: HomeCommunityModels.swift, PersonalIssuesView.swift, CommunityAPI.swift, CollaborationViews.swift, CollaborationComposer.swift.
 Interfaces: PersonalIssueFilter; PersonalIssueRules.repository(item), query(login,filter); CommentReplyContext.body(reply,repo,number).
-- [ ] 为查询、来源、引用和空回复写原生回归夹具。
-- [ ] 首页显示3条；独立分页列表和筛选；评论对应对象和实际引用内容一致。
-- [ ] 验证取消不发送、发送确认和账号隔离。
+- [x] 为查询、来源、引用和空回复写原生回归夹具。
+- [x] 首页显示3条；独立分页列表和筛选；评论对应对象和实际引用内容一致。
+- [x] 验证取消不发送、发送确认和账号隔离。
 
 ### Task 3: 按日公开活动
 Files: ActivityCalendar.swift, ActivityCalendarView.swift, NativeStatisticsView.swift.
 Interfaces: ActivityDay; ActivityCalendar.days(events,exhausted,now); ActivityCalendarStore.load(refresh,api,login).
-- [ ] 写日期、去重、部分覆盖、零与未知的回归夹具。
-- [ ] 30天方格、选日活动、3页首次预算与300条总上限。
-- [ ] 真实模拟器点击及截图检查。
+- [x] 写日期、去重、部分覆盖、零与未知的回归夹具。
+- [x] 30天方格、选日活动、3页首次预算与300条总上限。
+- [x] 真实模拟器点击及截图检查。
 
 ### Task 4: 审查与交付
-- [ ] 版本配置与包内校验改1.0.9；新测试加入Build IPA及所有原生检查入口。
-- [ ] 完整分支独立审查；处理重要问题；同步main并运行工作流。
-- [ ] 核对同一SHA的成功检查和非空产物；强制关机。
+- [x] 版本配置与包内校验改1.0.9；新测试加入Build IPA及所有原生检查入口。
+- [x] 完整分支独立审查；处理重要问题；同步main并运行工作流。
+- [ ] 核对同一SHA的成功检查和非空产物。
+
+最终验证期间用户已返回并明确要求不关机；完成后仅报告结果。

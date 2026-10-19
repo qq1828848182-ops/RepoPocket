@@ -191,7 +191,8 @@ final class StyleBoundaryTests: XCTestCase {
         // phase; batching deletes with replacement text can race keyboard focus.
         version.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == ''"), object: version)], timeout: 10), .completed)
+            // UIKit exposes no accessibility value for an empty SwiftUI field.
+            predicate: NSPredicate(format: "value == nil OR value == ''"), object: version)], timeout: 10), .completed)
         version.typeText("2.0")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == '2.0'"), object: version)], timeout: 10), .completed)
