@@ -11,6 +11,7 @@ pending = [None]
 seen = set()
 exported = set()
 expected = {'swipe-first', 'swipe-middle', 'swipe-last', 'readme-badges'}
+expected.update({'release-compact-attachments', 'release-inline-progress', 'repository-owner-profile'})
 expected.update({'issue-delete-confirmation-home-issue-4', 'issue-delete-confirmation-repository-issue-4',
                  'issue-delete-confirmation-personal-issue-4'})
 expected.update({'account-connections-home', 'account-followers-list', 'account-following-user-profile',

@@ -94,9 +94,10 @@ struct RepositorySocialView: View {
                             NavigationLink { UserRepositoriesView(api: api, user: forkUser(fork)) } label: { SocialPersonRow(login: forkUser(fork).login, avatar: fork.owner?.avatar_url) }
                                 .softGroupedRow(top: fork.id == forks.items.first?.id, bottom: fork.id == forks.items.last?.id)
                         } else {
-                            NavigationLink { ForkRepositoryView(api: api, base: repository, fork: fork) } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    SocialPersonRow(login: forkUser(fork).login, avatar: fork.owner?.avatar_url)
+                            VStack(alignment: .leading, spacing: 6) {
+                                CommunityAuthorLink(api: api, user: forkUser(fork))
+                                    .accessibilityIdentifier("fork-author-\(fork.id)")
+                                NavigationLink { ForkRepositoryView(api: api, base: repository, fork: fork) } label: {
                                     Text(fork.full_name).font(.caption).foregroundStyle(.secondary)
                                 }
                             }.softGroupedRow(top: fork.id == forks.items.first?.id, bottom: fork.id == forks.items.last?.id)
