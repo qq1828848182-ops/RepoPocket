@@ -16,7 +16,10 @@ final class StyleBoundaryTests: XCTestCase {
         XCTAssertTrue(app.buttons["复制下载链接"].exists)
         XCTAssertTrue(app.buttons["删除附件"].exists)
         // Dismiss the menu, then reopen by tapping its empty trailing area, not the filename.
-        app.navigationBars["发行版详情"].tap()
+        // A native menu deliberately makes the navigation bar non-hittable to AX.
+        // Tap its background coordinate as a user would to dismiss the menu.
+        app.navigationBars["发行版详情"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["下载并保存"])], timeout: 5), .completed)
         file.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.7)).tap()
         XCTAssertTrue(app.buttons["删除附件"].waitForExistence(timeout: 5)); app.buttons["删除附件"].tap()
         XCTAssertTrue(app.buttons["删除"].waitForExistence(timeout: 5)); app.buttons["取消"].tap()
