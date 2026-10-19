@@ -52,7 +52,14 @@ struct CollaborationListView: View {
     @StateObject private var store = CommunityPageStore<CollaborationItem>()
     @State private var state = "open"
     @State private var composing = false
-    private var visible: [CollaborationItem] { store.items.filter { kind == .pulls || $0.pull_request == nil } }
+    @ObservedObject private var deletions: IssueDeletionState
+    @State private var deletionTarget: IssueDeletionConfirmation?
+    private var visible: [CollaborationItem] {
+        deletions.visible(store.items, kind: kind).filter { kind == .pulls || $0.pull_request == nil }
+    }
+    init(api: GitHub, repo: String, kind: CollaborationKind) {
+        self.api = api; self.repo = repo; self.kind = kind; deletions = api.issueDeletions
+    }
     var body: some View {
         List {
             Section {
@@ -72,6 +79,8 @@ struct CollaborationListView: View {
                         if let date = item.updated_at { Text(ChinaDate.dateTime(date)).font(.caption2).foregroundStyle(.secondary) }
                     }.padding(.vertical, 4)
                 }
+                .issueDeletionMenu(api: api, state: deletions, subject: kind == .issues ? IssueDeletionSubject(item, repo: repo) : nil, target: $deletionTarget)
+                .accessibilityIdentifier("repository-issue-\(item.number)")
                 }
             }
             if store.loaded && visible.isEmpty && store.error.isEmpty { SoftGroupRow("empty") { Text("当前页没有符合条件的 \(kind.title)" + (store.more ? "，可继续加载。" : "。")) } }
@@ -87,9 +96,17 @@ struct CollaborationListView: View {
         .onChange(of: state) { _ in load(reset: true) }
         .task { if !store.loaded { load() } }
         .onDisappear { store.cancel() }
+        .issueDeletionPresenter(api: api, state: deletions, target: $deletionTarget)
+        .onChange(of: store.items.map(\.id)) { _ in loadPermissions() }
+        .task { loadPermissions() }
+    }
+    private func loadPermissions() {
+        guard kind == .issues else { return }
+        deletions.load(visible.compactMap { IssueDeletionSubject($0, repo: repo) }, api: api)
     }
     private func load(reset: Bool = false) {
         let requested = state
+        if reset { deletions.resetPermissions() }
         store.load(reset: reset, api: api) { try await api.collaborationItems(repo, kind: kind, state: requested, page: $0) }
     }
 }

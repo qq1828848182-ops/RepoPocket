@@ -281,6 +281,12 @@ for file in ['WorkspaceSelectionUI.swift', 'GitHub.swift', 'RepositoryUI.swift',
              'ReleasePublishPlan.swift', 'ReleaseTransfers.swift']:
     current = source(file)
     if file == 'GitHub.swift':
+        # The explicitly approved issue deletion transport has separate native
+        # permission, account-generation, and mutation acknowledgement fixtures.
+        deletion_start = current.index('    lazy var issueDeletions = IssueDeletionState()')
+        deletion_end = current.index('    @Published private(set) var starRevision', deletion_start)
+        assert 'func issueDeletionGraphQL(' in current[deletion_start:deletion_end]
+        current = current[:deletion_start] + current[deletion_end:]
         # The authorized metadata editor has separate permission/race tests.
         description_start = current.index('    func descriptionContext(')
         description_end = current.index('    func deletionContext(', description_start)

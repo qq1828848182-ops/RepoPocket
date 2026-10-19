@@ -225,6 +225,7 @@ struct RepositoriesView: View {
     }
     private func loadPersonalIssues(reset: Bool = false) {
         guard !Task.isCancelled, api.isCurrentSession, !api.login.isEmpty else { return }
+        if reset { api.issueDeletions.resetPermissions() }
         let login = api.login
         personalIssues.load(reset: reset, api: api) { try await api.personalIssues(login, filter: .involved, page: $0) }
     }

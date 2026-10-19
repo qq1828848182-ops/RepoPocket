@@ -51,6 +51,12 @@ class BrowserRollbackTests(unittest.TestCase):
         # account/host/error guards. Normalize only those exact additions before
         # comparing the complete historic write/download implementation.
         normalized = api_new[:added_start].replace(approved, historic)
+        # Approved issue deletion has dedicated native permission and mutation
+        # tests; preserve the exact guard on all unrelated API implementation.
+        deletion_start = normalized.index('    lazy var issueDeletions = IssueDeletionState()')
+        deletion_end = normalized.index('    @Published private(set) var starRevision', deletion_start)
+        self.assertIn('func issueDeletionGraphQL(', normalized[deletion_start:deletion_end])
+        normalized = normalized[:deletion_start] + normalized[deletion_end:]
         # Authorized description-only PATCH is verified by its dedicated owner,
         # permission and account-race fixtures; freeze all unrelated transport.
         description_start = normalized.index('    func descriptionContext(')

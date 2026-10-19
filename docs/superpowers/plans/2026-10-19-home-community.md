@@ -45,3 +45,12 @@ Interfaces: ActivityDay; ActivityCalendar.days(events,exhausted,now); ActivityCa
 - [ ] 核对同一SHA的成功检查和非空产物。
 
 最终验证期间用户已返回并明确要求不关机；完成后仅报告结果。
+
+### Task 5: 已批准的议题长按删除
+Files: IssueDeletion.swift (身份、权限响应、会话上下文及共享状态), IssueDeletionUI.swift (菜单与确认), GitHub.swift (账号绑定GraphQL传输), PersonalIssuesView.swift, CollaborationViews.swift; Tests/test_issue_deletion.py, StyleUITests/StyleBoundaryTests.swift, UserConnectionsStylePreview.swift。
+Interfaces: IssueDeletionSubject(item,repo); IssueDeletionGrant; IssueDeletionState.load(subjects,api), remove(grant,api); GitHub.issueDeletionGraphQL(query,variables), issueDeletionGrants(subjects), deleteIssue(grant)。同一GitHub实例共享删除状态，页面各自持有确认目标，避免叠加对话框。
+- [ ] 写失败的菜单覆盖契约和生产Swift回归：权限定向、身份错误、GraphQL错误、空响应、会话过期、重复确认与成功回执。
+- [ ] 按页批量读取viewerCanDelete并缓存，复核后执行deleteIssue；共享已删除ID只在成功后更新。所有列表在计算圆角边界前过滤已删除记录。
+- [ ] 为首页和仓库列表添加一致的长按菜单、取消/删除确认及失败提示；滚动不请求，失败允许手动重查权限。
+- [ ] 使用隔离URLProtocol验证两处菜单、取消不删除及确认后移除；完善现有DEB空字段无障碍断言，保留严格保存重开验证。
+- [ ] 独立审查，修复重要问题，同步main；核对工作流、非空IPA和原生界面结果。浏览器方案不实施，电脑保持开机。

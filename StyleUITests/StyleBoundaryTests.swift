@@ -2,6 +2,44 @@ import XCTest
 import UIKit
 
 final class StyleBoundaryTests: XCTestCase {
+    func testIssueDeletionRequiresConfirmationOnHomeAndRepositoryList() {
+        continueAfterFailure = false
+        for (extra, identifier, empty) in [
+            ("", "home-issue-4", "暂无相关议题"),
+            ("-issue-deletion-repository-preview", "repository-issue-4", "当前页没有符合条件的 Issue。"),
+            ("personal", "personal-issue-4", "没有符合条件的议题")
+        ] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-style-preview", "-user-connections-style-preview"] + (extra.hasPrefix("-") ? [extra] : [])
+            app.launch()
+            if extra == "personal" {
+                let all = app.buttons["home-personal-issues"]
+                XCTAssertTrue(all.waitForExistence(timeout: 20)); all.tap()
+            }
+            let issue = app.buttons[identifier]
+            XCTAssertTrue(issue.waitForExistence(timeout: 20))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value == '可删除议题'"), object: issue)], timeout: 15), .completed)
+            issue.press(forDuration: 1.2)
+            let menu = app.buttons["删除议题"]
+            XCTAssertTrue(menu.waitForExistence(timeout: 10)); menu.tap()
+            XCTAssertTrue(app.buttons["永久删除议题"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'fixture-owner/sample #4'")).firstMatch.exists)
+            keepScreenshot(app, name: "issue-delete-confirmation-" + identifier)
+            app.buttons["取消"].tap()
+            XCTAssertTrue(issue.exists, "Cancelling must leave the issue in the list")
+            issue.press(forDuration: 1.2); app.buttons["删除议题"].tap()
+            app.buttons["永久删除议题"].tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: issue)], timeout: 15), .completed)
+            // Confirm the server-backed fixture also stays deleted after refresh.
+            if !extra.isEmpty {
+                app.buttons["刷新"].tap()
+                XCTAssertTrue(app.staticTexts[empty].waitForExistence(timeout: 15))
+            } else { XCTAssertTrue(app.staticTexts[empty].waitForExistence(timeout: 15)) }
+            app.terminate()
+        }
+    }
     func testHomeCollectionsAndPeopleUseSearchDestinations() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -191,8 +229,12 @@ final class StyleBoundaryTests: XCTestCase {
         // phase; batching deletes with replacement text can race keyboard focus.
         version.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
-            // UIKit exposes no accessibility value for an empty SwiftUI field.
-            predicate: NSPredicate(format: "value == nil OR value == ''"), object: version)], timeout: 10), .completed)
+            // XCUITest may expose the placeholder as value when actual text is empty.
+            predicate: NSPredicate { _, _ in
+                let value = version.value as? String
+                return value == nil || value == "" || value == version.placeholderValue
+            }, object: version)], timeout: 10), .completed,
+            "Cleared field: value=\(String(describing: version.value)), placeholder=\(String(describing: version.placeholderValue))")
         version.typeText("2.0")
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == '2.0'"), object: version)], timeout: 10), .completed)

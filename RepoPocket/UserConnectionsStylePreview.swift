@@ -7,7 +7,11 @@ struct UserConnectionsStylePreview: View {
     @State private var error = ""
     var body: some View {
         Group {
-            if let api { RepositoriesView(api: api) }
+            if let api {
+                if ProcessInfo.processInfo.arguments.contains("-issue-deletion-repository-preview") {
+                    NavigationStack { CollaborationListView(api: api, repo: "fixture-owner/sample", kind: .issues) }
+                } else { RepositoriesView(api: api) }
+            }
             else if !error.isEmpty { Text(error) }
             else { ProgressView("准备关注列表测试") }
         }.task {
@@ -28,6 +32,7 @@ struct UserConnectionsStylePreview: View {
 private final class ConnectionsPreviewProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var posted = ""
+    private static var deleted = false
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -39,11 +44,30 @@ private final class ConnectionsPreviewProtocol: URLProtocol {
            let text = body["body"], text.contains("@fixture-follower"), text.contains("> 请增加英文支持"), text.contains("#issuecomment-71") {
             Self.lock.lock(); Self.posted = text; Self.lock.unlock(); acceptedPost = true
         }
+        let graph = request.httpMethod == "POST" && path == "/graphql"
         let allowed = request.url?.host == "api.github.com"
-            && (request.httpMethod == "GET" || acceptedPost)
+            && (request.httpMethod == "GET" || acceptedPost || graph)
             && request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-connections"
         let payload: String
-        if path == "/user" {
+        if graph && allowed, let bytes = Self.body(request),
+           let body = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+           let query = body["query"] as? String, let variables = body["variables"] as? [String: Any] {
+            var result: [String: Any] = [:]
+            if query.hasPrefix("mutation"), let input = variables["input"] as? [String: String],
+               input["issueId"] == "I_fixture_4", let requestID = input["clientMutationId"] {
+                Self.lock.lock(); Self.deleted = true; Self.lock.unlock()
+                result = ["deleteIssue": ["clientMutationId": requestID, "repository": ["nameWithOwner": "fixture-owner/sample"]]]
+            } else if query.hasPrefix("query") {
+                for i in 0..<(variables.count / 3) {
+                    if variables["o\(i)"] as? String == "fixture-owner", variables["r\(i)"] as? String == "sample",
+                       variables["n\(i)"] as? Int == 4 {
+                        result["i\(i)"] = ["issue": ["id": "I_fixture_4", "number": 4, "viewerCanDelete": true,
+                            "repository": ["nameWithOwner": "fixture-owner/sample"]]]
+                    }
+                }
+            }
+            payload = String(decoding: (try? JSONSerialization.data(withJSONObject: ["data": result])) ?? Data(), as: UTF8.self)
+        } else if path == "/user" {
             payload = #"{"id":401,"login":"fixture-owner","followers":2,"following":1}"#
         } else if path == "/users/fixture-owner/followers" {
             payload = #"[{"id":402,"login":"fixture-follower"},{"id":403,"login":"fixture-second"}]"#
@@ -58,7 +82,11 @@ private final class ConnectionsPreviewProtocol: URLProtocol {
             payload = #"[{"id":503,"name":"starred","full_name":"other/starred","html_url":"https://github.com/other/starred"}]"#
         } else if path == "/search/issues" {
             let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "q" }?.value ?? ""
-            payload = query.contains("mentions:") ? #"{"items":[],"incomplete_results":false}"# : "{\"items\":[" + Self.issue + "],\"incomplete_results\":false}"
+            Self.lock.lock(); let deleted = Self.deleted; Self.lock.unlock()
+            payload = query.contains("mentions:") || deleted ? #"{"items":[],"incomplete_results":false}"# : "{\"items\":[" + Self.issue + "],\"incomplete_results\":false}"
+        } else if path == "/repos/fixture-owner/sample/issues" {
+            Self.lock.lock(); let deleted = Self.deleted; Self.lock.unlock()
+            payload = deleted ? "[]" : "[" + Self.issue + "]"
         } else if path == "/repos/fixture-owner/sample/issues/4" {
             payload = Self.issue
         } else if path == "/repos/fixture-owner/sample" {
