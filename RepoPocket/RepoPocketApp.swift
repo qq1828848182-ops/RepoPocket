@@ -55,7 +55,7 @@ struct AccountRootView: View {
     @State private var startupSheetQueued = false
     var body: some View {
             TabView(selection: $selectedTab) {
-                RepositoriesView(api: api).tabItem { Label("仓库", systemImage: "shippingbox") }.tag(0)
+                RepositoriesView(api: api).tabItem { Label("主页", systemImage: "house") }.tag(0)
                 LocalProjectsView(api: api, store: localGit).tabItem { Label("Git", systemImage: "arrow.triangle.branch") }.tag(1)
                 UploadView(api: api).tabItem { Label("提交 / 发布", systemImage: "arrow.up.doc") }.tag(3)
                 SettingsView(api: api, updateChecker: updateChecker).tabItem { Label("设置", systemImage: "gear") }.tag(4)
