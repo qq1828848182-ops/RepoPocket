@@ -42,15 +42,28 @@ Interfaces: ActivityDay; ActivityCalendar.days(events,exhausted,now); ActivityCa
 ### Task 4: 审查与交付
 - [x] 版本配置与包内校验改1.0.9；新测试加入Build IPA及所有原生检查入口。
 - [x] 完整分支独立审查；处理重要问题；同步main并运行工作流。
-- [ ] 核对同一SHA的成功检查和非空产物。
+- [x] 核对最终构建SHA与非空产物，并按实际变更范围匹配原生和界面验证证据。
 
 最终验证期间用户已返回并明确要求不关机；完成后仅报告结果。
 
 ### Task 5: 已批准的议题长按删除
 Files: IssueDeletion.swift (身份、权限响应、会话上下文及共享状态), IssueDeletionUI.swift (菜单与确认), GitHub.swift (账号绑定GraphQL传输), PersonalIssuesView.swift, CollaborationViews.swift; Tests/test_issue_deletion.py, StyleUITests/StyleBoundaryTests.swift, UserConnectionsStylePreview.swift。
-Interfaces: IssueDeletionSubject(item,repo); IssueDeletionGrant; IssueDeletionState.load(subjects,api), remove(grant,api); GitHub.issueDeletionGraphQL(query,variables), issueDeletionGrants(subjects), deleteIssue(grant)。同一GitHub实例共享删除状态，页面各自持有确认目标，避免叠加对话框。
-- [ ] 写失败的菜单覆盖契约和生产Swift回归：权限定向、身份错误、GraphQL错误、空响应、会话过期、重复确认与成功回执。
-- [ ] 按页批量读取viewerCanDelete并缓存，复核后执行deleteIssue；共享已删除ID只在成功后更新。所有列表在计算圆角边界前过滤已删除记录。
-- [ ] 为首页和仓库列表添加一致的长按菜单、取消/删除确认及失败提示；滚动不请求，失败允许手动重查权限。
-- [ ] 使用隔离URLProtocol验证两处菜单、取消不删除及确认后移除；完善现有DEB空字段无障碍断言，保留严格保存重开验证。
-- [ ] 独立审查，修复重要问题，同步main；核对工作流、非空IPA和原生界面结果。浏览器方案不实施，电脑保持开机。
+Interfaces: IssueDeletionSubject(item,repo); IssueDeletionGrant; IssueDeletionConfirmation; IssueDeletionState.load(subjects,api), remove(confirmation,api); GitHub.issueDeletionGraphQL(query,variables), issueDeletionGrants(subjects), deleteIssue(confirmation)。同一GitHub实例共享删除状态，页面各自持有确认目标，避免叠加对话框。
+- [x] 写失败的菜单覆盖契约和生产Swift回归：权限定向、身份错误、GraphQL错误、空响应、会话过期、重复确认与成功回执。
+- [x] 按页批量读取viewerCanDelete并缓存，复核后执行deleteIssue；共享已删除ID只在成功后更新。议题列表在计算圆角边界前过滤已删除记录；PR使用独立ID空间，不能应用议题删除过滤。
+- [x] 为首页和仓库列表添加一致的长按菜单、取消/删除确认及失败提示；滚动不请求，失败允许手动重查权限。
+- [x] 使用隔离URLProtocol验证首页、全部议题和仓库议题菜单、取消不删除及确认后移除；完善现有DEB空字段无障碍断言，保留严格保存重开验证。
+- [x] 独立审查，修复重要问题，同步main；核对工作流、非空IPA和原生界面结果。浏览器方案不实施，电脑保持开机。
+
+### Verification Evidence
+- 长按删除运行代码：1223df12454f9950c97b7177cc04e2fb79cc1cf6，已同步main；独立审查发现的Issue/PR ID空间问题已修复并通过复查。
+- 主分支Local Git检查39251861260成功；Build IPA39251242891成功，产物RepoPocket为4,837,267字节、非过期。
+- 主分支Native UI39251861160：21项、0失败。三处取消/确认删除测试118.925秒，原有DEB修改并保存重开测试37.025秒；三处确认截图已检查。
+- 用户随后要求底部“仓库”页签改“主页”，图标改为house。fba30f3只改这一行，以上界面夹具覆盖的删除实现完全相同；不重复执行相同模拟器夹具。对fba30f3单独启动完整Build IPA39254346212，包含全部原生回归和iOS编译/打包。
+- 最终Build IPA39254346212成功，运行SHA为fba30f3d07480bd6e758a7ce0fc854dd21b058bf，产物RepoPocket为4,837,134字节、非过期；包内应用及扩展版本校验均为1.0.9。文档收尾提交不改运行代码。
+
+### Implementation Decisions
+- 沿用用户既有批准直接执行，无须重复询问方案确认。Windows没有Swift/Xcode，原生Swift、iOS编译及界面测试交给macOS工作流；本地静态检查与实际原生验证分开记录。
+- 关注列表搜索筛选已加载页并显示范围及加载更多；仓库集合原有逻辑加载全部页。未加载的用户不会被当前本地搜索命中，避免隐式逐用户读取。
+- 主页页签的一行名称/图标修改后单独跑完整Build IPA；沿用之前通过的21项相同界面夹具，不把它们声称为fba30f3的重新执行结果。该夹具不经过运行时TabView，因此重复执行也不会增加页签图标的设备验证证据。
+- 独立审查的重要问题均已修复，无遗留审查项。未执行真实GitHub议题删除，也未执行关机。
