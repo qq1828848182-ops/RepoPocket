@@ -2,6 +2,71 @@ import XCTest
 import UIKit
 
 final class StyleBoundaryTests: XCTestCase {
+    func testHomeCollectionsAndPeopleUseSearchDestinations() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-user-connections-style-preview"]; app.launch()
+        for (entry, title, empty) in [
+            ("home-collection-owned", "我的仓库", "没有匹配仓库"),
+            ("home-collection-starred", "已加星标", "没有匹配仓库"),
+            ("account-connections-followers", "关注者", "没有匹配用户"),
+            ("account-connections-following", "正在关注", "没有匹配用户")
+        ] {
+            let link = app.buttons[entry]
+            XCTAssertTrue(link.waitForExistence(timeout: 20)); link.tap()
+            let search = app.buttons["list-search-button"]
+            XCTAssertTrue(search.waitForExistence(timeout: 15)); search.tap()
+            let field = app.textFields["list-search-field"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5)); field.tap(); field.typeText("no-such-person-or-repo")
+            XCTAssertTrue(app.staticTexts[empty].waitForExistence(timeout: 10))
+            search.tap()
+            XCTAssertFalse(app.textFields["list-search-field"].exists)
+            if title == "我的仓库" { keepScreenshot(app, name: "home-owned-destination") }
+            app.navigationBars.buttons["RepoPocket"].tap()
+        }
+        keepScreenshot(app, name: "home-grouped-navigation")
+    }
+    func testIssueReplyCarriesRecipientQuoteAndConfirmedText() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-user-connections-style-preview"]; app.launch()
+        let issue = app.buttons["home-issue-4"]
+        XCTAssertTrue(issue.waitForExistence(timeout: 20)); issue.tap()
+        let comments = app.buttons["讨论评论"]
+        XCTAssertTrue(comments.waitForExistence(timeout: 15)); comments.tap()
+        let reply = app.buttons["reply-comment-71"]
+        XCTAssertTrue(reply.waitForExistence(timeout: 15)); reply.tap()
+        XCTAssertTrue(app.staticTexts["reply-recipient"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["reply-recipient"].label, "回复 @fixture-follower")
+        XCTAssertTrue(app.staticTexts["请增加英文支持"].exists)
+        XCTAssertFalse(app.buttons["发送"].isEnabled)
+        let editor = app.textViews["Markdown 正文"]
+        editor.tap(); editor.typeText("confirmed reply")
+        keepScreenshot(app, name: "issue-quoted-reply")
+        app.buttons["发送"].tap(); app.buttons["确认发送"].tap()
+        XCTAssertTrue(app.navigationBars["讨论"].waitForExistence(timeout: 20)); app.swipeUp()
+        let delivered = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'confirmed reply'")).firstMatch
+        XCTAssertTrue(delivered.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["reply-comment-73"].exists)
+    }
+    func testActivityCalendarSelectsDayAndShowsEvents() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-user-connections-style-preview"]; app.launch()
+        let followers = app.buttons["account-connections-followers"]
+        XCTAssertTrue(followers.waitForExistence(timeout: 20)); followers.tap()
+        let person = app.buttons["connection-person-fixture-follower"]
+        XCTAssertTrue(person.waitForExistence(timeout: 15)); person.tap()
+        let chart = app.buttons["活动图表"]
+        XCTAssertTrue(chart.waitForExistence(timeout: 15)); chart.tap()
+        XCTAssertTrue(app.staticTexts["已加载 90 条公开活动"].waitForExistence(timeout: 20))
+        let formatter = DateFormatter(); formatter.timeZone = TimeZone(identifier: "Asia/Shanghai"); formatter.dateFormat = "yyyy-MM-dd"
+        let cell = app.buttons["activity-day-" + formatter.string(from: Date())]
+        XCTAssertTrue(cell.waitForExistence(timeout: 10)); cell.tap()
+        keepScreenshot(app, name: "activity-daily-calendar")
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts.matching(identifier: "推送了提交").firstMatch.waitForExistence(timeout: 10))
+    }
     func testCurrentAccountConnectionsOpenPeopleAndProfiles() {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -23,13 +23,13 @@ assert '.appearance()' not in style and '.blur(' not in style
 for text in [ui, workspace, upload, detail]:
     assert '.softGroupedRow(top: true)' in text
     assert '.softGroupedRow(bottom: true)' in text
-section = ui.split('RepositoryInlineSection(api: api, section: .owned', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
+section = ui.split('RepositoryHomeLinksSection(api: api', 1)[1].split('.listStyle(.insetGrouped)', 1)[0]
 assert 'DisclosureGroup' not in section and 'repositoriesExpanded' not in ui
 repoSection = section.split('发现与关注动态', 1)[0]
 assert 'softGroupedRow' not in repoSection
 # Task-first home: owned/starred repositories come first; community discovery
 # stays below them as one standalone rounded row.
-assert section.index('发现与关注动态') > section.index('section: .starred')
+assert section.index('发现与关注动态') > section.index('UserConnectionsSection')
 assert '.softGroupedRow(top: true, bottom: true)' in section
 assert 'refresh()' not in section and 'repos = []' not in section
 assert 'NavigationLink("添加 / 更新 GitHub 账号")' in Path(REPO_ROOT, 'RepoPocket/AccountManagement.swift').read_text()

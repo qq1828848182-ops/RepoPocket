@@ -120,14 +120,12 @@ struct ShareSheet: UIViewControllerRepresentable {
 struct RepositoriesView: View {
     @ObservedObject var api: GitHub
     @EnvironmentObject private var accountPresentation: AccountPresentation
-    @State private var ownedExpanded = false
-    @State private var starredExpanded = false
+    @State private var attempted = false
+    @StateObject private var personalIssues = CommunityPageStore<CollaborationItem>()
     @State private var repos: [Repository] = []
     @State private var starred: [Repository] = []
     @State private var showOpen = false
     @State private var showSearch = false
-    @State private var collectionSearch: RepositoryHomeSection?
-    @State private var pendingFork: Repository?
     @State private var loaded = false
     @State private var refreshing = false
     @State private var input = ""
@@ -157,11 +155,9 @@ struct RepositoriesView: View {
                         .listRowBackground(Color.clear)
                     }
                 } else {
-                    RepositoryInlineSection(api: api, section: .owned, expanded: $ownedExpanded,
-                        repositories: repos, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .owned })
-                    RepositoryInlineSection(api: api, section: .starred, expanded: $starredExpanded,
-                        repositories: starred, loaded: loaded, busy: busy, fork: { pendingFork = $0 }, search: { collectionSearch = .starred })
+                    RepositoryHomeLinksSection(api: api, owned: repos, starred: starred, loaded: loaded)
                     UserConnectionsSection(api: api)
+                    PersonalIssuesSection(api: api, store: personalIssues)
                 }
                 Section {
                     NavigationLink { CommunityDiscoveryView(api: api) } label: { Label("发现与关注动态", systemImage: "safari") }.softGroupedRow(top: true, bottom: true)
@@ -180,22 +176,19 @@ struct RepositoriesView: View {
                 Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }.accessibilityLabel("搜索仓库或用户")
                 Menu {
                     Button("打开仓库") { showOpen = true }
-                    Button("刷新") { Task { await refresh() } }.disabled(busy)
+                    Button("刷新") { Task { await refresh(); loadPersonalIssues(reset: true) } }.disabled(busy)
                 } label: { Image(systemName: "ellipsis") }.accessibilityLabel("仓库操作")
             }
-            .refreshable { refreshing = true; await refresh(); refreshing = false }
-            .task { if !loaded && !CredentialStore.read().isEmpty { await refresh() } }
+            .refreshable { refreshing = true; await refresh(); loadPersonalIssues(reset: true); refreshing = false }
+            .task {
+                guard !attempted, !CredentialStore.read().isEmpty else { return }
+                attempted = true; await refresh(); loadPersonalIssues()
+            }
             .onChange(of: api.starRevision) { _ in
                 guard api.isCurrentSession else { return }
                 if let cached = api.cachedCollection(.owned) { repos = cached }
                 if let cached = api.cachedCollection(.starred) { starred = cached }
                 else if loaded && !busy { Task { await refreshStars() } }
-            }
-            .sheet(item: $collectionSearch) { section in
-                NavigationStack {
-                    RepositoryCollectionView(api: api, section: section, initialRepositories: loaded ? (section == .owned ? repos : starred) : nil)
-                        .toolbar { Button("关闭") { collectionSearch = nil } }
-                }.appSheetCornerRadius()
             }
             .sheet(isPresented: $showSearch) { RepositorySearchView(api: api).appSheetCornerRadius() }
             .sheet(isPresented: $showOpen) {
@@ -210,12 +203,6 @@ struct RepositoriesView: View {
                     }.navigationTitle("打开仓库").toolbar { Button("关闭") { showOpen = false } }
                 }.appSheetCornerRadius()
             }
-            .confirmationDialog("复刻到我的仓库？", isPresented: Binding(get: { pendingFork != nil }, set: { if !$0 { pendingFork = nil } }), titleVisibility: .visible) {
-                if let repository = pendingFork {
-                    Button("复刻") { input = repository.full_name; pendingFork = nil; Task { await fork() } }
-                }
-                Button("取消", role: .cancel) { pendingFork = nil }
-            } message: { Text(pendingFork?.full_name ?? "") }
             .sheet(isPresented: $showCreate) {
                 NavigationStack {
                     Form {
@@ -235,6 +222,11 @@ struct RepositoriesView: View {
             guard api.isCurrentSession else { return }
             starred = list; api.cacheCollection(list, section: .starred)
         } catch { if api.isCurrentSession { api.message = error.localizedDescription } }
+    }
+    private func loadPersonalIssues(reset: Bool = false) {
+        guard !Task.isCancelled, api.isCurrentSession, !api.login.isEmpty else { return }
+        let login = api.login
+        personalIssues.load(reset: reset, api: api) { try await api.personalIssues(login, filter: .involved, page: $0) }
     }
     private var isOwnRepository: Bool {
         guard !api.login.isEmpty else { return false }

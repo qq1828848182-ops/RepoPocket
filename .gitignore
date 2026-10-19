@@ -5,3 +5,4 @@ __pycache__/
 # Temporary downloaded build artifacts and unpacked applications.
 /dl/
 /dl[0-9]*/
+/.superpowers/

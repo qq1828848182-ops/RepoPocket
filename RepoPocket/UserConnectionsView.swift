@@ -39,15 +39,30 @@ struct UserConnectionsView: View {
     let kind: UserConnectionKind
     @StateObject private var store = CommunityPageStore<RepositorySocialUser>()
     @State private var attempted = false
+    @State private var query = ""
+    @State private var searchVisible = false
+    private var visiblePeople: [RepositorySocialUser] {
+        store.items.filter { HomeListSearch.matches(query, fields: [$0.login]) }
+    }
     var body: some View {
         List {
+            if searchVisible {
+                Section {
+                    SoftGroupRows {
+                        SoftGroupRow("search") { ListSearchField(query: $query, title: kind.title) }
+                        if store.more || store.limited {
+                            SoftGroupRow("scope") { Text("搜索已加载的 \(store.items.count) 位用户，可继续加载更多。").font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+            }
             Section {
                 Text(login).font(.caption).foregroundStyle(.secondary).softGroupedRow(top: true, bottom: true)
             }
-            if !store.items.isEmpty {
+            if !visiblePeople.isEmpty {
                 Section {
                     SoftGroupRows {
-                        for person in store.items {
+                        for person in visiblePeople {
                             SoftGroupRow(String(person.id)) {
                                 NavigationLink {
                                     UserRepositoriesView(api: api, user: person.user)
@@ -68,12 +83,18 @@ struct UserConnectionsView: View {
                         .foregroundStyle(.secondary).softGroupedRow(top: true, bottom: true)
                 }
             }
+            if store.loaded && !store.items.isEmpty && visiblePeople.isEmpty {
+                Section { Text("没有匹配用户").foregroundStyle(.secondary).softGroupedRow(top: true, bottom: true) }
+            }
             CommunityPageFooter(store: store, next: { load() })
         }
         .listStyle(.insetGrouped)
         .navigationTitle(kind.title)
         .adaptiveWorkspaceLayout()
-        .toolbar { Button("刷新") { load(reset: true) }.disabled(store.busy) }
+        .toolbar {
+            ListSearchButton(visible: $searchVisible, query: $query, title: kind.title)
+            Button("刷新") { load(reset: true) }.disabled(store.busy)
+        }
         .task { guard !attempted else { return }; attempted = true; load() }
         .onDisappear {
             // Resume an interrupted request on return, retaining completed pages.

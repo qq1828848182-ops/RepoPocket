@@ -15,6 +15,14 @@ extension GitHub {
         return try await communityDecode([CollaborationItem].self, path: Self.repoPath(repo) + "/" + kind.rawValue,
             query: CommunityRules.page(page) + [.init(name: "state", value: state), .init(name: "sort", value: "updated"), .init(name: "direction", value: "desc")])
     }
+    func personalIssues(_ login: String, filter: PersonalIssueFilter, page: Int) async throws -> [CollaborationItem] {
+        guard isCurrentSession else { throw CancellationError() }
+        let query = try PersonalIssueRules.query(login: login, filter: filter)
+        let response = try await communityDecode(PersonalIssueSearchResponse.self, path: "/search/issues",
+            query: CommunityRules.page(page) + [.init(name: "q", value: query), .init(name: "sort", value: "updated"), .init(name: "order", value: "desc")])
+        guard response.incomplete_results != true else { throw AppError(text: "GitHub 暂未完成议题搜索，请稍后重试。") }
+        return response.items.filter { PersonalIssueRules.repository($0) != nil }
+    }
     func collaborationDetail(_ repo: String, kind: CollaborationKind, number: Int) async throws -> CollaborationItem {
         guard number > 0 else { throw AppError(text: "无效编号") }
         return try await communityDecode(CollaborationItem.self, path: Self.repoPath(repo) + "/" + kind.rawValue + "/\(number)")

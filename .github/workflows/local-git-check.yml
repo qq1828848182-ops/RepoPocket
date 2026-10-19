@@ -44,6 +44,10 @@ jobs:
             -L NativeBuild/iphoneos/lib -lgit2 -lz -liconv \
             -framework Foundation -framework Security -framework CoreFoundation \
             -o NativeBuild/ios-probe
+      - name: Test home and community production models
+        run: |
+          python3 Tests/test_home_community.py
+          python3 Tests/test_community.py
       - name: Generate application project
         run: |
           brew install xcodegen
