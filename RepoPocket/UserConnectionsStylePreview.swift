@@ -116,7 +116,9 @@ private final class ConnectionsPreviewProtocol: URLProtocol {
         } else if path == "/users/fixture-follower/events/public" {
             let page = Int(URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "page" }?.value ?? "1") ?? 1
             let formatter = ISO8601DateFormatter()
-            let date = formatter.string(from: Date().addingTimeInterval(page == 1 ? -600 : -86400))
+            var calendar = Calendar(identifier: .gregorian); calendar.timeZone = ChinaDate.timeZone
+            // Keep today's events on today even when the test runs just after midnight.
+            let date = formatter.string(from: calendar.startOfDay(for: Date()).addingTimeInterval(page == 1 ? 0 : -86400))
             let rows: [[String: Any]] = page <= 3 ? (0..<30).map {
                 ["id":"\(page)-\($0)","type":"PushEvent","actor":["login":"fixture-follower"],"repo":["name":"fixture-owner/sample"],"created_at":date]
             } : []

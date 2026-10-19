@@ -76,7 +76,7 @@ final class StyleBoundaryTests: XCTestCase {
         let listAuthor = app.buttons["issue-list-author-4"]
         XCTAssertTrue(listAuthor.waitForExistence(timeout: 20)); listAuthor.tap()
         XCTAssertTrue(app.navigationBars["fixture-follower"].waitForExistence(timeout: 10))
-        app.buttons["关闭"].tap()
+        app.navigationBars["fixture-follower"].buttons["关闭"].tap()
         app.buttons["repository-issue-4"].tap()
         XCTAssertTrue(app.navigationBars["Issue #4"].waitForExistence(timeout: 10))
         for (argument, identity, destination) in [
@@ -88,7 +88,7 @@ final class StyleBoundaryTests: XCTestCase {
             let author = app.buttons[identity]
             XCTAssertTrue(author.waitForExistence(timeout: 20)); author.tap()
             XCTAssertTrue(app.navigationBars["fixture-follower"].waitForExistence(timeout: 10))
-            app.buttons["关闭"].tap()
+            app.navigationBars["fixture-follower"].buttons["关闭"].tap()
             app.buttons[destination].firstMatch.tap()
             if argument == "-fork-author-preview" {
                 XCTAssertTrue(app.buttons["浏览复刻仓库"].waitForExistence(timeout: 10))
