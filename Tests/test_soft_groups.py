@@ -492,7 +492,7 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
             if signature == 'private func zip() async':
                 assert 'downloadedZIP = saved' in body, signature
             else:
-                assert 'downloadNotice = "已下载并保存到 "' in body, signature
+                assert 'downloadedFile = saved' in body, signature
             assert 'ShareSheet' not in body and 'share = ' not in body, signature
             continue
         if file == 'ReleaseManagementUI.swift' and signature == 'func run(_ work: @escaping () async throws -> Void)':
@@ -510,7 +510,7 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
             body = current.get(signature, '')
             assert 'self.downloader.download(' in body
             assert 'try await self.downloader.persist(' in body
-            assert 'self.notice =' in body
+            assert 'self.completedDownload = saved' in body
             assert 'SharedFile' not in body and 'self.saved' not in body
             continue
         if file == 'ReleaseManagementUI.swift' and signature == 'private func performDelete()':
@@ -535,7 +535,7 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
             body = current.get(signature, '')
             assert 'api.downloadAsset' in body
             assert 'try await DownloadStore.shared.persist(' in body
-            assert 'downloadNotice =' in body
+            assert 'downloadedAsset = saved' in body
             assert 'api.isCurrentSession' in body
             assert 'SharedFile' not in body
             continue

@@ -22,4 +22,12 @@ class FileFeedbackTests(unittest.TestCase):
         self.assertLess(operation.index('try await DownloadStore.shared.persist'),operation.index('downloadedZIP = saved'))
         self.assertIn('guard api.isCurrentSession else { throw CancellationError() }', operation)
 
+    def test_all_download_destinations_use_the_shared_native_presenter(self):
+        for name, token in [('RepoPocketApp.swift','$downloadedFile'),('WorkflowViews.swift','$downloadedArtifact'),('UploadView.swift','$downloadedAsset'),('ReleaseManagementUI.swift','$state.completedDownload'),('UpdateFeature.swift','$checker.downloadCompletion')]:
+            text = (ROOT/'RepoPocket'/name).read_text(encoding='utf-8')
+            self.assertIn('.downloadCompletionNotice(' + token + ')', text)
+            self.assertNotIn('已下载并保存到 ',text)
+            self.assertNotIn('已保存 ZIP 到 ',text)
+            self.assertNotIn('已保存到 " + DownloadStore.shared.label',text)
+
 if __name__ == '__main__': unittest.main()

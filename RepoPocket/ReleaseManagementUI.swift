@@ -28,6 +28,7 @@ struct ReleaseManagementDestination: View {
     @Published var listLoaded = false
     @Published var assetMore = false
     @Published private(set) var assetDownload: ReleaseAssetDownload?
+    @Published var completedDownload: URL?
     private var page = 1
     private var assetPage = 1
     private var task: Task<Void, Never>?
@@ -37,7 +38,7 @@ struct ReleaseManagementDestination: View {
     init(api: GitHub, repo: String, downloader: ReleaseAssetDownloading? = nil) {
         self.api = api; self.repo = repo; self.downloader = downloader ?? LiveReleaseAssetDownloader()
         accountObserver = NotificationCenter.default.publisher(for: .githubAccountChanged).sink { [weak self] _ in
-            self?.cancel(); self?.canWrite = false; self?.rows = []; self?.assets = []; self?.release = nil; self?.notice = ""; self?.latestID = nil
+            self?.cancel(); self?.completedDownload = nil; self?.canWrite = false; self?.rows = []; self?.assets = []; self?.release = nil; self?.notice = ""; self?.latestID = nil
         }
     }
     var valid: Bool { generation == AccountStore.generation && api.isCurrentSession }
@@ -49,6 +50,7 @@ struct ReleaseManagementDestination: View {
         guard valid, !busy else { return }
         busy = true; error = ""; notice = ""; progress = 0
         assetDownload = nil
+        completedDownload = nil
         let token = UUID(); operation = token
         task = Task {
             defer { if operation == token { busy = false; task = nil } }
@@ -118,9 +120,10 @@ struct ReleaseManagementDestination: View {
             defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
             try self.check()
             self.assetDownload?.stage = .saving
-            try await self.downloader.persist(temporary, generation: self.generation)
-            try self.check(); self.notice = "已下载并保存到 " + self.downloader.label
-            self.assetDownload?.stage = .completed; self.assetDownload?.message = self.notice
+            let saved = try await self.downloader.persist(temporary, generation: self.generation)
+            try self.check()
+            self.assetDownload?.stage = .completed
+            self.completedDownload = saved
             } catch {
                 if self.valid, self.assetDownload?.request == initial.request {
                     self.assetDownload?.stage = RefreshFailure.isCancellation(error) || Task.isCancelled ? .cancelled : .failed
@@ -248,7 +251,7 @@ struct ReleaseDetailView: View {
                                     .contentShape(Rectangle())
                             }.buttonStyle(.borderless).disabled(state.busy || !state.valid)
                                 .accessibilityIdentifier("release-asset-\(asset.id)")
-                            if let download = state.assetDownload, download.assetID == asset.id {
+                            if let download = state.assetDownload, download.assetID == asset.id, download.stage != .completed {
                                 ReleaseAssetDownloadStatusView(download: download, cancel: { state.cancel() }, retry: { state.download(asset) })
                                     .padding(.horizontal, 20).padding(.bottom, 10)
                             }
@@ -277,6 +280,7 @@ struct ReleaseDetailView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("发行版详情")
+        .downloadCompletionNotice($state.completedDownload)
         .alert("下载链接已复制", isPresented: $copied) { Button("好", role: .cancel) {} }
         .toolbar { Button("刷新") { state.detail(id) }.disabled(state.busy) }
         .task { if state.release == nil { state.detail(id) } }

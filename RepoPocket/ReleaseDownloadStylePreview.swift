@@ -74,6 +74,9 @@ private final class ReleaseActionsPreviewProtocol: URLProtocol {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let file = root.appendingPathComponent(asset.name); try Data([1, 2, 3]).write(to: file); return file
     }
-    func persist(_ file: URL, generation: UUID) async throws { try await Task.sleep(nanoseconds: 300_000_000) }
+    func persist(_ file: URL, generation: UUID) async throws -> URL {
+        try await Task.sleep(nanoseconds: 300_000_000)
+        return URL(fileURLWithPath: "/fixture/测试下载文件夹/" + file.lastPathComponent)
+    }
 }
 #endif

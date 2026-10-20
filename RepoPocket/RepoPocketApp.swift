@@ -537,7 +537,7 @@ struct FileView: View {
     @State private var currentSHA = ""
     @State private var editable = false
     @State private var busy = false
-    @State private var downloadNotice = ""
+    @State private var downloadedFile: URL?
     @State private var commitMessage = "Update file via RepoPocket"
     @State private var showMetadata = false
     @State private var showDeb = false
@@ -564,7 +564,6 @@ struct FileView: View {
                 }.padding().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             if !readingError.isEmpty && editable { Text(readingError).font(.caption).foregroundStyle(.secondary).padding() }
-            if !downloadNotice.isEmpty { Text(downloadNotice).font(.caption).foregroundStyle(.secondary).padding() }
         }.background(Color(uiColor: .systemBackground))
         .navigationTitle(entry.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -589,6 +588,7 @@ struct FileView: View {
         .sheet(isPresented: $editing, onDismiss: { text = originalText }) { editor }
         .sheet(isPresented: $showDeb) { DebEditorView(api: api, remote: (repo, entry, branch), canWrite: writable) }
         .sheet(isPresented: $showMetadata) { TrollMetadataView(api: api, repo: repo, entry: entry, branch: branch, canWrite: writable) }
+        .downloadCompletionNotice($downloadedFile)
         .confirmationDialog("永久删除仓库中的 \(entry.name)？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("确认删除", role: .destructive) { Task { await remove() } }
         }
@@ -672,16 +672,16 @@ struct FileView: View {
     private func download() async {
         busy = true; defer { busy = false }
         do {
-            downloadNotice = ""
+            downloadedFile = nil
             let generation = AccountStore.generation
             try await DownloadStore.shared.requireAuthorization()
             guard api.isCurrentSession else { throw CancellationError() }
             DownloadStore.shared.begin(); defer { DownloadStore.shared.end() }
             let temporary = try await api.downloadFile(repo, entry: entry, branch: branch)
             defer { try? FileManager.default.removeItem(at: temporary.deletingLastPathComponent()) }
-            _ = try await DownloadStore.shared.persist(temporary, session: generation)
+            let saved = try await DownloadStore.shared.persist(temporary, session: generation)
             guard api.isCurrentSession else { throw CancellationError() }
-            downloadNotice = "已下载并保存到 " + DownloadStore.shared.label
+            downloadedFile = saved
         }
         catch { if api.isCurrentSession, !RefreshFailure.isCancellation(error) { api.message = error.localizedDescription } }
     }

@@ -43,6 +43,28 @@ final class StyleBoundaryTests: XCTestCase {
         XCTAssertTrue(deb.waitForExistence(timeout: 10)); deb.tap()
         XCTAssertTrue(app.textFields["Version"].waitForExistence(timeout: 15), "Tapping DEB still opens the established editor")
     }
+    func testLocalFileSheetStaysClosedAfterInteractiveDismissal() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-local-git-style-preview"]; app.launch()
+        let browse = app.buttons["浏览与编辑项目文件"]
+        XCTAssertTrue(browse.waitForExistence(timeout: 40)); reveal(browse, in: app); browse.tap()
+        let file = app.buttons["local-project-file-示例.py"]
+        XCTAssertTrue(file.waitForExistence(timeout: 10))
+        for _ in 0..<3 {
+            file.tap(withNumberOfTaps: 2, numberOfTouches: 1)
+            let editor = app.navigationBars["示例.py"]
+            XCTAssertTrue(app.textViews["代码正文"].waitForExistence(timeout: 10))
+            editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: editor)], timeout: 10), .completed)
+            let reappeared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true"), object: editor)
+            reappeared.isInverted = true
+            XCTAssertEqual(XCTWaiter.wait(for: [reappeared], timeout: 1), .completed)
+            XCTAssertTrue(file.isEnabled)
+        }
+        keepScreenshot(app, name: "local-file-sheet-dismissed")
+    }
     func testReleaseAttachmentsUseNativeActionsAndInlineDownloadStates() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -82,7 +104,10 @@ final class StyleBoundaryTests: XCTestCase {
         app.buttons["取消下载"].tap()
         XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '下载已取消'"), object: status)], timeout: 5), .completed)
         retry.tap()
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS '已下载并保存到'"), object: status)], timeout: 15), .completed)
+        let completion = app.alerts["下载完成"]
+        XCTAssertTrue(completion.waitForExistence(timeout: 15))
+        completion.buttons["好"].tap()
+        XCTAssertFalse(status.exists, "Success must not leave a permanent saved-path row")
     }
     func testSharedProfileFollowStateAndFailureHandling() {
         continueAfterFailure = false

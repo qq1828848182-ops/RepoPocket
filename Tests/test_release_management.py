@@ -19,7 +19,7 @@ class ReleaseManagementTests(unittest.TestCase):
             self.assertNotIn('ShareSheet(url:', screen)
         self.assertIn('.downloadCompletionNotice($downloadedZIP)', app)
         self.assertIn('downloadedZIP = saved', app)
-        self.assertIn('downloadNotice = "已下载并保存到 " + DownloadStore.shared.label', upload)
+        self.assertIn('downloadedAsset = saved', upload)
         update = (ROOT/'RepoPocket/UpdateFeature.swift').read_text()
         self.assertIn('Button("分享 IPA 安装")', update)
         highlights = (ROOT/'RepoPocket/RepositoryHomeHighlights.swift').read_text()
