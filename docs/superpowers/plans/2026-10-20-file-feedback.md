@@ -8,4 +8,14 @@ Validation before CI: the two new regression checks failed against the old UI an
 
 The `file-feedback` native UI scope exercises the shipping project file list (preview, long-press deletion confirmation/cancel and direct DEB editing), the existing DEB save flow, and the production native completion presenter (no long path, dismiss and present again). Strict screenshot export requires all three expected captures. The completion presenter fixture simulates a successful save event; it does not claim to test a real ZIP network download. Existing persistence and API tests continue to validate those boundaries on macOS.
 
-Version remains 1.1.0. README and release publication are outside this change. CI results will be appended after completion.
+Version remains 1.1.0. README and release publication are outside this change.
+
+## Verified delivery
+
+- Shipping commit: `815e2650e378f844c8817ab9d3c9dac7378fc1bb`.
+- Local Git workflow `39419405151`: success, including production native checks and application compilation.
+- Build IPA `39419409811`: success. Artifact `12262953934` (`RepoPocket`, 4,942,601 bytes) is available and not expired.
+- Native UI workflow `39419400922`, `file-feedback` scope: all 3 tests passed, 0 failures in 119.095 seconds. Existing DEB save/reopen passed, project file preview/long-press cancellation/direct DEB editor passed, and the native ZIP completion presenter closed and reopened correctly without exposing the private container path. All three required captures exported; alert and deletion confirmation screenshots were visually inspected.
+- The UI workflow uses iOS 17 Simulator. No claim of an iOS 16.3 device run or a real ZIP network transfer in the presenter fixture.
+
+No application changes were made after the validated shipping commit. The user can obtain the IPA directly from Actions artifacts.
