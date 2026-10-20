@@ -2,6 +2,47 @@ import XCTest
 import UIKit
 
 final class StyleBoundaryTests: XCTestCase {
+    func testRepositoryZIPCompletionIsNativeDismissibleAndReusable() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-download-completion-style-preview"]; app.launch()
+        let completed = app.buttons["模拟 ZIP 保存完成"]
+        XCTAssertTrue(completed.waitForExistence(timeout: 20))
+        for attempt in 0..<2 {
+            completed.tap()
+            let alert = app.alerts["下载完成"]
+            XCTAssertTrue(alert.waitForExistence(timeout: 5))
+            XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS 'my-python.zip' AND label CONTAINS 'RepoPocket'")).firstMatch.exists)
+            XCTAssertFalse(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS '/private/'")).firstMatch.exists)
+            if attempt == 0 { keepScreenshot(app, name: "repository-zip-completion") }
+            alert.buttons["好"].tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)], timeout: 5), .completed)
+        }
+    }
+    func testProjectFilesUseLongPressDeletionAndKeepPreview() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-style-preview", "-local-git-style-preview"]; app.launch()
+        let browse = app.buttons["浏览与编辑项目文件"]
+        XCTAssertTrue(browse.waitForExistence(timeout: 40)); reveal(browse, in: app); browse.tap()
+        let file = app.buttons["local-project-file-示例.py"]
+        XCTAssertTrue(file.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["更多操作：示例.py"].exists)
+        file.tap()
+        XCTAssertTrue(app.textViews["代码正文"].waitForExistence(timeout: 15))
+        app.buttons["关闭"].tap()
+        XCTAssertTrue(file.waitForExistence(timeout: 10)); file.press(forDuration: 1)
+        let remove = app.buttons["删除此文件"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 5)); remove.tap()
+        XCTAssertTrue(app.buttons["确认删除此文件"].waitForExistence(timeout: 15))
+        keepScreenshot(app, name: "local-project-files-long-press")
+        app.buttons["关闭"].tap()
+        XCTAssertTrue(file.waitForExistence(timeout: 10), "Cancelling must keep the project file")
+        app.buttons["debs"].tap()
+        let deb = app.buttons["local-project-file-debs/package-01.deb"]
+        XCTAssertTrue(deb.waitForExistence(timeout: 10)); deb.tap()
+        XCTAssertTrue(app.textFields["Version"].waitForExistence(timeout: 15), "Tapping DEB still opens the established editor")
+    }
     func testReleaseAttachmentsUseNativeActionsAndInlineDownloadStates() {
         continueAfterFailure = false
         let app = XCUIApplication()

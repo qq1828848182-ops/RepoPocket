@@ -26,13 +26,17 @@ expected.update({'source-preview-left', 'source-preview-right', 'source-editor-l
 expected.update({'patch-highlight-left', 'patch-highlight-right', 'patch-raw-left', 'patch-raw-right'})
 profiles = {'profile-issue-list', 'profile-fork', 'profile-activity', 'profile-fork-repository', 'profile-activity-repository'}
 actions = {'release-compact-attachments', 'release-inline-progress', 'profile-following-action', 'profile-follow-status-error', 'repository-owner-profile'}
+file_feedback = {'repository-zip-completion', 'local-project-files-long-press', 'local-deb-editor'}
 if scope == 'profiles':
     expected = profiles
 elif scope == 'actions':
     expected = actions
+elif scope == 'file-feedback':
+    expected = file_feedback
 elif scope == 'all':
     expected.update(profiles)
     expected.update(actions)
+    expected.update(file_feedback)
 else:
     raise ValueError('Unknown UI test scope')
 

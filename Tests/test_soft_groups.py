@@ -485,10 +485,14 @@ for file in ['RepoPocketApp.swift', 'DesktopViews.swift', 'ReleaseManagementUI.s
             continue
         if file == 'RepoPocketApp.swift' and signature in ('private func zip() async', 'private func download() async'):
             # Downloads now save directly to the chosen folder and report the
-            # result inline; focused download tests protect this changed path.
+            # result with the approved native ZIP completion alert; focused
+            # download tests protect this changed path and the file fallback.
             body = current.get(signature, '')
             assert 'try await DownloadStore.shared.persist(' in body, signature
-            assert 'downloadNotice = "已下载并保存到 "' in body, signature
+            if signature == 'private func zip() async':
+                assert 'downloadedZIP = saved' in body, signature
+            else:
+                assert 'downloadNotice = "已下载并保存到 "' in body, signature
             assert 'ShareSheet' not in body and 'share = ' not in body, signature
             continue
         if file == 'ReleaseManagementUI.swift' and signature == 'func run(_ work: @escaping () async throws -> Void)':

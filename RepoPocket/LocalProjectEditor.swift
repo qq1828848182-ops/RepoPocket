@@ -125,17 +125,13 @@ struct LocalProjectFilesView: View {
                     .buttonStyle(.plain).disabled(importer.busy)
                     .contextMenu { Button("删除此文件夹", role: .destructive) { opened = LocalProjectFile(path: entry.path, deleting: true) }.disabled(importer.busy) }
                 } else {
-                    HStack {
-                        Button { opened = LocalProjectFile(path: entry.path) } label: { LocalGitFileLabel(name: entry.name, size: entry.size) }
-                            .buttonStyle(.borderless).disabled(importer.busy)
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                        Menu {
-                            if entry.name.lowercased().hasSuffix(".deb") {
-                                Button("编辑包信息") { opened = LocalProjectFile(path: entry.path) }
-                            }
-                            Button("删除此文件", role: .destructive) { opened = LocalProjectFile(path: entry.path, deleting: true) }
-                        } label: { Image(systemName: "ellipsis").padding(8) }.disabled(importer.busy).accessibilityLabel("更多操作：" + entry.name)
-                    }
+                    Button { opened = LocalProjectFile(path: entry.path) } label: {
+                        HStack {
+                            LocalGitFileLabel(name: entry.name, size: entry.size)
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.borderless).disabled(importer.busy)
+                        .accessibilityIdentifier("local-project-file-" + entry.path)
                         .contextMenu { Button("删除此文件", role: .destructive) { opened = LocalProjectFile(path: entry.path, deleting: true) }.disabled(importer.busy) }
                 }
               }

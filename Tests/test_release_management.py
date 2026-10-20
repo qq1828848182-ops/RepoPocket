@@ -17,7 +17,8 @@ class ReleaseManagementTests(unittest.TestCase):
         upload = (ROOT/'RepoPocket/UploadView.swift').read_text()
         for screen in [app, fileView, ui, upload]:
             self.assertNotIn('ShareSheet(url:', screen)
-        self.assertIn('downloadNotice = "已下载并保存到 " + DownloadStore.shared.label', app)
+        self.assertIn('.downloadCompletionNotice($downloadedZIP)', app)
+        self.assertIn('downloadedZIP = saved', app)
         self.assertIn('downloadNotice = "已下载并保存到 " + DownloadStore.shared.label', upload)
         update = (ROOT/'RepoPocket/UpdateFeature.swift').read_text()
         self.assertIn('Button("分享 IPA 安装")', update)
