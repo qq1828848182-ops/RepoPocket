@@ -117,24 +117,24 @@ struct LocalProjectFilesView: View {
             for entry in entries {
               SoftGroupRow("entry:" + entry.id) {
                 if entry.directory {
-                    Button { openDirectory = entry.path } label: {
+                    Button { guard !filePresentation.locked else { return }; openDirectory = entry.path } label: {
                         HStack {
                             Label(entry.name, systemImage: "folder")
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                         }.contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).disabled(importer.busy || filePresentation.locked)
-                    .contextMenu { Button("删除此文件夹", role: .destructive) { openFile(entry.path, deleting: true) }.disabled(importer.busy || filePresentation.locked) }
+                    .buttonStyle(.plain).disabled(importer.busy)
+                    .contextMenu { Button("删除此文件夹", role: .destructive) { openFile(entry.path, deleting: true) }.disabled(importer.busy) }
                 } else {
                     Button { openFile(entry.path) } label: {
                         HStack {
                             LocalGitFileLabel(name: entry.name, size: entry.size)
                             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                         }.contentShape(Rectangle())
-                    }.buttonStyle(.borderless).disabled(importer.busy || filePresentation.locked)
+                    }.buttonStyle(.borderless).disabled(importer.busy)
                         .accessibilityIdentifier("local-project-file-" + entry.path)
-                        .contextMenu { Button("删除此文件", role: .destructive) { openFile(entry.path, deleting: true) }.disabled(importer.busy || filePresentation.locked) }
+                        .contextMenu { Button("删除此文件", role: .destructive) { openFile(entry.path, deleting: true) }.disabled(importer.busy) }
                 }
               }
             }

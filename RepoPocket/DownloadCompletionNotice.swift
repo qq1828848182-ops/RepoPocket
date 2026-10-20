@@ -3,10 +3,13 @@ import SwiftUI
 private struct DownloadCompletionNotice: ViewModifier {
     @Binding var file: URL?
     func body(content: Content) -> some View {
-        content.alert("下载完成", isPresented: Binding(get: { file != nil }, set: { if !$0 { file = nil } }), presenting: file) { _ in
-            Button("好", role: .cancel) { file = nil }
-        } message: { saved in
-            Text(saved.lastPathComponent + "\n已保存到“" + saved.deletingLastPathComponent().lastPathComponent + "”文件夹，可前往“文件”App 查看。")
+        content.background {
+            // Keep this presenter separate from the page's copy/upload/error alerts.
+            Color.clear.alert("下载完成", isPresented: Binding(get: { file != nil }, set: { if !$0 { file = nil } }), presenting: file) { _ in
+                Button("好", role: .cancel) { file = nil }
+            } message: { saved in
+                Text(saved.lastPathComponent + "\n已保存到“" + saved.deletingLastPathComponent().lastPathComponent + "”文件夹，可前往“文件”App 查看。")
+            }
         }
     }
 }
