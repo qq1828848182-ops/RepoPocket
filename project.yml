@@ -1,7 +1,7 @@
 name: RepoPocket
 options:
-  projectFormat: xcode15_3
-  xcodeVersion: "15.4"
+  projectFormat: xcode16_0
+  xcodeVersion: "26.6"
   bundleIdPrefix: com.wm0104
   deploymentTarget:
     iOS: "16.0"

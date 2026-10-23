@@ -19,7 +19,7 @@ class BuildWorkflowTests(unittest.TestCase):
 
     def test_read_only_permissions_and_apple_runner(self):
         self.assertIn('permissions:\n  contents: read', self.source)
-        self.assertIn('runs-on: macos-14', self.source)
+        self.assertIn('runs-on: macos-26', self.source)
         self.assertNotIn('contents: write', self.source)
         self.assertNotIn('gh release', self.source)
         self.assertNotIn('softprops/action-gh-release', self.source)
